@@ -1,7 +1,11 @@
 <Solution>
+  <Project Path="Namerre.Api.Tests/Namerre.Api.Tests.csproj" />
   <Project Path="Namerre.Api/Namerre.Api.csproj" />
+  <Project Path="Namerre.Application/Namerre.Application.csproj" />
+  <Project Path="Namerre.Domain/Namerre.Domain.csproj" />
   <Project Path="Namerre.Front/" Type="Website" DisplayName="Namerre.Front">
     <BuildType Project="Debug" />
+    <Build Project="false" />
     <Properties Name="WebsiteProperties">
       <Property Name="Debug.AspNetCompiler.Debug" Value="&quot;True&quot;" />
       <Property Name="Debug.AspNetCompiler.FixedNames" Value="&quot;false&quot;" />
@@ -21,4 +25,5 @@
       <Property Name="VWDPort" Value="&quot;59211&quot;" />
     </Properties>
   </Project>
+  <Project Path="Namerre.Infrastructure/Namerre.Infrastructure.csproj" />
 </Solution>

@@ -13,6 +13,11 @@
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.24.2-preview.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Namerre.Application\Namerre.Application.csproj" />
+    <ProjectReference Include="..\Namerre.Infrastructure\Namerre.Infrastructure.csproj" />
+  </ItemGroup>
+
   <Target Name="BuildAngularFrontend"
           BeforeTargets="AssignTargetPaths"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(BuildFrontend)' != 'false'">

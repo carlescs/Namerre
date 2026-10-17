@@ -37,7 +37,7 @@ The API process serves Angular at `/` and controllers under `/api`.
 Build and run the complete app in Docker from the workspace root:
 
 ```powershell
-docker build -f .\Namerre.Api\Dockerfile -t namerre .
+docker build -f .\Namerre.Api\Dockerfile -t namerre --secret id=github_packages_credentials,env=NuGetPackageSourceCredentials_Github .
 docker run --rm -p 8080:8080 namerre
 ```
 
@@ -67,9 +67,24 @@ in `tsconfig.spec.json`.
 
 ## Architecture
 
-- `Namerre.slnx` includes only `Namerre.Api`; its build target builds the frontend.
-  The workspace root is not a Git repository; `Namerre.Front` has its own Git
-  repository. These instructions are at the workspace root, outside that repository.
+- Backend projects follow clean architecture: Domain has no dependencies;
+  Application references Domain; Infrastructure references Application; API
+  references Application and Infrastructure and is the composition root.
+  Domain and Infrastructure are empty scaffolds until real business rules and
+  external adapters are needed. Do not put the weather sample in Domain.
+- Application uses CMediator v1.1.3 from GitHub Packages. Requests are sealed;
+  handlers are internal sealed. Keep both in Application, where the generator
+  runs, and rely on `AddApplication()` for generated scoped registration.
+  `MED001`, `MED002`, `MED003` and `MED005` are treated as build errors.
+  The upstream code-fix package is named `CMediato.CodeFixes`.
+- `nuget.config` maps CMediator packages to the `Github` source. Supply credentials
+  through `NuGetPackageSourceCredentials_Github` or local NuGet credentials.
+  Docker requires `--secret id=github_packages_credentials,env=NuGetPackageSourceCredentials_Github`;
+  Actions requires the `CMEDIATOR_PACKAGES_TOKEN` secret. Never commit tokens.
+- `Namerre.slnx` includes the backend layers and `Namerre.Api.Tests`, plus the
+  frontend website entry excluded from solution builds. The API build target builds the frontend.
+  Run backend tests with `dotnet test .\Namerre.Api.Tests\Namerre.Api.Tests.csproj --no-build`
+  after building the solution.
 - The frontend is a client-rendered standalone Angular application:
   `src\main.ts` bootstraps `App` using `appConfig`. Application-wide providers
   belong in `src\app\app.config.ts`, and routes in `src\app\app.routes.ts`.
@@ -80,8 +95,9 @@ in `tsconfig.spec.json`.
   and authorization middleware, and serves default/static files from `wwwroot`.
   Controllers use an `api/` prefix in their route attributes so routing and
   generated OpenAPI paths agree.
-- `WeatherForecastController` serves `GET /api/WeatherForecast`, returning five
-  generated `WeatherForecast` values. This is currently the API's only
+- `WeatherForecastController` sends `GetWeatherForecastQuery` through
+  `CMediator.Abstractions.ISender` for `GET /api/WeatherForecast`, returning five
+  generated Application DTOs. This is currently the API's only
   application endpoint. Use same-origin `/api/...` URLs for frontend API calls
   when hosted by ASP.NET Core.
 - Unmatched `/api` requests return 404. Other non-file paths fall back to
@@ -109,7 +125,7 @@ in `tsconfig.spec.json`.
 - TypeScript enables `noImplicitOverride`, `noPropertyAccessFromIndexSignature`,
   `noImplicitReturns`, and `noFallthroughCasesInSwitch`; Angular enables strict
   injection parameters and input access modifiers. Preserve these compiler checks.
-- API namespaces currently use `Namerre` and `Namerre.Controllers`, despite the
+- API controllers use the `Namerre.Controllers` namespace, despite the
   project being named `Namerre.Api`. Controllers use `[ApiController]`,
   `[Route("api/[controller]")]`, and verb attributes. C# nullable reference types
   and implicit usings are enabled.
