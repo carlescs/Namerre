@@ -8,7 +8,7 @@ ASP.NET Core API hosts the application and will handle file-renaming operations.
 Keep future functionality focused on this self-hosted file-maintenance purpose.
 
 The current code is an application scaffold; file-renaming features are not yet
-implemented. The weather forecast endpoint is starter code, not project functionality.
+implemented. There are currently no application API endpoints.
 
 ## Build, run, test, and formatting
 
@@ -32,7 +32,6 @@ build when assets have already been built, as in Docker.
 The `https` launch profile exposes `https://localhost:7151` and
 `http://localhost:5251` in Development. The `http` profile uses port 5251.
 The API process serves Angular at `/` and controllers under `/api`.
-`Namerre.Api\Namerre.http` contains a sample `/api/weatherforecast` request.
 
 Build and run the complete app in Docker from the workspace root:
 
@@ -71,7 +70,7 @@ in `tsconfig.spec.json`.
   Application references Domain; Infrastructure references Application; API
   references Application and Infrastructure and is the composition root.
   Domain and Infrastructure are empty scaffolds until real business rules and
-  external adapters are needed. Do not put the weather sample in Domain.
+  external adapters are needed.
 - Application uses CMediator v1.1.3 from GitHub Packages. Requests are sealed;
   handlers are internal sealed. Keep both in Application, where the generator
   runs, and rely on `AddApplication()` for generated scoped registration.
@@ -98,10 +97,7 @@ in `tsconfig.spec.json`.
   and authorization middleware, and serves default/static files from `wwwroot`.
   Controllers use an `api/` prefix in their route attributes so routing and
   generated OpenAPI paths agree.
-- `WeatherForecastController` sends `GetWeatherForecastQuery` through
-  `CMediator.Abstractions.ISender` for `GET /api/WeatherForecast`, returning five
-  generated Application DTOs. This is currently the API's only
-  application endpoint. Use same-origin `/api/...` URLs for frontend API calls
+- Use same-origin `/api/...` URLs for frontend API calls
   when hosted by ASP.NET Core.
 - Unmatched `/api` requests return 404. Other non-file paths fall back to
   `index.html` for Angular routing; missing asset files remain 404.

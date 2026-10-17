@@ -20,7 +20,7 @@ dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https
 ```
 
 Open `https://localhost:7151/` for Angular. API endpoints share the same origin
-under `/api`, for example `/api/weatherforecast`. Normal API builds and publishes
+under `/api` when implemented. Normal API builds and publishes
 build Angular automatically. Unmatched frontend routes serve `index.html`;
 unmatched API routes return 404.
 

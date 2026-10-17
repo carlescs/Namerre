@@ -1,7 +1,7 @@
 # Namerre
 
 A self-hosted, web-based file renamer. The application is currently a scaffold;
-the weather forecast endpoint is a sample, not file-renaming functionality.
+file-renaming features and application API endpoints are not yet implemented.
 
 ## Backend architecture
 
@@ -21,9 +21,7 @@ use cases in Application and implement them in Infrastructure. Register concrete
 adapters from the API composition root when they are introduced. Domain and
 Infrastructure intentionally contain no placeholder business types or services.
 
-The sample `GET /api/WeatherForecast` delegates to
-`Application\WeatherForecasts\GetWeatherForecastQuery`. It retains the original
-route and JSON response. Organize future commands and queries by feature in
+Organize future commands and queries by feature in
 Application; keep HTTP concerns in the API.
 
 ## CMediator conventions and automation
