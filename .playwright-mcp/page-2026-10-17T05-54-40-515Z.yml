@@ -1,0 +1,27 @@
+- main [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - heading "Hello, Namerre.Front" [level=1] [ref=e10]
+      - paragraph [ref=e11]: Congratulations! Your app is running. 🎉
+    - separator "Divider" [ref=e12]
+    - generic [ref=e13]:
+      - generic [ref=e14]:
+        - link "Explore the Docs" [ref=e15] [cursor=pointer]:
+          - /url: https://angular.dev
+        - link "Learn with Tutorials" [ref=e19] [cursor=pointer]:
+          - /url: https://angular.dev/tutorials
+        - link "Prompt and best practices for AI" [ref=e23] [cursor=pointer]:
+          - /url: https://angular.dev/ai/develop-with-ai
+        - link "CLI Docs" [ref=e27] [cursor=pointer]:
+          - /url: https://angular.dev/tools/cli
+        - link "Angular Language Service" [ref=e31] [cursor=pointer]:
+          - /url: https://angular.dev/tools/language-service
+        - link "Angular DevTools" [ref=e35] [cursor=pointer]:
+          - /url: https://angular.dev/tools/devtools
+      - generic [ref=e39]:
+        - link "Github" [ref=e40] [cursor=pointer]:
+          - /url: https://github.com/angular/angular
+        - link "X" [ref=e43] [cursor=pointer]:
+          - /url: https://x.com/angular
+        - link "Youtube" [ref=e46] [cursor=pointer]:
+          - /url: https://www.youtube.com/channel/UCbn1OgGei-DV7aSRo_HaAiw
