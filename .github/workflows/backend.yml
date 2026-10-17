@@ -41,4 +41,4 @@ jobs:
         run: dotnet build Namerre.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test Namerre.Api.Tests/Namerre.Api.Tests.csproj --configuration Release --no-build --no-restore
+        run: dotnet test Namerre.slnx --configuration Release --no-build --no-restore

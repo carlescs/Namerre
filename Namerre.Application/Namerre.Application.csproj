@@ -18,4 +18,8 @@
     <ProjectReference Include="..\Namerre.Domain\Namerre.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Namerre.Application.UnitTests" />
+  </ItemGroup>
+
 </Project>

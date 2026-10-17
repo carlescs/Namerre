@@ -81,10 +81,13 @@ in `tsconfig.spec.json`.
   through `NuGetPackageSourceCredentials_Github` or local NuGet credentials.
   Docker requires `--secret id=github_packages_credentials,env=NuGetPackageSourceCredentials_Github`;
   Actions requires the `CMEDIATOR_PACKAGES_TOKEN` secret. Never commit tokens.
-- `Namerre.slnx` includes the backend layers and `Namerre.Api.Tests`, plus the
+- `Namerre.slnx` includes the backend layers and test projects, plus the
   frontend website entry excluded from solution builds. The API build target builds the frontend.
-  Run backend tests with `dotnet test .\Namerre.Api.Tests\Namerre.Api.Tests.csproj --no-build`
-  after building the solution.
+  Run all backend tests with `dotnet test .\Namerre.slnx --no-build` after building
+  the solution. `Namerre.Api.UnitTests` and `Namerre.Application.UnitTests` use
+  xUnit and NSubstitute for isolated tests. Application grants its unit-test
+  assembly access to internal handlers with `InternalsVisibleTo`; do not make
+  handlers public for testing. `Namerre.Api.Tests` contains integration tests.
 - The frontend is a client-rendered standalone Angular application:
   `src\main.ts` bootstraps `App` using `appConfig`. Application-wide providers
   belong in `src\app\app.config.ts`, and routes in `src\app\app.routes.ts`.

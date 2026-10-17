@@ -12,6 +12,8 @@ the weather forecast endpoint is a sample, not file-renaming functionality.
 | `Namerre.Infrastructure` | File-system, persistence and other external adapters | Application |
 | `Namerre.Api` | HTTP controllers, composition root and Angular hosting | Application, Infrastructure |
 | `Namerre.Api.Tests` | Mediator registration and HTTP integration coverage | API |
+| `Namerre.Api.UnitTests` | Isolated controller tests using xUnit and NSubstitute | API |
+| `Namerre.Application.UnitTests` | Handler and DTO unit tests using xUnit, with NSubstitute available for dependencies | Application |
 
 Dependencies point inward. Domain has no framework dependencies; Application
 must not reference Infrastructure or ASP.NET Core. Define interfaces needed by
@@ -78,13 +80,28 @@ From the workspace root:
 ```powershell
 npm ci --prefix .\Namerre.Front
 dotnet build .\Namerre.slnx
-dotnet test .\Namerre.Api.Tests\Namerre.Api.Tests.csproj --no-build
+dotnet test .\Namerre.slnx --no-build
 dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https
 ```
 
 The API serves Angular at `https://localhost:7151` and API endpoints under `/api`.
 Normal builds and publishes also build Angular into `Namerre.Api\wwwroot`.
 Use `/p:BuildFrontend=false` only when the frontend assets have already been built.
+
+Unit-test projects use xUnit and NSubstitute. Application exposes its internal
+handlers only to `Namerre.Application.UnitTests` through `InternalsVisibleTo`;
+handlers remain internal sealed. Keep unit tests isolated from HTTP hosting and
+external services; use NSubstitute for collaborators rather than mocking the
+class being tested. `Namerre.Api.Tests` remains the integration-test project.
+Domain and Infrastructure unit-test projects can be added when those layers have
+behavior to cover.
+
+To run only unit tests after building:
+
+```powershell
+dotnet test .\Namerre.Api.UnitTests\Namerre.Api.UnitTests.csproj --no-build
+dotnet test .\Namerre.Application.UnitTests\Namerre.Application.UnitTests.csproj --no-build
+```
 
 ## Docker and CI
 

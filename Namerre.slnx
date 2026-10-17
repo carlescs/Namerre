@@ -1,6 +1,8 @@
 <Solution>
   <Project Path="Namerre.Api.Tests/Namerre.Api.Tests.csproj" />
+  <Project Path="Namerre.Api.UnitTests/Namerre.Api.UnitTests.csproj" />
   <Project Path="Namerre.Api/Namerre.Api.csproj" />
+  <Project Path="Namerre.Application.UnitTests/Namerre.Application.UnitTests.csproj" />
   <Project Path="Namerre.Application/Namerre.Application.csproj" />
   <Project Path="Namerre.Domain/Namerre.Domain.csproj" />
   <Project Path="Namerre.Front/" Type="Website" DisplayName="Namerre.Front">
