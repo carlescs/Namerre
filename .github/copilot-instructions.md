@@ -1,5 +1,15 @@
 # Repository instructions
 
+## Project purpose
+
+Namerre is a web-based file renamer intended to help users maintain files in a
+self-hosted environment. The Angular frontend is the browser interface, and the
+ASP.NET Core API hosts the application and will handle file-renaming operations.
+Keep future functionality focused on this self-hosted file-maintenance purpose.
+
+The current code is an application scaffold; file-renaming features are not yet
+implemented. The weather forecast endpoint is starter code, not project functionality.
+
 ## Build, run, test, and formatting
 
 The API requires the .NET 10 SDK. The frontend uses Angular 22 and declares
