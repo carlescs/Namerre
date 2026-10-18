@@ -121,6 +121,9 @@ describe('RenamerComponent', () => {
     await select({ ...root, path: 'Movies', parentPath: '' });
     const remove = rows()[1].querySelector('button');
     expect(remove?.getAttribute('aria-label')).toBe('Remove Movies/notes.txt from collection');
+    expect(remove?.textContent?.trim()).toBe('');
+    expect(remove?.querySelector('svg')?.getAttribute('data-icon')).toBe('trash-can');
+    expect(remove?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
     remove?.click();
     await fixture.whenStable();
     expect(rows()).toHaveLength(1);

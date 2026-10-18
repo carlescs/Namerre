@@ -1,17 +1,20 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { Component, signal } from '@angular/core';
+import { FaIconComponent } from '@fortawesome/angular-fontawesome';
+import { faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import { FolderListing } from '../../folder-listing';
 import { RenamerFile } from '../../renamer-file';
 import { FolderPickerComponent } from '../folder-picker/folder-picker.component';
 
 @Component({
   selector: 'app-renamer',
-  imports: [DatePipe, DecimalPipe, FolderPickerComponent],
+  imports: [DatePipe, DecimalPipe, FaIconComponent, FolderPickerComponent],
   styleUrl: './renamer.component.scss',
   templateUrl: './renamer.component.html',
 })
 export class RenamerComponent {
   protected readonly files = signal<RenamerFile[]>([]);
+  protected readonly trashIcon = faTrashCan;
 
   protected clearFiles(): void {
     this.files.set([]);

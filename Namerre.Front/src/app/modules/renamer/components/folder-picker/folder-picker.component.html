@@ -69,16 +69,16 @@
             }
           </tbody>
         </table>
-        <label class="selection-option">
-          <input
-            type="checkbox"
-            [checked]="includeSubfolders()"
-            (change)="includeSubfolders.set($event.target.checked)"
-            [disabled]="loading()"
-          />
-          Include subfolders
-        </label>
       </div>
+      <label class="selection-option">
+        <input
+          type="checkbox"
+          [checked]="includeSubfolders()"
+          (change)="includeSubfolders.set($event.target.checked)"
+          [disabled]="loading()"
+        />
+        Include subfolders
+      </label>
       <p class="hint">
         Only folders within the configured server root are available. Links are excluded.
       </p>

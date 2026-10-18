@@ -77,6 +77,7 @@ describe('FolderPickerComponent', () => {
     expect(region?.querySelector('th')?.textContent).toBe('Folder name');
     expect(region?.querySelectorAll('tbody tr')).toHaveLength(1);
     expect(region?.querySelector('tbody button')?.textContent?.trim()).toBe('Movies');
+    expect(region?.nextElementSibling).toBe(includeSubfolders().closest('label'));
     const actions = Array.from(dialog.querySelectorAll('footer button')).map((button) =>
       button.textContent?.trim(),
     );

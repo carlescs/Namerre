@@ -43,7 +43,7 @@
                     aria-label="Remove {{ file.path }} from collection"
                     (click)="removeFile(file.path); chooseFolder.focus()"
                   >
-                    Remove
+                    <fa-icon [icon]="trashIcon" aria-hidden="true" />
                   </button>
                 </td>
               </tr>
