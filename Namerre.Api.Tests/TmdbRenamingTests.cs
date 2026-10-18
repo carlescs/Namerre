@@ -1,9 +1,10 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging.Abstractions;
 using Namerre.Application.Renaming;
+using Namerre.Infrastructure.Configuration;
 using Namerre.Infrastructure.Renaming;
 using Xunit;
 
@@ -123,6 +124,26 @@ public sealed class TmdbRenamingTests : IDisposable
     }
 
     [Theory]
+    [InlineData(null, "", "en")]
+    [InlineData("fr", "", "fr")]
+    [InlineData("fr", "de", "de")]
+    public async Task SearchUsesConfiguredLanguageUnlessTheRequestOverridesIt(
+        string? configuredLanguage, string requestLanguage, string expectedLanguage)
+    {
+        var filesystem = new BoundedFileSystem(Root, workspace);
+        using var store = new RenameStore(filesystem, Data, workspace);
+        using var handler = new StubHandler(request =>
+        {
+            Assert.Contains($"language={expectedLanguage}", request.RequestUri!.Query);
+            return Response("""{"results":[]}""");
+        });
+        using var client = new HttpClient(handler);
+        var metadata = new TmdbMetadata(client, Config("secret", configuredLanguage), store);
+
+        await metadata.Search(new("movie", "query", Language: requestLanguage), default);
+    }
+
+    [Theory]
     [InlineData(429, "TmdbRateLimited")]
     [InlineData(404, "MetadataNotFound")]
     [InlineData(500, "TmdbUnavailable")]
@@ -160,8 +181,10 @@ public sealed class TmdbRenamingTests : IDisposable
             () => timeout.Search(new("movie", "query"), default))).Code);
     }
 
-    private static IConfiguration Config(string token) => new ConfigurationBuilder().AddInMemoryCollection(
-        new Dictionary<string, string?> { ["Tmdb:ReadAccessToken"] = token }).Build();
+    private static IOptions<NamerreOptions> Config(string token, string? language = "en") => Options.Create(new NamerreOptions
+    {
+        Tmdb = new TmdbOptions { ReadAccessToken = token, Language = language }
+    });
     private static HttpResponseMessage Response(string json)
         => new(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> response) : HttpMessageHandler

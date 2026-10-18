@@ -93,7 +93,7 @@ public sealed class ServerFolderBrowser(string? rootPath, string basePath, Func<
         {
             throw new FolderBrowserException(
                 FolderBrowserError.Unavailable,
-                "Server folder browsing is not configured. Set FileBrowser:RootPath on the server.");
+                "Server folder browsing is not configured. Set Namerre:RootPath on the server.");
         }
 
         try

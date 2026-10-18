@@ -530,7 +530,7 @@ public sealed class RenamingWorkflowTests : IDisposable
         using var factory = new AuthWebApplicationFactory().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration(
             (_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["FileBrowser:RootPath"] = Root, ["Rename:DataPath"] = ""
+                ["Namerre:RootPath"] = Root, ["Namerre:DataPath"] = ""
             })));
         using var client = await AuthWebApplicationFactory.AuthenticatedClient(factory);
         using var preview = await client.PostAsJsonAsync("/api/rename-previews", UpperRequest(["alpha.txt"]));
@@ -543,7 +543,7 @@ public sealed class RenamingWorkflowTests : IDisposable
 
     private WebApplicationFactory<Program> Factory() => new AuthWebApplicationFactory().WithWebHostBuilder(
         builder => builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
-            new Dictionary<string, string?> { ["FileBrowser:RootPath"] = Root, ["Rename:DataPath"] = Data })));
+            new Dictionary<string, string?> { ["Namerre:RootPath"] = Root, ["Namerre:DataPath"] = Data })));
     private WebApplicationFactory<Program> FactoryWithoutWorker() => Factory().WithWebHostBuilder(
         builder => builder.ConfigureServices(services =>
         {

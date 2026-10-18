@@ -225,10 +225,10 @@ public sealed class InstallationTests : IDisposable
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["Authentication:Username"] = "",
-                    ["Authentication:PasswordHash"] = "",
-                    ["FileBrowser:RootPath"] = Root,
-                    ["Rename:DataPath"] = Data
+                    ["Namerre:Authentication:Username"] = "",
+                    ["Namerre:Authentication:PasswordHash"] = "",
+                    ["Namerre:RootPath"] = Root,
+                    ["Namerre:DataPath"] = Data
                 })));
 
     private RenameDbContext OpenDatabase() => new(new DbContextOptionsBuilder<RenameDbContext>()

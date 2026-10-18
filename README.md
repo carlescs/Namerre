@@ -3,17 +3,95 @@
 A self-hosted, web-based file renamer with user-configured transformation pipelines,
 previews, persistent run history, and selected-file rollback.
 
+## Getting started
+
+These steps run the complete app locally from source. For containers, see
+[Persistent storage and deployment](#persistent-storage-and-deployment), including
+the required HTTPS configuration.
+
+1. Install the **.NET 10 SDK**, a Node.js version compatible with Angular 22, and
+   **npm 11.13.0**. Clone this repository and open a terminal at its root.
+2. Configure access to the CMediator GitHub Packages feed before the first build.
+   Follow [Restore, build and test](#restore-build-and-test) to provide a GitHub
+   token with `read:packages` through your local secret-management mechanism.
+   This package-feed token is unrelated to the installation token used below.
+3. Choose an existing media folder and a persistent data directory. The API needs
+   read/write access to both; neither directory may contain the other. Namerre
+   creates the data directory and initializes its SQLite database on startup.
+   Start with disposable media files. Leave `Namerre:Authentication:Username` and
+   `Namerre:Authentication:PasswordHash` unset to use the installation assistant.
+
+Run the following in PowerShell, replacing the example paths with your own:
+
+```powershell
+npm ci --prefix .\Namerre.Front
+dotnet dev-certs https --trust
+$env:Namerre__RootPath = 'D:\Media'
+$env:Namerre__DataPath = 'D:\NamerreData'
+dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https
+```
+
+The API build also builds and hosts Angular; do not start a separate frontend
+server. Keep this terminal open.
+
+1. Open **https://localhost:7151**. Copy the one-time installation token printed
+   in the server terminal into the installation assistant.
+2. Choose an administrator username and a strong, unique password, confirm the
+   password, and select **Create administrator**. Then sign in with that account.
+   There are no default credentials.
+3. Select **Choose folder** to add files, then **Configure renaming and history**
+   to build a pipeline. Preview and review the prepared changes before confirming
+   execution. TMDB credentials are optional and are not needed for local
+   text-replacement, regex, or case-change steps.
+
+The administrator account and renaming history are saved in the data directory.
+Keep that directory and the media-root mapping unchanged across restarts, and
+back them up together while the app is stopped. The environment variables above
+apply to the current terminal; configure the same paths for subsequent runs.
+After installation, restarting the app shows sign-in rather than setup.
+
+## Configuration
+
+Application settings live in one `Namerre` section in `Namerre.Api\appsettings.json`:
+
+```json
+{
+  "Namerre": {
+    "RootPath": "",
+    "DataPath": "",
+    "Authentication": {
+      "Username": "",
+      "PasswordHash": ""
+    },
+    "Tmdb": {
+      "ReadAccessToken": "",
+      "Language": "en"
+    }
+  }
+}
+```
+
+The backend binds this section to `NamerreOptions` and consumes it through
+`IOptions<NamerreOptions>`. Logging, allowed hosts, and other ASP.NET Core settings
+remain at the top level. Keep credentials in user secrets or protected runtime
+configuration, not in committed settings.
+
+When upgrading, move the former `FileBrowser:RootPath` and `Rename:DataPath` values
+to `Namerre:RootPath` and `Namerre:DataPath`, and move `Authentication` and `Tmdb`
+under `Namerre`. Update environment variables and user secrets accordingly;
+the old top-level application sections are no longer read.
+
 ## Authentication (required)
 
 Namerre has one administrator account, no registration, and no default credentials.
 When no account has been configured, the browser displays an installation assistant.
-First configure `FileBrowser:RootPath` and `Rename:DataPath`: the administrator is
+First configure `Namerre:RootPath` and `Namerre:DataPath`: the administrator is
 stored in the **existing SQLite renaming/history database**, not a credentials file.
 For example, with an existing media folder:
 
 ```powershell
-$env:FileBrowser__RootPath = 'D:\Media'
-$env:Rename__DataPath = 'D:\NamerreData'
+$env:Namerre__RootPath = 'D:\Media'
+$env:Namerre__DataPath = 'D:\NamerreData'
 dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https
 ```
 
@@ -27,13 +105,13 @@ login attempt limit. Protect console/log access: the token authorizes first-time
 installation. It changes on each restart until setup succeeds, is never returned
 by the API, and becomes unusable after the account is created.
 
-Keep `Rename:DataPath` persistent across restarts and container replacement; changing
+Keep `Namerre:DataPath` persistent across restarts and container replacement; changing
 or deleting this database also loses the administrator account and renaming history.
 Corrupt or inaccessible stored credentials fail startup rather than reopening setup.
 The media root and database must be available for database-backed sign-in.
 
 Existing server-configured credentials also remain supported and skip the assistant.
-Both `Authentication:Username` and `Authentication:PasswordHash` must be set together;
+Both `Namerre:Authentication:Username` and `Namerre:Authentication:PasswordHash` must be set together;
 a partial or invalid configuration fails startup. To generate a hash manually,
 use the API's interactive command (the password is hidden and is not passed as a
 command-line argument):
@@ -47,12 +125,12 @@ Copy the resulting hash into server configuration, not the password.
 For local development, store the username and hash in .NET user secrets:
 
 ```powershell
-dotnet user-secrets set 'Authentication:Username' 'admin' --project .\Namerre.Api
-dotnet user-secrets set 'Authentication:PasswordHash' '<generated-hash>' --project .\Namerre.Api
+dotnet user-secrets set 'Namerre:Authentication:Username' 'admin' --project .\Namerre.Api
+dotnet user-secrets set 'Namerre:Authentication:PasswordHash' '<generated-hash>' --project .\Namerre.Api
 dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https
 ```
 
-For deployment, supply `Authentication__Username` and `Authentication__PasswordHash`
+For deployment, supply `Namerre__Authentication__Username` and `Namerre__Authentication__PasswordHash`
 through the server's secret/configuration mechanism if you want to bypass browser
 installation. These settings take precedence over a saved administrator. Never commit
 credentials or include them in Angular assets or Docker build arguments. Changing either setting
@@ -129,13 +207,13 @@ files or history to clear an error; that can destroy recovery evidence.
 
 ## Server folder browsing
 
-Set `FileBrowser:RootPath` in the server configuration, or use the environment
-variable `FileBrowser__RootPath`, to an existing folder the API process can read.
+Set `Namerre:RootPath` in the server configuration, or use the environment
+variable `Namerre__RootPath`, to an existing folder the API process can read.
 Relative roots resolve from the API content root. No folders are exposed until
 this setting is configured.
 
 ```powershell
-$env:FileBrowser__RootPath = 'D:\Media'
+$env:Namerre__RootPath = 'D:\Media'
 dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https
 ```
 
@@ -149,7 +227,7 @@ folder path; omit `path` to list the root. This endpoint lists metadata only,
 not file contents.
 
 For browsing only, Docker can mount the desired server folder read-only and set
-`FileBrowser__RootPath` to its path **inside the container**. Expose only folders
+`Namerre__RootPath` to its path **inside the container**. Expose only folders
 you intend the administrator to see, and restrict network access to trusted users.
 Renaming requires a writable media mount.
 The configured folder tree must not be writable by untrusted processes while
@@ -157,13 +235,13 @@ browsing or renaming.
 
 ## Persistent storage and deployment
 
-Set `Rename:DataPath` (environment variable `Rename__DataPath`) to a writable data
+Set `Namerre:DataPath` (environment variable `Namerre__DataPath`) to a writable data
 directory **separate from the browsable root, with neither directory containing the
 other**. This holds SQLite history, prepared plans,
 the durable job queue, and journals. Keep it persistent across upgrades and restarts.
 Data access uses EF Core's SQLite provider with versioned EF migrations in
 Infrastructure; database concerns stay out of Domain and Application.
-When `Rename:DataPath` is configured, pending migrations run during API startup,
+When `Namerre:DataPath` is configured, pending migrations run during API startup,
 before requests are accepted. Migration or storage-initialization failures prevent
 startup. Leaving the setting empty keeps browsing and read-only previews available
 without a database only when using server-configured authentication credentials.
@@ -205,8 +283,8 @@ docker run --rm -p 8443:8443 `
   --mount type=bind,source=D:\Media,target=/media `
   --mount type=volume,source=namerre-data,target=/data `
   --mount type=bind,source=D:\Certificates\namerre.pfx,target=/https/namerre.pfx,readonly `
-  -e FileBrowser__RootPath=/media `
-  -e Rename__DataPath=/data `
+  -e Namerre__RootPath=/media `
+  -e Namerre__DataPath=/data `
   -e ASPNETCORE_URLS=https://+:8443 `
   -e Kestrel__Certificates__Default__Path=/https/namerre.pfx `
   -e Kestrel__Certificates__Default__Password `
@@ -218,7 +296,7 @@ this example. Docker environment values are visible to host administrators; use
 your platform's protected runtime configuration when that is not acceptable.
 Complete installation using the token in `docker logs <container>`; the administrator
 is saved alongside history in the mounted `/data` database. To skip installation,
-also pass your protected `Authentication__Username` and `Authentication__PasswordHash`
+also pass your protected `Namerre__Authentication__Username` and `Namerre__Authentication__PasswordHash`
 environment values.
 
 The host-bind example requires a supported underlying filesystem; on Docker Desktop,
@@ -229,8 +307,8 @@ restrictions; exposing this mutation-capable API to an untrusted network is unsa
 
 ## TMDB metadata
 
-Configure `Tmdb:ReadAccessToken` through server secrets or the
-`Tmdb__ReadAccessToken` environment variable. Never put it in Angular configuration,
+Configure `Namerre:Tmdb:ReadAccessToken` through server secrets or the
+`Namerre__Tmdb__ReadAccessToken` environment variable. Never put it in Angular configuration,
 pipeline options, run snapshots, Docker build arguments, or committed files.
 The token is sent from the backend to TMDB in an authorization header.
 Local text/regex/case transformations do not require TMDB.

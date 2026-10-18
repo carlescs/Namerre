@@ -144,7 +144,7 @@ public sealed class FolderBrowsingTests : IDisposable
         using var response = await client.GetAsync("/api/folders");
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-        Assert.Contains("FileBrowser:RootPath", await response.Content.ReadAsStringAsync());
+        Assert.Contains("Namerre:RootPath", await response.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -221,7 +221,7 @@ public sealed class FolderBrowsingTests : IDisposable
             builder.ConfigureAppConfiguration((_, configuration) =>
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["FileBrowser:RootPath"] = rootPath
+                    ["Namerre:RootPath"] = rootPath
                 })));
 
     public void Dispose() => Directory.Delete(root, recursive: true);

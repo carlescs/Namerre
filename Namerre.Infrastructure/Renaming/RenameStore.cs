@@ -25,7 +25,7 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
                 return;
             }
             if (string.IsNullOrWhiteSpace(dataPath))
-                throw new RenameException("StorageUnavailable", "Configure Rename:DataPath outside the browsable root.", 503);
+                throw new RenameException("StorageUnavailable", "Configure Namerre:DataPath outside the browsable root.", 503);
             var root = fileSystem.Root;
             var data = Path.GetFullPath(dataPath, basePath);
             if (Under(data, root) || Under(root, data))

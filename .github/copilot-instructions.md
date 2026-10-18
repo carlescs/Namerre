@@ -70,8 +70,11 @@ in `tsconfig.spec.json`.
   Application references Domain; Infrastructure references Application; API
   references Application and Infrastructure and is the composition root.
   Domain is an empty scaffold. Infrastructure implements `IFolderBrowser` for
-  server filesystem access. `FileBrowser:RootPath` must be configured explicitly;
+  server filesystem access. `Namerre:RootPath` must be configured explicitly;
   never allow browsing outside that root or through symbolic links/junctions.
+  Application configuration is bound to `NamerreOptions` and consumed through
+  `IOptions<NamerreOptions>`. Keep paths under `Namerre` and authentication/TMDB
+  settings in its nested `Authentication` and `Tmdb` sections.
 - Application uses CMediator v1.1.3 from GitHub Packages. Requests are sealed;
   handlers are internal sealed. Keep both in Application, where the generator
   runs, and rely on `AddApplication()` for generated scoped registration.

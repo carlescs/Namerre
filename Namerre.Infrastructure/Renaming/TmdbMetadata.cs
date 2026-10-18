@@ -2,13 +2,14 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
+using Namerre.Infrastructure.Configuration;
 using Namerre.Application.Renaming;
 using Namerre.Domain.Renaming;
 
 namespace Namerre.Infrastructure.Renaming;
 
-public sealed class TmdbMetadata(HttpClient client, IConfiguration configuration, RenameStore store) : ITmdbMetadata
+public sealed class TmdbMetadata(HttpClient client, IOptions<NamerreOptions> options, RenameStore store) : ITmdbMetadata
 {
     private readonly SemaphoreSlim concurrency = new(4);
     private readonly ConcurrentDictionary<string, (DateTimeOffset Expires, JsonElement Value)> cache = new();
@@ -21,7 +22,7 @@ public sealed class TmdbMetadata(HttpClient client, IConfiguration configuration
             || request.Episode is < 1 or > 9999)
             throw new RenameException("InvalidMetadataQuery", "Specify movie or tv, a short search, and valid identifiers.");
         var language = string.IsNullOrWhiteSpace(request.Language)
-            ? configuration["Tmdb:Language"] ?? "en" : request.Language;
+            ? options.Value.Tmdb.Language ?? "en" : request.Language;
         if (language.Length > 20 || language.Any(c => !char.IsAsciiLetter(c) && c != '-'))
             throw new RenameException("InvalidLanguage", "Use a TMDB language code.");
         if (request.Id is int chosen)
@@ -89,9 +90,9 @@ public sealed class TmdbMetadata(HttpClient client, IConfiguration configuration
 
     private async Task<JsonElement> Get(string path, CancellationToken cancellationToken)
     {
-        var token = configuration["Tmdb:ReadAccessToken"];
+        var token = options.Value.Tmdb.ReadAccessToken;
         if (string.IsNullOrWhiteSpace(token))
-            throw new RenameException("TmdbUnavailable", "Configure the server's Tmdb:ReadAccessToken to use TMDB.", 503);
+            throw new RenameException("TmdbUnavailable", "Configure the server's Namerre:Tmdb:ReadAccessToken to use TMDB.", 503);
         if (cache.TryGetValue(path, out var entry) && entry.Expires > DateTimeOffset.UtcNow) return entry.Value;
         if (!await concurrency.WaitAsync(0, cancellationToken))
             throw new RenameException("TmdbBusy", "Four TMDB lookups are already running. Try again shortly.", 429);

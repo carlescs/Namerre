@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using Namerre.Application.Authentication;
+using Namerre.Infrastructure.Configuration;
 
 namespace Namerre.Authentication;
 
@@ -22,11 +23,11 @@ public sealed class AdminAccount
     private readonly IAdministratorStore store;
     private AdminCredentials? credentials;
 
-    public AdminAccount(IConfiguration configuration, IAdministratorStore store)
+    public AdminAccount(IOptions<NamerreOptions> options, IAdministratorStore store)
     {
         this.store = store;
-        var username = configuration["Authentication:Username"];
-        var passwordHash = configuration["Authentication:PasswordHash"];
+        var username = options.Value.Authentication.Username;
+        var passwordHash = options.Value.Authentication.PasswordHash;
         credentials = !string.IsNullOrEmpty(username) || !string.IsNullOrEmpty(passwordHash)
             ? new AdminCredentials(username ?? "", passwordHash ?? "")
             : store.Load();
@@ -88,7 +89,7 @@ public sealed class AdminAccount
         catch (FormatException)
         {
             throw new InvalidOperationException(
-                "The administrator credentials are invalid. Configure Authentication:Username and Authentication:PasswordHash, or restore valid administrator data.");
+                "The administrator credentials are invalid. Configure Namerre:Authentication:Username and Namerre:Authentication:PasswordHash, or restore valid administrator data.");
         }
     }
 

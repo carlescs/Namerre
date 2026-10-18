@@ -136,9 +136,9 @@ public sealed class AuthenticationTests
     {
         using var factory = new AuthWebApplicationFactory().WithWebHostBuilder(builder =>
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
-                new Dictionary<string, string?> { ["Authentication:PasswordHash"] = hash })));
+                new Dictionary<string, string?> { ["Namerre:Authentication:PasswordHash"] = hash })));
         var error = Assert.Throws<InvalidOperationException>(() => { _ = factory.Server; });
-        Assert.Contains("Authentication:PasswordHash", error.Message);
+        Assert.Contains("Namerre:Authentication:PasswordHash", error.Message);
     }
 
     [Fact]

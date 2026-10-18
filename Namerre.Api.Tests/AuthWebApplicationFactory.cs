@@ -17,10 +17,10 @@ public sealed class AuthWebApplicationFactory : WebApplicationFactory<Program>
         => builder.ConfigureAppConfiguration((_, configuration) =>
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Authentication:Username"] = Username,
-                ["Authentication:PasswordHash"] = PasswordHash,
-                ["FileBrowser:RootPath"] = "",
-                ["Rename:DataPath"] = ""
+                ["Namerre:Authentication:Username"] = Username,
+                ["Namerre:Authentication:PasswordHash"] = PasswordHash,
+                ["Namerre:RootPath"] = "",
+                ["Namerre:DataPath"] = ""
             }));
 
     public static HttpClient AnonymousClient(WebApplicationFactory<Program> factory)

@@ -14,7 +14,7 @@ public sealed class BoundedFileSystem(string? configuredRoot, string basePath) :
         get
         {
             if (string.IsNullOrWhiteSpace(configuredRoot))
-                throw new RenameException("RootUnavailable", "FileBrowser:RootPath must be configured.", 503);
+                throw new RenameException("RootUnavailable", "Namerre:RootPath must be configured.", 503);
             var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(configuredRoot, basePath));
             CheckAncestors(root);
             if (!Directory.Exists(root)) throw new RenameException("RootUnavailable", "The configured root is unavailable.", 503);
