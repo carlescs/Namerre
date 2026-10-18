@@ -1,0 +1,58 @@
+<p>
+  Choose the server files you want to rename. No files will change until the final confirmation.
+</p>
+<section aria-labelledby="files-heading">
+  <h3 id="files-heading">Files for renaming ({{ files().length }})</h3>
+  <div class="collection-actions">
+    <button #chooseFolder type="button" (click)="folderPicker.open()">Choose folder</button>
+    <button type="button" (click)="clearFiles(); chooseFolder.focus()" [disabled]="!files().length">
+      Clear collection
+    </button>
+  </div>
+  <p role="status">{{ files().length }} files ready for renaming.</p>
+  @if (files().length > 200) {
+    <p class="error" role="alert">
+      A workflow supports at most 200 files. Remove files before previewing.
+    </p>
+  }
+  @if (files().length) {
+    <div class="file-list" tabindex="0" role="region" aria-label="Files added for renaming">
+      <table>
+        <caption>
+          Files added for renaming
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Folder</th>
+            <th scope="col">Size (bytes)</th>
+            <th scope="col">Last modified</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (file of files(); track file.path) {
+            <tr>
+              <td>{{ file.name }}</td>
+              <td>{{ file.folderPath || 'Server root' }}</td>
+              <td>{{ file.length | number }}</td>
+              <td>{{ file.lastModifiedUtc | date: 'medium' }}</td>
+              <td>
+                <button
+                  type="button"
+                  aria-label="Remove {{ file.path }} from collection"
+                  (click)="removeFile(file.path); chooseFolder.focus()"
+                >
+                  <fa-icon [icon]="trashIcon" aria-hidden="true" />
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  } @else {
+    <p>No files added yet. Choose a folder to add its files.</p>
+  }
+</section>
+<app-folder-picker #folderPicker (folderSelected)="addFolder($event)" />

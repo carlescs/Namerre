@@ -156,6 +156,21 @@ export interface TmdbMatch {
   episodeTitle: string | null;
   confirmationToken: string | null;
 }
+export interface MatchSuggestion {
+  fileId: string;
+  instanceId: string;
+  inputPath: string;
+  optionsHash: string;
+  match: TmdbMatch | null;
+  error: string;
+}
+export interface TmdbMatchRow {
+  fileId: string;
+  plugin: PluginInstance;
+  position: number;
+  suggestion: MatchSuggestion | undefined;
+  step: StepTrace | undefined;
+}
 export interface MatchContext {
   fileId: string;
   plugin: PluginInstance;
@@ -227,6 +242,14 @@ export class RenameApi {
   tmdb(request: TmdbRequest) {
     return this.http.post<{ matches: TmdbMatch[] }>('/api/metadata/tmdb/search', request);
   }
+}
+
+export function isMatchingIssue(code: string): boolean {
+  return code === 'MetadataRequired' || code === 'MetadataStale';
+}
+
+export function awaitingMetadata(file: PreviewFile): boolean {
+  return file.issues.some((issue) => isMatchingIssue(issue.code));
 }
 
 export function renameError(error: unknown): string {

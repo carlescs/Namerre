@@ -1,0 +1,119 @@
+<section aria-labelledby="matching-heading">
+  <h3 id="matching-heading">TMDB matching</h3>
+  <p>
+    Choose what to search for. Titles, years and S01E02 / 1x02 episode numbers are inferred from
+    filenames. Review the proposals and accept them individually or all at once, or search again to
+    correct a match.
+  </p>
+  <div class="actions" aria-label="Automatic TMDB search type">
+    <button
+      type="button"
+      [attr.aria-pressed]="searchType() === 'movie'"
+      [disabled]="suggesting() || disabled()"
+      (click)="searchRequested.emit('movie')"
+    >
+      Match movies automatically
+    </button>
+    <button
+      type="button"
+      [attr.aria-pressed]="searchType() === 'tv'"
+      [disabled]="suggesting() || disabled()"
+      (click)="searchRequested.emit('tv')"
+    >
+      Match episodes automatically
+    </button>
+    <button
+      type="button"
+      (click)="allAccepted.emit()"
+      [disabled]="!canAcceptAll() || loadingPreview() || suggesting() || disabled()"
+    >
+      Accept all matches
+    </button>
+  </div>
+  @if (suggesting()) {
+    <p role="status">Searching and verifying per-file TMDB suggestions…</p>
+  }
+  @for (row of rows(); track row.fileId + ':' + row.plugin.instanceId) {
+    <article>
+      <h4>{{ row.fileId }} — step {{ row.position }}</h4>
+      @if (row.step; as step) {
+        <p>
+          Step input: <code>{{ step.inputPath }}</code>
+        </p>
+        @if (row.suggestion; as suggestion) {
+          @if (suggestion.match; as match) {
+            <section aria-label="TMDB file information">
+              <p>
+                <strong>{{ match.title }}</strong> ({{ match.year ?? 'Year unknown' }}) — TMDB
+                {{ match.id }}
+              </p>
+              @if (match.mediaType === 'tv') {
+                <p>
+                  Season {{ match.season }}, episode {{ match.episode }}: {{ match.episodeTitle }}
+                </p>
+              } @else {
+                <p>Movie</p>
+              }
+            </section>
+            @if (step.error && isMatchingIssue(step.error.code)) {
+              <p>Proposed match — review before accepting.</p>
+              <button
+                type="button"
+                (click)="suggestionAccepted.emit(suggestion)"
+                [disabled]="loadingPreview() || suggesting() || disabled()"
+              >
+                Accept proposed match
+              </button>
+            }
+          }
+          @if (suggestion.error) {
+            <p class="error" role="alert">{{ suggestion.error }}</p>
+          }
+        }
+        @if (step.error && isMatchingIssue(step.error.code)) {
+          <p>Match required.</p>
+        } @else if (!step.error) {
+          <p>Metadata confirmed for this step.</p>
+        } @else {
+          <p class="error">{{ step.error.message }}</p>
+        }
+        <button
+          type="button"
+          (click)="matchRequested.emit({ fileId: row.fileId, step })"
+          [disabled]="loadingPreview() || suggesting() || disabled()"
+        >
+          Choose / change TMDB match — search again
+        </button>
+      } @else {
+        <p>
+          {{
+            loadingPreview() || !hasPreview()
+              ? 'Evaluating step input…'
+              : 'Complete or correct the preceding steps first.'
+          }}
+        </p>
+      }
+    </article>
+  }
+</section>
+<div class="actions">
+  <button type="button" (click)="previewRequested.emit()" [disabled]="suggesting() || disabled()">
+    Preview again
+  </button>
+</div>
+@if (loadingPreview()) {
+  <p role="status">Evaluating ordered plugins…</p>
+}
+<aside aria-label="About and credits">
+  <h3>About / Credits</h3>
+  <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer">
+    <img src="/tmdb-logo.svg" alt="The Movie Database (TMDB)" width="100" height="72" />
+  </a>
+  <p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+  <p>
+    Metadata matching is explicit. TMDB credentials stay on the server.
+    <a href="https://developer.themoviedb.org/docs/faq" target="_blank" rel="noopener noreferrer"
+      >TMDB attribution and commercial licensing</a
+    >
+  </p>
+</aside>

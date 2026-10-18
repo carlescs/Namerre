@@ -1,0 +1,47 @@
+<p>Prepare a snapshot and check the exact changes below. Nothing is renamed until you confirm.</p>
+@if (preparing()) {
+  <p role="status">
+    Preparing immutable snapshot and hashing {{ plan()?.completedFiles ?? 0 }} /
+    {{ fileCount() }} files…
+  </p>
+  <progress
+    [value]="plan()?.completedFiles ?? 0"
+    [max]="fileCount()"
+    aria-label="Files hashed"
+  ></progress>
+}
+@if (plan(); as prepared) {
+  <section aria-labelledby="plan-heading">
+    <h3 id="plan-heading">Immutable plan {{ prepared.id }} — version {{ prepared.version }}</h3>
+    <p role="status">
+      {{ prepared.status }}. {{ prepared.files.length }} files; {{ changedCount() }} changes.
+    </p>
+    @for (issue of prepared.issues; track $index) {
+      <p class="error">{{ issue.code }}: {{ issue.message }}</p>
+    }
+    <ul>
+      @for (file of prepared.files; track file.id) {
+        <li>
+          <code>{{ file.sourcePath }}</code> → <code>{{ file.targetPath }}</code>
+          <details>
+            <summary>Prepared content hash</summary>
+            <code>{{ file.hash }}</code>
+          </details>
+        </li>
+      }
+    </ul>
+    <p>
+      Confirm only the paths above. Any collection, configuration, or match change invalidates this
+      approval.
+    </p>
+    <button type="button" (click)="confirmRequested.emit()" [disabled]="!canConfirm()">
+      Confirm and execute this exact plan
+    </button>
+  </section>
+}
+@if (canRetry()) {
+  <button type="button" (click)="retryRequested.emit()">Retry preparation status</button>
+}
+@if (executing()) {
+  <p role="status">Submitting durable execution. Do not submit a different operation.</p>
+}

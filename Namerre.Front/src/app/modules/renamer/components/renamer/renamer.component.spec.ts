@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { provideRouter } from '@angular/router';
 import { FolderListing } from '../../folder-listing';
 import { FolderPickerComponent } from '../folder-picker/folder-picker.component';
 import { RenamerComponent } from './renamer.component';
@@ -20,7 +21,7 @@ describe('RenamerComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [RenamerComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     }).compileComponents();
     fixture = TestBed.createComponent(RenamerComponent);
     http = TestBed.inject(HttpTestingController);
@@ -30,12 +31,55 @@ describe('RenamerComponent', () => {
       .injector.get(FolderPickerComponent);
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    fixture.destroy();
+    http.verify();
+  });
 
   it('starts with an empty renaming collection', () => {
     expect(main().textContent).toContain('Files for renaming (0)');
     expect(main().textContent).toContain('No files added yet.');
     expect(rows()).toHaveLength(0);
+    expect(nextButton().disabled).toBe(true);
+    expect(main().querySelector('.stage-header h2')?.textContent).toBe('Select files');
+    expect(main().querySelector('app-plugin-editor')).toBeNull();
+    http.expectNone('/api/rename-plugins');
+  });
+
+  it('takes selected files into the wizard and preserves them when returning to the first stage', async () => {
+    await select(root);
+    expect(nextButton().disabled).toBe(false);
+    nextButton().click();
+    await fixture.whenStable();
+    expect(main().querySelector('.stage-header h2')?.textContent).toBe('Configure plugins');
+    expect(
+      main().querySelector('[aria-labelledby="files-heading"]')?.closest('[hidden]'),
+    ).not.toBeNull();
+    http.expectOne('/api/rename-plugins').flush([]);
+    await fixture.whenStable();
+    const back = main().querySelector(
+      '[aria-label="Wizard navigation"] button',
+    ) as HTMLButtonElement;
+    back.click();
+    await fixture.whenStable();
+    expect(main().querySelector('.stage-header h2')?.textContent).toBe('Select files');
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].textContent).toContain('notes.txt');
+    clearButton().click();
+    await fixture.whenStable();
+    expect(nextButton().disabled).toBe(true);
+  });
+
+  it('blocks advancing a collection larger than 200 files', async () => {
+    await select({
+      ...root,
+      files: Array.from({ length: 201 }, (_, index) => ({
+        ...root.files[0],
+        name: `file-${index}.txt`,
+      })),
+    });
+    expect(nextButton().disabled).toBe(true);
+    expect(main().textContent).toContain('at most 200 files');
   });
 
   it('opens the dedicated folder picker', () => {
@@ -173,6 +217,12 @@ describe('RenamerComponent', () => {
       throw new Error('Clear collection button not found');
     }
     return button;
+  }
+
+  function nextButton(): HTMLButtonElement {
+    return main().querySelector(
+      '[aria-label="Wizard navigation"] button:last-child',
+    ) as HTMLButtonElement;
   }
 
   function rows(): NodeListOf<HTMLTableRowElement> {

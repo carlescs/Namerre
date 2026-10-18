@@ -1,0 +1,9 @@
+@if (error()) {
+  <p class="error" role="alert">{{ error() }}</p>
+  <button type="button" (click)="retryRequested.emit()">Retry plugin catalog</button>
+}
+@if (loaded()) {
+  <app-plugin-editor [catalog]="catalog()" (pluginsChanged)="pluginsChanged.emit($event)" />
+} @else if (!error()) {
+  <p role="status">Loading plugin catalog…</p>
+}

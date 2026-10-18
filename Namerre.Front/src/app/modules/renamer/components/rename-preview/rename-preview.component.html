@@ -1,0 +1,70 @@
+<div class="actions">
+  <button type="button" (click)="previewRequested.emit()" [disabled]="disabled()">
+    Preview again
+  </button>
+</div>
+@if (loading()) {
+  <p role="status">Evaluating ordered plugins…</p>
+}
+@if (result(); as preview) {
+  <section aria-labelledby="preview-heading">
+    <h3 id="preview-heading">Preview — no files have been changed</h3>
+    @if (!preview.canPrepare) {
+      @if (metadataPending()) {
+        <p>
+          Go back to complete TMDB matching, then resolve any remaining errors before preparing.
+        </p>
+      } @else {
+        <p class="error">Resolve the errors and conflicts below before preparing.</p>
+      }
+    }
+    @if (unchanged()) {
+      <p>No filenames would change. Go back to configure a renaming plugin.</p>
+    }
+    @for (file of preview.files; track file.id) {
+      <article>
+        <h4>{{ file.sourcePath }}</h4>
+        @if (awaitingMetadata(file)) {
+          <p>The final target is available after TMDB matching is complete.</p>
+        } @else {
+          <p>
+            Folder: <code>{{ folder(file.sourcePath) }}</code> →
+            <code>{{ folder(file.targetPath) }}</code>
+          </p>
+          <p>
+            Final target: <code>{{ file.targetPath }}</code> —
+            {{ file.unchanged ? 'Unchanged' : 'Will move / rename' }}
+          </p>
+        }
+        @for (issue of file.issues; track $index) {
+          @if (!isMatchingIssue(issue.code)) {
+            <p class="error">{{ issue.code }}: {{ issue.message }}</p>
+          }
+        }
+        <details>
+          <summary>Per-plugin trace ({{ file.steps.length }} steps)</summary>
+          <ol>
+            @for (step of file.steps; track step.instanceId) {
+              <li>
+                <strong>{{ step.typeId }}</strong> <small>({{ step.instanceId }})</small>
+                <p>
+                  Input: <code>{{ step.inputPath }}</code>
+                </p>
+                <p>
+                  Output: <code>{{ step.outputPath ?? 'Blocked — no output' }}</code>
+                </p>
+                @if (step.error) {
+                  @if (isMatchingIssue(step.error.code)) {
+                    <p>Awaiting TMDB matching.</p>
+                  } @else {
+                    <p class="error">{{ step.error.code }}: {{ step.error.message }}</p>
+                  }
+                }
+              </li>
+            }
+          </ol>
+        </details>
+      </article>
+    }
+  </section>
+}

@@ -1,12 +1,16 @@
 import {
+  afterNextRender,
   Component,
   DestroyRef,
+  ElementRef,
+  Injector,
   computed,
   effect,
   inject,
   input,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
@@ -23,37 +27,41 @@ import {
 } from 'rxjs';
 import {
   MatchContext,
+  MatchSuggestion,
   MetadataSelection,
   PipelineRequest,
   PlanView,
   PluginDescriptor,
   PluginInstance,
-  PreviewFile,
   PreviewResult,
   RenameApi,
   StepTrace,
-  TmdbMatch,
   TmdbPickerState,
   operationId,
+  awaitingMetadata,
+  isMatchingIssue,
   renameError,
 } from '../../rename-api';
 import { tmdbOptionsHash } from '../../options-hash';
 import { preferredTmdbMatch, tmdbFilename } from '../../tmdb-filename';
 import { RenamerFile } from '../../renamer-file';
-import { PluginEditorComponent } from '../plugin-editor/plugin-editor.component';
+import { PluginConfigurationComponent } from '../plugin-configuration/plugin-configuration.component';
+import { RenameConfirmationComponent } from '../rename-confirmation/rename-confirmation.component';
+import { RenamePreviewComponent } from '../rename-preview/rename-preview.component';
+import { TmdbMatchingComponent } from '../tmdb-matching/tmdb-matching.component';
 import { TmdbPickerComponent } from '../tmdb-picker/tmdb-picker.component';
 
-interface MatchSuggestion {
-  fileId: string;
-  instanceId: string;
-  inputPath: string;
-  optionsHash: string;
-  match: TmdbMatch | null;
-  error: string;
-}
+type WizardStage = 'files' | 'plugins' | 'matching' | 'preview' | 'confirmation';
 
 @Component({
-  imports: [PluginEditorComponent, TmdbPickerComponent, RouterLink],
+  imports: [
+    PluginConfigurationComponent,
+    RenameConfirmationComponent,
+    RenamePreviewComponent,
+    TmdbMatchingComponent,
+    TmdbPickerComponent,
+    RouterLink,
+  ],
   selector: 'app-rename-workflow',
   styleUrl: './rename-workflow.component.scss',
   templateUrl: './rename-workflow.component.html',
@@ -63,8 +71,27 @@ export class RenameWorkflowComponent {
   private readonly api = inject(RenameApi);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
+  private readonly stageHeading =
+    viewChild.required<ElementRef<HTMLHeadingElement>>('stageHeading');
+  protected readonly stage = signal<WizardStage>('files');
+  protected readonly backwards = signal(false);
+  protected readonly stages = computed(() => [
+    { id: 'files', title: 'Select files' },
+    { id: 'plugins', title: 'Configure plugins' },
+    ...(this.tmdbPlugins().length ? [{ id: 'matching', title: 'Match TMDB metadata' }] : []),
+    { id: 'preview', title: 'Review filenames' },
+    { id: 'confirmation', title: 'Confirm renaming' },
+  ]);
+  protected readonly stageIndex = computed(() =>
+    this.stages().findIndex((stage) => stage.id === this.stage()),
+  );
+  protected readonly validCollection = computed(
+    () => this.files().length > 0 && this.files().length <= 200,
+  );
   protected readonly catalog = signal<PluginDescriptor[]>([]);
   protected readonly catalogLoaded = signal(false);
+  private catalogLoading = false;
   protected readonly plugins = signal<PluginInstance[]>([]);
   protected readonly selections = signal<MetadataSelection[]>([]);
   protected readonly preview = signal<PreviewResult | null>(null);
@@ -97,14 +124,12 @@ export class RenameWorkflowComponent {
       })),
     ),
   );
-  protected readonly metadataPending = computed(() =>
-    this.preview()?.files.some((file) => this.awaitingMetadata(file)),
-  );
+  protected readonly metadataPending = computed(() => this.preview()?.files.some(awaitingMetadata));
   protected readonly pendingMatches = computed(() =>
     this.matchRows().flatMap((row): MetadataSelection[] => {
       const suggestion = row.suggestion;
       return row.step?.error &&
-        this.isMatchingIssue(row.step.error.code) &&
+        isMatchingIssue(row.step.error.code) &&
         suggestion?.match?.confirmationToken &&
         suggestion.inputPath === row.step.inputPath &&
         suggestion.optionsHash === tmdbOptionsHash(row.plugin.options)
@@ -136,7 +161,6 @@ export class RenameWorkflowComponent {
   private pendingSuggestions = false;
 
   constructor() {
-    this.loadCatalog();
     effect(() => {
       this.files();
       untracked(() => this.invalidate());
@@ -150,7 +174,64 @@ export class RenameWorkflowComponent {
     });
   }
 
+  protected next(): void {
+    if (!this.validCollection() || this.preparing() || this.executing()) return;
+    switch (this.stage()) {
+      case 'files':
+        this.goTo('plugins');
+        if (!this.catalogLoaded() && !this.catalogLoading) this.loadCatalog();
+        break;
+      case 'plugins':
+        if (!this.catalogLoaded()) return;
+        this.goTo(this.tmdbPlugins().length ? 'matching' : 'preview');
+        if (this.previewRevision !== this.revision) this.refreshPreview();
+        break;
+      case 'matching':
+        if (this.canReview()) this.goTo('preview');
+        break;
+    }
+  }
+
+  protected back(): void {
+    if (this.preparing() || this.executing()) return;
+    this.suggestionRequest?.unsubscribe();
+    this.suggesting.set(false);
+    this.pendingSuggestions = false;
+    this.matching.set(null);
+    switch (this.stage()) {
+      case 'plugins':
+        this.goTo('files');
+        break;
+      case 'matching':
+        this.goTo('plugins');
+        break;
+      case 'preview':
+        this.goTo(this.tmdbPlugins().length ? 'matching' : 'plugins');
+        break;
+      case 'confirmation':
+        this.goTo('preview');
+        break;
+    }
+  }
+
+  protected canReview(): boolean {
+    return (
+      this.validCollection() &&
+      this.previewRevision === this.revision &&
+      !this.loadingPreview() &&
+      !this.suggesting() &&
+      !this.metadataPending()
+    );
+  }
+
+  private goTo(stage: WizardStage): void {
+    this.backwards.set(this.stages().findIndex((item) => item.id === stage) < this.stageIndex());
+    this.stage.set(stage);
+    afterNextRender(() => this.stageHeading().nativeElement.focus(), { injector: this.injector });
+  }
+
   protected loadCatalog(): void {
+    this.catalogLoading = true;
     this.catalogError.set('');
     this.api
       .catalog()
@@ -159,8 +240,12 @@ export class RenameWorkflowComponent {
         next: (catalog) => {
           this.catalog.set(catalog);
           this.catalogLoaded.set(true);
+          this.catalogLoading = false;
         },
-        error: (error: unknown) => this.catalogError.set(renameError(error)),
+        error: (error: unknown) => {
+          this.catalogLoading = false;
+          this.catalogError.set(renameError(error));
+        },
       });
   }
 
@@ -197,8 +282,7 @@ export class RenameWorkflowComponent {
                 ?.steps.find((step) => step.instanceId === selection.instanceId);
               return (
                 !step ||
-                (step.inputPath === selection.inputPath &&
-                  !this.isMatchingIssue(step.error?.code ?? ''))
+                (step.inputPath === selection.inputPath && !isMatchingIssue(step.error?.code ?? ''))
               );
             }),
           );
@@ -242,9 +326,11 @@ export class RenameWorkflowComponent {
 
   protected prepare(): void {
     if (!this.canPrepare()) return;
+    this.goTo('confirmation');
     const revision = this.revision;
     this.preparing.set(true);
     this.plan.set(null);
+    this.planId.set('');
     this.error.set('');
     this.preparation = this.api
       .prepare(this.snapshot())
@@ -300,15 +386,6 @@ export class RenameWorkflowComponent {
       });
   }
 
-  protected changedCount(): number {
-    return this.plan()?.files.filter((file) => file.sourcePath !== file.targetPath).length ?? 0;
-  }
-
-  protected folder(path: string): string {
-    const separator = path.lastIndexOf('/');
-    return separator < 0 ? 'Server root' : path.slice(0, separator);
-  }
-
   protected match(fileId: string, step: StepTrace): void {
     const plugin = this.plugins().find((entry) => entry.instanceId === step.instanceId);
     if (!plugin || this.previewRevision !== this.revision) return;
@@ -359,14 +436,6 @@ export class RenameWorkflowComponent {
     }
   }
 
-  protected isMatchingIssue(code: string): boolean {
-    return code === 'MetadataRequired' || code === 'MetadataStale';
-  }
-
-  protected awaitingMetadata(file: PreviewFile): boolean {
-    return file.issues.some((issue) => this.isMatchingIssue(issue.code));
-  }
-
   protected acceptMatch(selection: MetadataSelection): void {
     if (this.matchingRevision !== this.revision) return;
     const match = this.pickerStates.get(selection.instanceId)?.get(selection.fileId)?.selected;
@@ -401,7 +470,7 @@ export class RenameWorkflowComponent {
     const rows = this.matchRows().filter(
       (row) =>
         row.step &&
-        (!row.step.error || this.isMatchingIssue(row.step.error.code)) &&
+        (!row.step.error || isMatchingIssue(row.step.error.code)) &&
         !this.selections().some(
           (entry) => entry.fileId === row.fileId && entry.instanceId === row.plugin.instanceId,
         ),
@@ -608,7 +677,13 @@ export class RenameWorkflowComponent {
         }
       }
     }
-    if ((this.previewStarted || this.tmdbPlugins().length > 0) && !this.executing()) {
+    if (this.stage() === 'confirmation') this.goTo('preview');
+    if (this.stage() === 'matching' && !this.tmdbPlugins().length) this.goTo('plugins');
+    if (
+      this.stage() !== 'files' &&
+      (this.previewStarted || this.tmdbPlugins().length > 0) &&
+      !this.executing()
+    ) {
       this.debounce = setTimeout(() => this.refreshPreview(), 300);
     }
   }

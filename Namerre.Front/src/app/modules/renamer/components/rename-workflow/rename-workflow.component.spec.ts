@@ -126,6 +126,8 @@ describe('RenameWorkflowComponent', () => {
     fixture = TestBed.createComponent(RenameWorkflowComponent);
     fixture.componentRef.setInput('files', files);
     await fixture.whenStable();
+    button('Next: configure plugins').click();
+    await fixture.whenStable();
     http
       .expectOne('/api/rename-plugins')
       .flush([{ typeId: 'case', version: 1, name: 'Case', defaultOptions: { mode: 'upper' } }]);
@@ -138,8 +140,85 @@ describe('RenameWorkflowComponent', () => {
     vi.restoreAllMocks();
   });
 
+  it('skips metadata for non-TMDB plugins and preserves the editor when navigating back', async () => {
+    const editor = fixture.debugElement.query(
+      By.directive(PluginEditorComponent),
+    ).componentInstance;
+    const type = fixture.nativeElement.querySelector(
+      'app-plugin-editor select',
+    ) as HTMLSelectElement;
+    type.value = 'case';
+    type.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    button('Add plugin').click();
+    await fixture.whenStable();
+    const mode = fixture.nativeElement.querySelector(
+      'app-plugin-editor article select',
+    ) as HTMLSelectElement;
+    mode.value = 'lower';
+    mode.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    button('Next: review filenames').click();
+    const request = http.expectOne('/api/rename-previews');
+    expect(request.request.body.plugins[0].options.mode).toBe('lower');
+    request.flush(preview);
+    await fixture.whenStable();
+    expect(heading().textContent).toBe('Review filenames');
+    expect(
+      fixture.nativeElement.querySelector('.wizard-screens').classList.contains('backwards'),
+    ).toBe(false);
+    expect(document.activeElement).toBe(heading());
+    expect(fixture.nativeElement.querySelector('[aria-current="step"]').textContent).toContain(
+      'Review filenames',
+    );
+    expect(fixture.nativeElement.querySelector('[aria-labelledby="matching-heading"]')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('app-plugin-editor').closest('[hidden]'),
+    ).not.toBeNull();
+    button('Back').click();
+    await fixture.whenStable();
+    expect(heading().textContent).toBe('Configure plugins');
+    expect(
+      fixture.nativeElement.querySelector('.wizard-screens').classList.contains('backwards'),
+    ).toBe(true);
+    expect(fixture.debugElement.query(By.directive(PluginEditorComponent)).componentInstance).toBe(
+      editor,
+    );
+    expect(mode.value).toBe('lower');
+    button('Back').click();
+    await fixture.whenStable();
+    expect(heading().textContent).toBe('Select files');
+    button('Next: configure plugins').click();
+    await fixture.whenStable();
+    expect(mode.value).toBe('lower');
+    http.expectNone('/api/rename-plugins');
+    http.expectNone('/api/rename-plans');
+  });
+
+  it('keeps preview separate from final confirmation and prevents navigating during preparation', async () => {
+    await showPreview();
+    expect(heading().textContent).toBe('Review filenames');
+    http.expectNone('/api/rename-plans');
+    button('Prepare immutable').click();
+    http.expectOne('/api/rename-plans').flush({ id: 'plan-1', status: 'Preparing', location: '' });
+    await waitForPoll();
+    expect(heading().textContent).toBe('Confirm renaming');
+    expect(button('Back').disabled).toBe(true);
+    expect(fixture.nativeElement.querySelector('app-rename-preview').hidden).toBe(true);
+    http.expectOne('/api/rename-plans/plan-1').flush(ready);
+    await fixture.whenStable();
+    expect(button('Back').disabled).toBe(false);
+    button('Back').click();
+    await fixture.whenStable();
+    expect(heading().textContent).toBe('Review filenames');
+    expect(
+      fixture.nativeElement.querySelector('[aria-labelledby="plan-heading"]').closest('[hidden]'),
+    ).not.toBeNull();
+    http.expectNone('/api/rename-plans/plan-1/execute');
+  });
+
   it('sends an empty pipeline and never prepares unchanged files', async () => {
-    button('Preview').click();
+    button('Next: review filenames').click();
     const request = http.expectOne('/api/rename-previews');
     expect(request.request.body.plugins).toEqual([]);
     request.flush({
@@ -152,7 +231,7 @@ describe('RenameWorkflowComponent', () => {
   });
 
   it('cancels superseded previews and sends exact ordered independent plugin instances', async () => {
-    button('Preview').click();
+    button('Next: review filenames').click();
     const stale = http.expectOne('/api/rename-previews');
     const editor = fixture.debugElement.query(By.directive(PluginEditorComponent))
       .componentInstance as PluginEditorComponent;
@@ -287,22 +366,24 @@ describe('RenameWorkflowComponent', () => {
     );
   });
 
-  it('automatically exposes matching outside the collapsed trace before a manual preview', async () => {
+  it('shows matching in its own stage and blocks review until metadata is accepted', async () => {
     changePlugins([tmdb]);
     await fixture.whenStable();
+    button('Next: match metadata').click();
+    await fixture.whenStable();
     expect(text()).toContain('TMDB matching');
-    await new Promise((resolve) => setTimeout(resolve, 310));
     http.expectOne('/api/rename-previews').flush(tmdbPreview);
     await fixture.whenStable();
     const matchingStage = fixture.nativeElement.querySelector(
       '[aria-labelledby="matching-heading"]',
     ) as HTMLElement;
     expect(matchingStage.textContent).toContain('Choose / change');
+    expect(matchingStage.closest('[hidden]')).toBeNull();
     expect(matchingStage.closest('details')).toBeNull();
     expect(text()).toContain('Match required.');
     expect(text()).not.toContain('MetadataRequired');
     expect(text()).not.toContain('Final target:');
-    expect(button('Prepare immutable').disabled).toBe(true);
+    expect(button('Next: review filenames').disabled).toBe(true);
   });
 
   it('retains matches across downstream edits and collection additions but still invalidates plans', async () => {
@@ -351,6 +432,11 @@ describe('RenameWorkflowComponent', () => {
 
   it('retains accepted metadata across filename and folder template edits', async () => {
     await confirmMetadata();
+    button('Back').click();
+    await fixture.whenStable();
+    expect(heading().textContent).toBe('Match TMDB metadata');
+    button('Back').click();
+    await fixture.whenStable();
     changePlugins([
       {
         ...tmdb,
@@ -363,10 +449,13 @@ describe('RenameWorkflowComponent', () => {
       },
     ]);
     await fixture.whenStable();
-    button('Preview').click();
+    button('Next: match metadata').click();
     const changed = http.expectOne('/api/rename-previews');
     expect(changed.request.body.selections).toEqual([selection]);
     changed.flush(matchedPreview);
+    await fixture.whenStable();
+    expect(button('Next: review filenames').disabled).toBe(false);
+    button('Next: review filenames').click();
     await fixture.whenStable();
     expect(text()).toContain('Final target:');
     expect(text()).toContain('Metadata confirmed for this step.');
@@ -422,7 +511,7 @@ describe('RenameWorkflowComponent', () => {
     ]);
     changePlugins([tmdb]);
     await fixture.whenStable();
-    button('Preview').click();
+    button('Next: match metadata').click();
     const twoFiles = {
       ...tmdbPreview,
       files: [
@@ -524,7 +613,7 @@ describe('RenameWorkflowComponent', () => {
     expect(text()).toContain('The Movie');
     expect(text()).toContain('2024');
     expect(text()).toContain('Proposed match');
-    expect(button('Prepare immutable').disabled).toBe(true);
+    expect(button('Next: review filenames').disabled).toBe(true);
     button('Accept proposed match').click();
     await fixture.whenStable();
     button('Preview').click();
@@ -676,7 +765,7 @@ describe('RenameWorkflowComponent', () => {
     expect(text()).toContain('Could not infer the title or episode numbers');
     expect(text()).toContain('No TMDB matches');
     expect(button('Match episodes automatically').disabled).toBe(false);
-    expect(button('Prepare immutable').disabled).toBe(true);
+    expect(button('Next: review filenames').disabled).toBe(true);
   });
 
   it('cancels suggestions on configuration changes and discards stale proposal information', async () => {
@@ -694,9 +783,11 @@ describe('RenameWorkflowComponent', () => {
   it('evaluates step inputs before starting automatic lookups', async () => {
     changePlugins([tmdb]);
     await fixture.whenStable();
-    button('Match movies automatically').click();
+    button('Next: match metadata').click();
     http.expectNone('/api/metadata/tmdb/search');
     http.expectOne('/api/rename-previews').flush(tmdbPreview);
+    await fixture.whenStable();
+    button('Match movies automatically').click();
     http.expectOne('/api/metadata/tmdb/search').flush({ matches: [] });
     await fixture.whenStable();
     expect(text()).toContain('No TMDB matches');
@@ -713,7 +804,7 @@ describe('RenameWorkflowComponent', () => {
     );
     changePlugins([tmdb]);
     await fixture.whenStable();
-    button('Preview').click();
+    button('Next: match metadata').click();
     http.expectOne('/api/rename-previews').flush({
       files: paths.map((path) => ({
         ...tmdbPreview.files[0],
@@ -741,7 +832,7 @@ describe('RenameWorkflowComponent', () => {
   async function confirmMetadata(): Promise<void> {
     changePlugins([tmdb]);
     await fixture.whenStable();
-    button('Preview').click();
+    button('Next: match metadata').click();
     http.expectOne('/api/rename-previews').flush(tmdbPreview);
     await fixture.whenStable();
     button('Choose / change').click();
@@ -753,10 +844,12 @@ describe('RenameWorkflowComponent', () => {
     expect(confirmed.request.body.selections).toEqual([selection]);
     confirmed.flush(matchedPreview);
     await fixture.whenStable();
+    button('Next: review filenames').click();
+    await fixture.whenStable();
   }
 
   async function showPreview(): Promise<void> {
-    button('Preview').click();
+    button('Next: review filenames').click();
     http.expectOne('/api/rename-previews').flush(preview);
     await fixture.whenStable();
   }
@@ -765,6 +858,10 @@ describe('RenameWorkflowComponent', () => {
   }
   function text(): string {
     return fixture.nativeElement.textContent;
+  }
+
+  function heading(): HTMLHeadingElement {
+    return fixture.nativeElement.querySelector('.stage-header h2');
   }
   function button(prefix: string): HTMLButtonElement {
     const result = Array.from(
