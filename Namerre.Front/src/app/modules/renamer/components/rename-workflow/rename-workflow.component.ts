@@ -37,7 +37,7 @@ import {
   operationId,
   renameError,
 } from '../../rename-api';
-import { optionsHash } from '../../options-hash';
+import { tmdbOptionsHash } from '../../options-hash';
 import { preferredTmdbMatch, tmdbFilename } from '../../tmdb-filename';
 import { RenamerFile } from '../../renamer-file';
 import { PluginEditorComponent } from '../plugin-editor/plugin-editor.component';
@@ -99,6 +99,26 @@ export class RenameWorkflowComponent {
   );
   protected readonly metadataPending = computed(() =>
     this.preview()?.files.some((file) => this.awaitingMetadata(file)),
+  );
+  protected readonly pendingMatches = computed(() =>
+    this.matchRows().flatMap((row): MetadataSelection[] => {
+      const suggestion = row.suggestion;
+      return row.step?.error &&
+        this.isMatchingIssue(row.step.error.code) &&
+        suggestion?.match?.confirmationToken &&
+        suggestion.inputPath === row.step.inputPath &&
+        suggestion.optionsHash === tmdbOptionsHash(row.plugin.options)
+        ? [
+            {
+              fileId: suggestion.fileId,
+              instanceId: suggestion.instanceId,
+              inputPath: suggestion.inputPath,
+              optionsHash: suggestion.optionsHash,
+              confirmationToken: suggestion.match.confirmationToken,
+            },
+          ]
+        : [];
+    }),
   );
   private readonly pickerStates = new Map<string, Map<string, TmdbPickerState>>();
   private readonly showStates = new Map<string, TmdbPickerState>();
@@ -396,7 +416,7 @@ export class RenameWorkflowComponent {
             fileId: row.fileId,
             instanceId: row.plugin.instanceId,
             inputPath: step.inputPath,
-            optionsHash: optionsHash(JSON.stringify(row.plugin.options)),
+            optionsHash: tmdbOptionsHash(row.plugin.options),
           };
           const state: TmdbPickerState = {
             query: inferred.query,
@@ -498,6 +518,30 @@ export class RenameWorkflowComponent {
     });
   }
 
+  protected acceptAllMatches(): void {
+    if (
+      this.previewRevision !== this.revision ||
+      this.loadingPreview() ||
+      this.suggesting() ||
+      this.preparing() ||
+      this.executing()
+    )
+      return;
+    const accepted = this.pendingMatches();
+    if (!accepted.length) return;
+    this.selections.update((selections) => [
+      ...selections.filter(
+        (selection) =>
+          !accepted.some(
+            (entry) =>
+              entry.fileId === selection.fileId && entry.instanceId === selection.instanceId,
+          ),
+      ),
+      ...accepted,
+    ]);
+    this.invalidate();
+  }
+
   private setSuggestion(suggestion: MatchSuggestion): void {
     this.suggestions.update((suggestions) => [
       ...suggestions.filter(
@@ -538,7 +582,7 @@ export class RenameWorkflowComponent {
     const plugins = new Map(
       this.plugins()
         .filter((plugin) => plugin.typeId === 'tmdb')
-        .map((plugin) => [plugin.instanceId, optionsHash(JSON.stringify(plugin.options))]),
+        .map((plugin) => [plugin.instanceId, tmdbOptionsHash(plugin.options)]),
     );
     this.selections.update((selections) =>
       selections.filter(

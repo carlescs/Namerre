@@ -1,3 +1,9 @@
+import type { PluginOptions } from './rename-api';
+
+export function tmdbOptionsHash(options: PluginOptions): string {
+  return optionsHash(options.language ?? 'en-US');
+}
+
 // Pure SHA-256 also works on self-hosted HTTP origins without Web Crypto's subtle API.
 export function optionsHash(text: string): string {
   const input = new TextEncoder().encode(text);

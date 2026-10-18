@@ -120,7 +120,12 @@ public sealed class PipelineEngine(ITmdbMetadata metadata, IRenameFileSystem fil
     }
 
     public static string OptionsHash(JsonElement options)
-        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(options.GetRawText())));
+    {
+        // Match approval binds metadata settings, not the templates used to render it.
+        var language = options.TryGetProperty("language", out var value)
+            ? value.GetString() ?? "en-US" : "en-US";
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(language)));
+    }
 
     private string Apply(FileInput file, PluginInstance plugin, string input, IReadOnlyList<MetadataSelection> selections)
     {
@@ -147,7 +152,7 @@ public sealed class PipelineEngine(ITmdbMetadata metadata, IRenameFileSystem fil
             case "tmdb":
                 var selection = selections.SingleOrDefault(s => s.FileId == file.Id && s.InstanceId == plugin.InstanceId);
                 if (selection is null || selection.InputPath != input || selection.OptionsHash != OptionsHash(options))
-                    throw new RenameException("MetadataRequired", "Explicitly confirm a TMDB match for this step's current input and options.");
+                    throw new RenameException("MetadataRequired", "Explicitly confirm a TMDB match for this step's current input and metadata language.");
                 var match = metadata.Resolve(selection);
                 var defaultTemplate = match.MediaType == "tv"
                     ? "{title} - S{season}E{episode} - {episodeTitle}" : "{title} ({year})";

@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { Router, provideRouter } from '@angular/router';
-import { optionsHash } from '../../options-hash';
+import { tmdbOptionsHash } from '../../options-hash';
 import {
   MetadataSelection,
   PlanView,
@@ -72,7 +72,7 @@ describe('RenameWorkflowComponent', () => {
     fileId: 'a.txt',
     instanceId: tmdb.instanceId,
     inputPath: 'a.txt',
-    optionsHash: optionsHash(JSON.stringify(tmdb.options)),
+    optionsHash: tmdbOptionsHash(tmdb.options),
     confirmationToken: 'confirmed-file-a',
   };
   const missing = { code: 'MetadataRequired', message: 'Confirm a match.' };
@@ -349,9 +349,34 @@ describe('RenameWorkflowComponent', () => {
     removed.flush({ files: [], canPrepare: false });
   });
 
-  it('drops a match when its TMDB options change', async () => {
+  it('retains accepted metadata across filename and folder template edits', async () => {
     await confirmMetadata();
-    changePlugins([{ ...tmdb, options: { ...tmdb.options, nameTemplate: '{title}' } }]);
+    changePlugins([
+      {
+        ...tmdb,
+        options: {
+          ...tmdb.options,
+          nameTemplate: '{title}',
+          changeFolder: true,
+          folderTemplate: '{year}',
+        },
+      },
+    ]);
+    await fixture.whenStable();
+    button('Preview').click();
+    const changed = http.expectOne('/api/rename-previews');
+    expect(changed.request.body.selections).toEqual([selection]);
+    changed.flush(matchedPreview);
+    await fixture.whenStable();
+    expect(text()).toContain('Final target:');
+    expect(text()).toContain('Metadata confirmed for this step.');
+    expect(button('Prepare immutable').disabled).toBe(false);
+    http.expectNone('/api/metadata/tmdb/search');
+  });
+
+  it('drops a match when its TMDB metadata language changes', async () => {
+    await confirmMetadata();
+    changePlugins([{ ...tmdb, options: { ...tmdb.options, language: 'fr' } }]);
     await fixture.whenStable();
     button('Preview').click();
     const changed = http.expectOne('/api/rename-previews');
@@ -549,6 +574,7 @@ describe('RenameWorkflowComponent', () => {
     await fixture.whenStable();
     expect(text()).toContain('Episode 3');
     expect(text()).toContain('Episode 4');
+    expect(button('Accept all matches').disabled).toBe(false);
     button('Choose / change').click();
     await fixture.whenStable();
     expect(picker().context().state).toMatchObject({
@@ -559,6 +585,78 @@ describe('RenameWorkflowComponent', () => {
       selected: { id: 42 },
     });
     expect(text()).not.toContain('Confirm this match');
+    button('Cancel matching').click();
+    await fixture.whenStable();
+    button('Accept all matches').click();
+    await fixture.whenStable();
+    button('Preview').click();
+    const accepted = http.expectOne('/api/rename-previews');
+    expect(accepted.request.body.selections).toEqual([
+      {
+        ...selection,
+        fileId: 'A.Show.S02E03.mkv',
+        inputPath: 'A.Show.S02E03.mkv',
+        confirmationToken: 'episode-3',
+      },
+      {
+        ...selection,
+        fileId: 'A.Show.2x04.mkv',
+        inputPath: 'A.Show.2x04.mkv',
+        confirmationToken: 'episode-4',
+      },
+    ]);
+    accepted.flush({ files: [], canPrepare: false });
+  });
+
+  it('accepts all verified proposals in one preview and leaves failed matches unapproved', async () => {
+    await showAutomaticFiles(['A.Movie.2024.mkv', 'Other.Movie.2023.mkv', 'Unknown.mkv']);
+    expect(button('Accept all matches').disabled).toBe(true);
+    button('Match movies automatically').click();
+    await fixture.whenStable();
+    expect(button('Accept all matches').disabled).toBe(true);
+    for (const [id, title, year] of [
+      [42, 'A Movie', '2024'],
+      [43, 'Other Movie', '2023'],
+    ] as const) {
+      const movie = {
+        id,
+        title,
+        year,
+        mediaType: 'movie',
+        season: null,
+        episode: null,
+        episodeTitle: null,
+        confirmationToken: null,
+      };
+      http.expectOne('/api/metadata/tmdb/search').flush({ matches: [movie] });
+      http.expectOne('/api/metadata/tmdb/search').flush({
+        matches: [{ ...movie, confirmationToken: `confirmed-${id}` }],
+      });
+    }
+    http.expectOne('/api/metadata/tmdb/search').flush({ matches: [] });
+    await fixture.whenStable();
+    expect(button('Accept all matches').disabled).toBe(false);
+    expect(text()).toContain('No TMDB matches');
+    button('Accept all matches').click();
+    await fixture.whenStable();
+    expect(button('Accept all matches').disabled).toBe(true);
+    button('Preview').click();
+    const accepted = http.expectOne('/api/rename-previews');
+    expect(accepted.request.body.selections).toEqual([
+      {
+        ...selection,
+        fileId: 'A.Movie.2024.mkv',
+        inputPath: 'A.Movie.2024.mkv',
+        confirmationToken: 'confirmed-42',
+      },
+      {
+        ...selection,
+        fileId: 'Other.Movie.2023.mkv',
+        inputPath: 'Other.Movie.2023.mkv',
+        confirmationToken: 'confirmed-43',
+      },
+    ]);
+    accepted.flush({ files: [], canPrepare: false });
   });
 
   it('continues after a failed lookup and leaves unidentified episode numbers for manual correction', async () => {

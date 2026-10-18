@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { optionsHash } from '../../options-hash';
+import { tmdbOptionsHash } from '../../options-hash';
 import { MetadataSelection, TmdbPickerState } from '../../rename-api';
 import { TmdbPickerComponent } from './tmdb-picker.component';
 
@@ -85,7 +85,7 @@ describe('TmdbPickerComponent', () => {
       fileId: 'file-1',
       instanceId: 'tmdb-2',
       inputPath: 'TV/candidate.mkv',
-      optionsHash: optionsHash(JSON.stringify(plugin.options)),
+      optionsHash: tmdbOptionsHash(plugin.options),
       season: 2,
       episode: 4,
     });
@@ -108,7 +108,7 @@ describe('TmdbPickerComponent', () => {
       fileId: 'file-1',
       instanceId: 'tmdb-2',
       inputPath: 'TV/candidate.mkv',
-      optionsHash: optionsHash(JSON.stringify(plugin.options)),
+      optionsHash: tmdbOptionsHash(plugin.options),
       confirmationToken: 'signed-snapshot',
     });
   });

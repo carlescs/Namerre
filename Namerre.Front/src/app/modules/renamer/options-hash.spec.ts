@@ -1,4 +1,4 @@
-import { optionsHash } from './options-hash';
+import { optionsHash, tmdbOptionsHash } from './options-hash';
 import { operationId } from './rename-api';
 
 describe('Metadata option binding', () => {
@@ -13,6 +13,21 @@ describe('Metadata option binding', () => {
       '2816597888e4a0d3a36b82b83316ab32680eb8f00f8cd3b904d681246d285a0e',
     );
     expect(optionsHash('{"mode":"upper"}')).not.toBe(optionsHash('{"mode":"lower"}'));
+  });
+
+  it('binds TMDB metadata language independently of output templates', () => {
+    const original = tmdbOptionsHash({ language: 'en-US', nameTemplate: '{title}' });
+    expect(original).toBe(optionsHash('en-US'));
+    expect(tmdbOptionsHash({})).toBe(original);
+    expect(
+      tmdbOptionsHash({
+        nameTemplate: '{title} ({year})',
+        changeFolder: true,
+        folderTemplate: '{year}',
+        language: 'en-US',
+      }),
+    ).toBe(original);
+    expect(tmdbOptionsHash({ language: 'fr' })).not.toBe(original);
   });
 
   it('generates a UUID on insecure self-hosted origins without randomUUID', () => {

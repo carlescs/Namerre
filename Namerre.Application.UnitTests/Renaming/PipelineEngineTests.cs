@@ -86,7 +86,7 @@ public sealed class PipelineEngineTests
     }
 
     [Fact]
-    public async Task MetadataRequiresExactFileInstanceInputAndOptionsBinding()
+    public async Task MetadataSurvivesTemplateEditsButRequiresExactFileInstanceInputAndLanguageBinding()
     {
         var plugin = Plugin("tmdb", "tmdb", new { nameTemplate = "{title} ({year})" });
         var engine = new PipelineEngine(metadata, fileSystem);
@@ -101,8 +101,31 @@ public sealed class PipelineEngineTests
         {
             Options = JsonSerializer.SerializeToElement(new { nameTemplate = "{title}" })
         }]) with { Selections = [selection] }, default);
-        Assert.Equal("MetadataRequired", Assert.Single(Assert.Single(changed.Files).Issues).Code);
-        metadata.Received(1).Resolve(selection);
+        Assert.True(changed.CanPrepare);
+        Assert.Equal("folder/Resolved.MKV", Assert.Single(changed.Files).TargetPath);
+        var folderChanged = await engine.Preview(Request([plugin with
+        {
+            Options = JsonSerializer.SerializeToElement(new {
+                nameTemplate = "{title}", changeFolder = true, folderTemplate = "{year}"
+            })
+        }]) with { Selections = [selection] }, default);
+        Assert.True(folderChanged.CanPrepare);
+        Assert.Equal("2000/Resolved.MKV", Assert.Single(folderChanged.Files).TargetPath);
+        var languageChanged = await engine.Preview(Request([plugin with
+        {
+            Options = JsonSerializer.SerializeToElement(new { nameTemplate = "{title}", language = "fr" })
+        }]) with { Selections = [selection] }, default);
+        Assert.Equal("MetadataRequired", Assert.Single(Assert.Single(languageChanged.Files).Issues).Code);
+        foreach (var invalidSelection in new[] {
+            selection with { FileId = "other" },
+            selection with { InstanceId = "other" },
+            selection with { InputPath = "other.mkv" }
+        })
+        {
+            var invalid = await engine.Preview(Request([plugin]) with { Selections = [invalidSelection] }, default);
+            Assert.Equal("MetadataRequired", Assert.Single(Assert.Single(invalid.Files).Issues).Code);
+        }
+        metadata.Received(3).Resolve(selection);
     }
 
     [Fact]

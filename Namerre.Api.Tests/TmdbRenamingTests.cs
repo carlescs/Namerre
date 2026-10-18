@@ -53,6 +53,15 @@ public sealed class TmdbRenamingTests : IDisposable
             var preview = await engine.Preview(pipeline, default);
             Assert.Equal("A Movie (2001)/A Movie (2001).mkv", Assert.Single(preview.Files).TargetPath);
             Assert.False(Directory.Exists(Path.Combine(Root, "A Movie (2001)")));
+            var edited = pipeline with
+            {
+                Plugins = [new("tmdb1", "tmdb", 1, true, JsonSerializer.SerializeToElement(new {
+                    nameTemplate = "{title}", changeFolder = true, folderTemplate = "{year}"
+                }))]
+            };
+            var editedPreview = await engine.Preview(edited, default);
+            Assert.True(editedPreview.CanPrepare);
+            Assert.Equal("2001/A Movie.mkv", Assert.Single(editedPreview.Files).TargetPath);
             var service = new RenameService(store, filesystem, engine, NullLogger<RenameService>.Instance);
             var prepared = await service.Prepare(pipeline, default);
             await service.ProcessNext(default);

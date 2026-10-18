@@ -13,7 +13,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Subscription } from 'rxjs';
-import { optionsHash } from '../../options-hash';
+import { tmdbOptionsHash } from '../../options-hash';
 import { tmdbFilename } from '../../tmdb-filename';
 import {
   MatchContext,
@@ -162,7 +162,7 @@ export class TmdbPickerComponent implements OnInit, AfterViewInit {
       fileId: context.fileId,
       instanceId: context.plugin.instanceId,
       inputPath: context.inputPath,
-      optionsHash: optionsHash(JSON.stringify(context.plugin.options)),
+      optionsHash: tmdbOptionsHash(context.plugin.options),
     };
     this.request = this.api
       .tmdb(request)
@@ -197,7 +197,7 @@ export class TmdbPickerComponent implements OnInit, AfterViewInit {
       fileId: context.fileId,
       instanceId: context.plugin.instanceId,
       inputPath: context.inputPath,
-      optionsHash: optionsHash(JSON.stringify(context.plugin.options)),
+      optionsHash: tmdbOptionsHash(context.plugin.options),
       confirmationToken: match.confirmationToken,
     });
   }

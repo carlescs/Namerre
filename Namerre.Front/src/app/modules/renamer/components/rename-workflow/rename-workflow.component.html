@@ -18,7 +18,8 @@
     <h3 id="matching-heading">TMDB matching</h3>
     <p>
       Choose what to search for. Titles, years and S01E02 / 1x02 episode numbers are inferred from
-      filenames. Review each proposal before accepting it, or search again to correct a match.
+      filenames. Review the proposals and accept them individually or all at once, or search again
+      to correct a match.
     </p>
     <div class="actions" aria-label="Automatic TMDB search type">
       <button
@@ -40,6 +41,15 @@
         (click)="suggestMatches('tv')"
       >
         Match episodes automatically
+      </button>
+      <button
+        type="button"
+        (click)="acceptAllMatches()"
+        [disabled]="
+          !pendingMatches().length || loadingPreview() || suggesting() || preparing() || executing()
+        "
+      >
+        Accept all matches
       </button>
     </div>
     @if (suggesting()) {
