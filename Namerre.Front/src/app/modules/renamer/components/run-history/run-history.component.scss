@@ -6,7 +6,15 @@
 }
 
 main {
-  max-width: 70rem;
+  max-width: 64rem;
   margin: 2rem auto;
   padding: 0 1rem;
+}
+
+th:first-child {
+  width: 3.5rem;
+}
+
+th:last-child {
+  width: 8rem;
 }

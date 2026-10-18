@@ -16,6 +16,10 @@ section {
   border-radius: 0.5rem;
 }
 
+section + section {
+  margin-top: 1rem;
+}
+
 button {
   padding: 0.6rem 0.9rem;
   border: 1px solid #64748b;
@@ -49,12 +53,31 @@ button {
 
 .file-list {
   overflow-x: auto;
+
+  &:focus-visible {
+    outline: 3px solid #1d4ed8;
+    outline-offset: 2px;
+  }
 }
 
 table {
   width: 100%;
+  min-width: 56rem;
   border-collapse: collapse;
+  table-layout: fixed;
   text-align: left;
+}
+
+th {
+  white-space: nowrap;
+
+  &:first-child {
+    width: 40%;
+  }
+
+  &:nth-child(4) {
+    width: 22%;
+  }
 }
 
 caption {

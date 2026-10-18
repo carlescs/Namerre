@@ -1,5 +1,6 @@
 :host {
   display: block;
+  overflow-wrap: anywhere;
 }
 
 section,
@@ -66,7 +67,18 @@ button:disabled {
 
 table {
   width: 100%;
+  min-width: 56rem;
   border-collapse: collapse;
+  table-layout: fixed;
+  text-align: left;
+}
+
+th {
+  white-space: nowrap;
+}
+
+caption {
+  margin-bottom: 0.5rem;
   text-align: left;
 }
 
@@ -77,7 +89,8 @@ th {
   overflow-wrap: anywhere;
 }
 
-code {
+code,
+pre {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
