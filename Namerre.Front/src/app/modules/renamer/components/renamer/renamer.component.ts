@@ -21,15 +21,17 @@ export class RenamerComponent {
     this.files.update((files) => files.filter((file) => file.path !== path));
   }
 
-  protected addFolder(folder: FolderListing): void {
+  protected addFolder(folders: FolderListing[]): void {
     this.files.update((files) => {
       const paths = new Set(files.map((file) => file.path));
       const additions: RenamerFile[] = [];
-      for (const file of folder.files) {
-        const path = folder.path ? `${folder.path}/${file.name}` : file.name;
-        if (!paths.has(path)) {
-          paths.add(path);
-          additions.push({ ...file, path, folderPath: folder.path });
+      for (const folder of folders) {
+        for (const file of folder.files) {
+          const path = folder.path ? `${folder.path}/${file.name}` : file.name;
+          if (!paths.has(path)) {
+            paths.add(path);
+            additions.push({ ...file, path, folderPath: folder.path });
+          }
         }
       }
       return [...files, ...additions];

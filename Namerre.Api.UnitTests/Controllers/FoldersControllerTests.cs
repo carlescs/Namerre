@@ -27,6 +27,61 @@ public sealed class FoldersControllerTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SendsSelectionOptionsAndCancellationToken(bool includeSubfolders)
+    {
+        var sender = Substitute.For<ISender>();
+        IReadOnlyList<FolderListing> folders = [new FolderListing("Movies", "", [], [])];
+        using var cancellation = new CancellationTokenSource();
+        sender.Send(Arg.Any<GetFolderSelectionQuery>(), cancellation.Token)
+            .Returns(Task.FromResult(folders));
+        var controller = new FoldersController(sender, NullLogger<FoldersController>.Instance);
+
+        var result = await controller.GetSelection(cancellation.Token, "Movies", includeSubfolders);
+
+        Assert.Same(folders, Assert.IsType<OkObjectResult>(result.Result).Value);
+        await sender.Received(1).Send(
+            Arg.Is<GetFolderSelectionQuery>(query =>
+                query.Path == "Movies" && query.IncludeSubfolders == includeSubfolders),
+            cancellation.Token);
+    }
+
+    [Theory]
+    [InlineData(FolderBrowserError.InvalidPath, 400)]
+    [InlineData(FolderBrowserError.Forbidden, 403)]
+    [InlineData(FolderBrowserError.NotFound, 404)]
+    [InlineData(FolderBrowserError.Unavailable, 503)]
+    public async Task ReturnsProblemDetailsForSelectionErrors(FolderBrowserError error, int statusCode)
+    {
+        var sender = Substitute.For<ISender>();
+        sender.Send(Arg.Any<GetFolderSelectionQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IReadOnlyList<FolderListing>>(
+                new FolderBrowserException(error, "Cannot browse.")));
+        var controller = new FoldersController(sender, NullLogger<FoldersController>.Instance);
+
+        var result = await controller.GetSelection(CancellationToken.None, "", true);
+
+        var response = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(statusCode, response.StatusCode);
+        Assert.Equal("Cannot browse.", Assert.IsType<ProblemDetails>(response.Value).Title);
+    }
+
+    [Fact]
+    public async Task PropagatesSelectionCancellation()
+    {
+        var sender = Substitute.For<ISender>();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        sender.Send(Arg.Any<GetFolderSelectionQuery>(), cancellation.Token)
+            .Returns(Task.FromCanceled<IReadOnlyList<FolderListing>>(cancellation.Token));
+        var controller = new FoldersController(sender, NullLogger<FoldersController>.Instance);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => controller.GetSelection(cancellation.Token, "", true));
+    }
+
+    [Theory]
     [InlineData(FolderBrowserError.InvalidPath, 400)]
     [InlineData(FolderBrowserError.Forbidden, 403)]
     [InlineData(FolderBrowserError.NotFound, 404)]

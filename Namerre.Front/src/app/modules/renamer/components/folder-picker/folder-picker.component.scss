@@ -60,6 +60,13 @@ footer {
   border-top: 1px solid #cbd5e1;
 }
 
+.selection-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
 .current-path {
   overflow-wrap: anywhere;
 

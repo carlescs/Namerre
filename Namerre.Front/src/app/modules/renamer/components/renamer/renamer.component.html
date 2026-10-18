@@ -4,10 +4,16 @@
 
   <section aria-labelledby="files-heading">
     <h2 id="files-heading">Files for renaming ({{ files().length }})</h2>
-    <button #chooseFolder type="button" (click)="folderPicker.open()">Choose folder</button>
-    <button type="button" (click)="clearFiles(); chooseFolder.focus()" [disabled]="!files().length">
-      Clear collection
-    </button>
+    <div class="collection-actions">
+      <button #chooseFolder type="button" (click)="folderPicker.open()">Choose folder</button>
+      <button
+        type="button"
+        (click)="clearFiles(); chooseFolder.focus()"
+        [disabled]="!files().length"
+      >
+        Clear collection
+      </button>
+    </div>
     <p role="status">{{ files().length }} files ready for renaming.</p>
     @if (files().length) {
       <div class="file-list">

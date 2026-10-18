@@ -53,6 +53,52 @@ public sealed class FolderBrowsingTests : IDisposable
     }
 
     [Theory]
+    [InlineData("", false)]
+    [InlineData("", true)]
+    [InlineData("Movies", false)]
+    [InlineData("Movies", true)]
+    public async Task SelectsFilesWithOptionalSubfolders(string path, bool includeSubfolders)
+    {
+        File.WriteAllText(Path.Combine(root, "Movies", "Nested", "notes.txt"), "nested");
+        using var factory = CreateFactory(root);
+        using var client = CreateClient(factory);
+
+        var folders = await client.GetFromJsonAsync<FolderListing[]>(
+            $"/api/folders/selection?path={path}&includeSubfolders={includeSubfolders}");
+
+        Assert.NotNull(folders);
+        var expectedPaths = (path, includeSubfolders) switch
+        {
+            ("", true) => new[] { "", "Empty", "Movies", "Movies/Nested" },
+            ("Movies", true) => ["Movies", "Movies/Nested"],
+            _ => [path]
+        };
+        Assert.Equal(expectedPaths, folders.Select(folder => folder.Path));
+        if (includeSubfolders)
+        {
+            var nested = Assert.Single(folders, folder => folder.Path == "Movies/Nested");
+            Assert.Equal("notes.txt", Assert.Single(nested.Files).Name);
+        }
+        else
+        {
+            Assert.Equal(path.Length == 0 ? "notes.txt" : "movie.mkv",
+                Assert.Single(Assert.Single(folders).Files).Name);
+        }
+    }
+
+    [Fact]
+    public async Task SelectionDefaultsToCurrentFolderOnly()
+    {
+        using var factory = CreateFactory(root);
+        using var client = CreateClient(factory);
+
+        var folders = await client.GetFromJsonAsync<FolderListing[]>("/api/folders/selection");
+
+        Assert.NotNull(folders);
+        Assert.Equal("", Assert.Single(folders).Path);
+    }
+
+    [Theory]
     [InlineData("../outside")]
     [InlineData("Movies/../../outside")]
     [InlineData("..\\outside")]
@@ -66,10 +112,14 @@ public sealed class FolderBrowsingTests : IDisposable
         using var factory = CreateFactory(root);
         using var client = CreateClient(factory);
 
-        using var response = await client.GetAsync($"/api/folders?path={Uri.EscapeDataString(path)}");
+        foreach (var endpoint in new[] { "/api/folders", "/api/folders/selection" })
+        {
+            using var response = await client.GetAsync(
+                $"{endpoint}?path={Uri.EscapeDataString(path)}&includeSubfolders=true");
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.DoesNotContain(root, await response.Content.ReadAsStringAsync());
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.DoesNotContain(root, await response.Content.ReadAsStringAsync());
+        }
     }
 
     [Theory]
@@ -139,6 +189,15 @@ public sealed class FolderBrowsingTests : IDisposable
             Assert.DoesNotContain(listing.Directories, entry => entry.Name == "Link");
             using var response = await client.GetAsync("/api/folders?path=Link");
             Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            var selection = await client.GetFromJsonAsync<FolderListing[]>(
+                "/api/folders/selection?includeSubfolders=true");
+            Assert.NotNull(selection);
+            Assert.DoesNotContain(selection, folder => folder.Path.Contains("Link"));
+            Assert.All(selection, folder =>
+                Assert.DoesNotContain(folder.Directories, directory => directory.Name == "Link"));
+            using var selectionResponse = await client.GetAsync(
+                "/api/folders/selection?path=Link&includeSubfolders=true");
+            Assert.Equal(HttpStatusCode.Forbidden, selectionResponse.StatusCode);
         }
         finally
         {

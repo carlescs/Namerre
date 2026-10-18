@@ -9,7 +9,7 @@ describe('FolderPickerComponent', () => {
   let fixture: ComponentFixture<FolderPickerComponent>;
   let http: HttpTestingController;
   let dialog: HTMLDialogElement;
-  let selected: FolderListing[];
+  let selected: FolderListing[][];
   const root: FolderListing = {
     path: '',
     parentPath: null,
@@ -42,10 +42,11 @@ describe('FolderPickerComponent', () => {
     await openPicker();
     expect(dialog.open).toBe(true);
     expect(dialog.textContent).toContain('Current folder: Server root');
+    expect(includeSubfolders().checked).toBe(false);
     expect(selected).toEqual([]);
-    clickButton('Select folder');
+    confirmFolder(root);
     expect(dialog.open).toBe(false);
-    expect(selected).toEqual([root]);
+    expect(selected).toEqual([[root]]);
   });
 
   it('navigates to subfolders and back to the parent without emitting a selection', async () => {
@@ -102,13 +103,13 @@ describe('FolderPickerComponent', () => {
     http.expectOne('/api/folders?path=Movies').flush(movies);
     await fixture.whenStable();
     expect(dialog.querySelector('[role="alert"]')).toBeNull();
-    clickButton('Select folder');
-    expect(selected).toEqual([movies]);
+    confirmFolder(movies);
+    expect(selected).toEqual([[movies]]);
   });
 
   it('cancels browsing without emitting and reopens at the last confirmed folder', async () => {
     await openPicker();
-    clickButton('Select folder');
+    confirmFolder(root);
     await openPicker();
     clickButton('Movies');
     http.expectOne('/api/folders?path=Movies').flush({
@@ -120,7 +121,7 @@ describe('FolderPickerComponent', () => {
     await fixture.whenStable();
     clickButton('Cancel');
     expect(dialog.open).toBe(false);
-    expect(selected).toEqual([root]);
+    expect(selected).toEqual([[root]]);
     await openPicker();
     expect(dialog.textContent).toContain('Current folder: Server root');
   });
@@ -136,12 +137,12 @@ describe('FolderPickerComponent', () => {
     };
     http.expectOne('/api/folders?path=Movies').flush(movies);
     await fixture.whenStable();
-    clickButton('Select folder');
+    confirmFolder(movies);
     component.open();
     http.expectOne('/api/folders?path=Movies').flush(movies);
     await fixture.whenStable();
     expect(dialog.textContent).toContain('Current folder: Movies');
-    expect(selected).toEqual([movies]);
+    expect(selected).toEqual([[movies]]);
   });
 
   it('cancels pending navigation on Escape and can reopen the picker', async () => {
@@ -158,6 +159,124 @@ describe('FolderPickerComponent', () => {
     expect(dialog.open).toBe(true);
     expect(getButton('Select folder').disabled).toBe(false);
   });
+
+  it('requests all descendant folders in a single backend selection request', async () => {
+    await openPicker();
+    includeSubfolders().click();
+    clickButton('Select folder');
+    expect(dialog.open).toBe(true);
+    expect(selected).toEqual([]);
+    expect(includeSubfolders().disabled).toBe(true);
+    expect(getButton('Select folder').disabled).toBe(true);
+    expect(dialog.textContent).toContain('Loading files from subfolders...');
+
+    const movies: FolderListing = {
+      ...root,
+      path: 'Movies',
+      parentPath: '',
+      directories: [{ name: 'Classics', path: 'Movies/Classics' }],
+    };
+    const classics: FolderListing = {
+      ...root,
+      path: 'Movies/Classics',
+      parentPath: 'Movies',
+      directories: [],
+    };
+    http.expectNone('/api/folders?path=Movies');
+    http
+      .expectOne('/api/folders/selection?path=&includeSubfolders=true')
+      .flush([root, movies, classics]);
+    await fixture.whenStable();
+    expect(selected).toEqual([[root, movies, classics]]);
+    expect(dialog.open).toBe(false);
+  });
+
+  it('includes sibling branches and empty folders', async () => {
+    const folders: FolderListing = {
+      ...root,
+      directories: [...root.directories, { name: 'Empty', path: 'Empty' }],
+    };
+    component.open();
+    http.expectOne('/api/folders?path=').flush(folders);
+    await fixture.whenStable();
+    includeSubfolders().click();
+    clickButton('Select folder');
+    const movies: FolderListing = { ...root, path: 'Movies', parentPath: '', directories: [] };
+    const empty: FolderListing = {
+      path: 'Empty',
+      parentPath: '',
+      directories: [],
+      files: [],
+    };
+    http
+      .expectOne('/api/folders/selection?path=&includeSubfolders=true')
+      .flush([folders, movies, empty]);
+    await fixture.whenStable();
+    expect(selected).toEqual([[folders, movies, empty]]);
+  });
+
+  it('reports a subfolder error without emitting partial results and retries selection', async () => {
+    await openPicker();
+    includeSubfolders().click();
+    clickButton('Select folder');
+    http
+      .expectOne('/api/folders/selection?path=&includeSubfolders=true')
+      .flush({}, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+    expect(dialog.open).toBe(true);
+    expect(selected).toEqual([]);
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('No files were added.');
+    expect(getButton('Select folder').disabled).toBe(true);
+
+    clickButton('Try again');
+    const movies: FolderListing = { ...root, path: 'Movies', parentPath: '', directories: [] };
+    http.expectOne('/api/folders/selection?path=&includeSubfolders=true').flush([root, movies]);
+    await fixture.whenStable();
+    expect(selected).toEqual([[root, movies]]);
+    expect(dialog.open).toBe(false);
+  });
+
+  it.each(['Cancel', 'Escape'])(
+    'cancels recursive loading with %s without adding files',
+    async (action) => {
+      await openPicker();
+      includeSubfolders().click();
+      clickButton('Select folder');
+      const request = http.expectOne('/api/folders/selection?path=&includeSubfolders=true');
+      if (action === 'Cancel') {
+        clickButton('Cancel');
+      } else {
+        dialog.dispatchEvent(new Event('cancel'));
+      }
+      await fixture.whenStable();
+      expect(request.cancelled).toBe(true);
+      expect(selected).toEqual([]);
+      expect(dialog.open).toBe(false);
+      await openPicker();
+      expect(getButton('Select folder').disabled).toBe(false);
+    },
+  );
+
+  it('cancels recursive loading when destroyed without emitting a selection', async () => {
+    await openPicker();
+    includeSubfolders().click();
+    clickButton('Select folder');
+    const request = http.expectOne('/api/folders/selection?path=&includeSubfolders=true');
+    fixture.destroy();
+    expect(request.cancelled).toBe(true);
+    expect(selected).toEqual([]);
+  });
+
+  function includeSubfolders(): HTMLInputElement {
+    return fixture.nativeElement.querySelector('input[type="checkbox"]');
+  }
+
+  function confirmFolder(folder: FolderListing): void {
+    clickButton('Select folder');
+    http
+      .expectOne(`/api/folders/selection?path=${folder.path}&includeSubfolders=false`)
+      .flush([folder]);
+  }
 
   async function openPicker(): Promise<void> {
     component.open();

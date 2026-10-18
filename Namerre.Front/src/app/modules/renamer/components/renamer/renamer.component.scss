@@ -41,6 +41,12 @@ button {
   }
 }
 
+.collection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
 .file-list {
   overflow-x: auto;
 }

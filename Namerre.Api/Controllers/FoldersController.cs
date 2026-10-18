@@ -19,15 +19,37 @@ public sealed class FoldersController(ISender sender, ILogger<FoldersController>
         }
         catch (FolderBrowserException exception)
         {
-            logger.LogWarning(exception, "Server folder browsing failed: {Error}", exception.Error);
-            var statusCode = exception.Error switch
-            {
-                FolderBrowserError.InvalidPath => StatusCodes.Status400BadRequest,
-                FolderBrowserError.Forbidden => StatusCodes.Status403Forbidden,
-                FolderBrowserError.NotFound => StatusCodes.Status404NotFound,
-                _ => StatusCodes.Status503ServiceUnavailable
-            };
-            return Problem(statusCode: statusCode, title: exception.Message);
+            return FolderProblem(exception);
         }
+    }
+
+    [HttpGet("selection")]
+    public async Task<ActionResult<IReadOnlyList<FolderListing>>> GetSelection(
+        CancellationToken cancellationToken,
+        [FromQuery] string path = "",
+        [FromQuery] bool includeSubfolders = false)
+    {
+        try
+        {
+            return Ok(await sender.Send(
+                new GetFolderSelectionQuery(path, includeSubfolders), cancellationToken));
+        }
+        catch (FolderBrowserException exception)
+        {
+            return FolderProblem(exception);
+        }
+    }
+
+    private ObjectResult FolderProblem(FolderBrowserException exception)
+    {
+        logger.LogWarning(exception, "Server folder browsing failed: {Error}", exception.Error);
+        var statusCode = exception.Error switch
+        {
+            FolderBrowserError.InvalidPath => StatusCodes.Status400BadRequest,
+            FolderBrowserError.Forbidden => StatusCodes.Status403Forbidden,
+            FolderBrowserError.NotFound => StatusCodes.Status404NotFound,
+            _ => StatusCodes.Status503ServiceUnavailable
+        };
+        return Problem(statusCode: statusCode, title: exception.Message);
     }
 }

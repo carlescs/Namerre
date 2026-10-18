@@ -76,6 +76,21 @@ describe('RenamerComponent', () => {
     expect(rows()[1].textContent).toContain('new.txt');
   });
 
+  it('adds a recursive selection with distinct paths and skips files already in the collection', async () => {
+    await select(root);
+    picker.folderSelected.emit([
+      root,
+      { ...root, path: 'Movies', parentPath: '' },
+      { ...root, path: 'Movies/Classics', parentPath: 'Movies' },
+    ]);
+    await fixture.whenStable();
+    expect(rows()).toHaveLength(3);
+    expect(rows()[0].textContent).toContain('Server root');
+    expect(rows()[1].textContent).toContain('Movies');
+    expect(rows()[2].textContent).toContain('Movies/Classics');
+    expect(main().textContent).toContain('Files for renaming (3)');
+  });
+
   it('does not clear existing files when an empty folder is selected', async () => {
     await select(root);
     await select({ path: 'Empty', parentPath: '', directories: [], files: [] });
@@ -139,7 +154,7 @@ describe('RenamerComponent', () => {
   });
 
   async function select(folder: FolderListing): Promise<void> {
-    picker.folderSelected.emit(folder);
+    picker.folderSelected.emit([folder]);
     await fixture.whenStable();
   }
 
