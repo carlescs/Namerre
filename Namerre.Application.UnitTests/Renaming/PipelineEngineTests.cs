@@ -106,6 +106,67 @@ public sealed class PipelineEngineTests
     }
 
     [Fact]
+    public async Task MetadataTextIsFilenameSafeBeforeDownstreamStepsAndFolderChanges()
+    {
+        fileSystem.When(fs => fs.Validate(Arg.Any<string>()))
+            .Do(call => NamingRules.ValidateRelativePath((string)call[0]));
+        var plugin = Plugin("tmdb", "tmdb", new
+        {
+            nameTemplate = "",
+            changeFolder = true,
+            folderTemplate = "{title} ({year})"
+        });
+        var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
+            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+        metadata.Resolve(selection).Returns(new TmdbMatch(10, "tv", "Show: A/B\\C?", "2000",
+            2, 3, "Episode <one> \"two\"|*\n{end}. "));
+        var preview = await new PipelineEngine(metadata, fileSystem).Preview(Request([
+            plugin, Plugin("case", "case", new { mode = "lower" })
+        ]) with { Selections = [selection] }, default);
+        Assert.True(preview.CanPrepare);
+        Assert.Equal("Show- A-B-C- (2000)/show- a-b-c- - s02e03 - episode -one- -two----(end).MKV",
+            Assert.Single(preview.Files).TargetPath);
+    }
+
+    [Theory]
+    [InlineData("CON", "_CON")]
+    [InlineData("aux.txt", "_aux.txt")]
+    [InlineData(".namerre-title", "_.namerre-title")]
+    [InlineData("Title... ", "Title")]
+    [InlineData("Mission: Impossible", "Mission- Impossible")]
+    public async Task MetadataOnlyTemplatesHandleReservedNamesAndTrailingCharacters(string title, string expected)
+    {
+        fileSystem.When(fs => fs.Validate(Arg.Any<string>()))
+            .Do(call => NamingRules.ValidateRelativePath((string)call[0]));
+        var plugin = Plugin("tmdb", "tmdb", new { nameTemplate = "{title}" });
+        var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
+            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+        metadata.Resolve(selection).Returns(new TmdbMatch(10, "movie", title, "2000", null, null, null));
+        var preview = await new PipelineEngine(metadata, fileSystem).Preview(
+            Request([plugin]) with { Selections = [selection] }, default);
+        Assert.True(preview.CanPrepare);
+        Assert.Equal($"folder/{expected}.MKV", Assert.Single(preview.Files).TargetPath);
+    }
+
+    [Theory]
+    [InlineData("{title}/escape", "InvalidTemplate")]
+    [InlineData("{unknown}", "InvalidTemplate")]
+    [InlineData("../{title}", "InvalidTemplate")]
+    [InlineData("{title}:invalid", "InvalidConfiguration")]
+    public async Task MetadataSanitizationDoesNotRelaxTemplateValidation(string template, string code)
+    {
+        fileSystem.When(fs => fs.Validate(Arg.Any<string>()))
+            .Do(call => NamingRules.ValidateRelativePath((string)call[0]));
+        var plugin = Plugin("tmdb", "tmdb", new { nameTemplate = template });
+        var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
+            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+        metadata.Resolve(selection).Returns(new TmdbMatch(10, "movie", "A/B", "2000", null, null, null));
+        var preview = await new PipelineEngine(metadata, fileSystem).Preview(
+            Request([plugin]) with { Selections = [selection] }, default);
+        Assert.Equal(code, Assert.Single(Assert.Single(preview.Files).Issues).Code);
+    }
+
+    [Fact]
     public async Task RejectsLimitsDuplicateIdsAndVersionsBeforeProcessing()
     {
         var engine = new PipelineEngine(metadata, fileSystem);

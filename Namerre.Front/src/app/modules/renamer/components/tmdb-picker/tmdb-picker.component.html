@@ -3,6 +3,9 @@
   <p>
     Current step input: <code>{{ context().inputPath }}</code>
   </p>
+  @if (context().reusedShow) {
+    <p>Reusing your previous show choice. Set the season and episode for this file, then verify.</p>
+  }
   <form [formGroup]="form" (ngSubmit)="search()">
     <label
       >Media type
@@ -15,10 +18,10 @@
     <label>Language <input formControlName="language" /></label>
     @if (form.controls.mediaType.value === 'tv') {
       <p>Search for a show, select it, then verify the exact season and episode.</p>
-      <label>Season <input type="number" formControlName="season" min="0" max="9999" /></label>
+      <label>Season <input type="number" formControlName="season" min="0" max="999" /></label>
       <label>Episode <input type="number" formControlName="episode" min="1" max="9999" /></label>
     }
-    <button type="submit" [disabled]="!validRequest() || busy()">Search TMDB</button>
+    <button type="submit" [disabled]="!validSearch() || busy()">Search TMDB</button>
   </form>
   @if (busy()) {
     <p role="status">Looking up TMDB metadata…</p>
@@ -31,7 +34,7 @@
   }
   @if (matches().length) {
     <fieldset>
-      <legend>Choose a candidate — nothing is selected automatically</legend>
+      <legend>Choose a candidate — restored choices still require verification</legend>
       @for (match of matches(); track match.id) {
         <label
           ><input

@@ -345,6 +345,17 @@ defaults to English; names default to `Movie Title (Year)` or
 optional and off by default. Confirmed metadata is snapshotted for the run so a
 later TMDB change or outage does not alter an approved execution or rollback.
 
+The TMDB matching stage appears automatically when an enabled TMDB plugin is added.
+Existing matches survive unrelated plugin edits and collection additions; changed
+step inputs or TMDB options require confirmation again. Reopening a picker restores
+its search and episode fields. A previous show choice can be reused for another file,
+but its exact season and episode must still be verified and confirmed separately.
+
+When rendering metadata fields, filesystem-invalid characters become hyphens,
+braces become parentheses, and trailing spaces and periods are removed. Reserved
+metadata names receive an underscore prefix. Custom template text and the final
+paths still undergo normal validation; preview the resulting names before execution.
+
 TMDB's non-commercial API requires attribution; commercial use requires appropriate
 licensing. See the [TMDB FAQ](https://developer.themoviedb.org/docs/faq) and
 [application authentication](https://developer.themoviedb.org/docs/authentication-application).

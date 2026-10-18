@@ -167,15 +167,33 @@ public sealed class PipelineEngine(ITmdbMetadata metadata, IRenameFileSystem fil
         if (template.Length > 1000) throw new RenameException("InvalidTemplate", "Template is too long.");
         var result = Regex.Replace(template, @"\{([^{}]+)\}", m => m.Groups[1].Value switch
         {
-            "title" => match.Title,
-            "year" => match.Year ?? "",
+            "title" => MetadataText(match.Title),
+            "year" => match.Year is null ? "" : MetadataText(match.Year),
             "season" => match.Season?.ToString("00") ?? throw new RenameException("InvalidTemplate", "Season is unavailable."),
             "episode" => match.Episode?.ToString("00") ?? throw new RenameException("InvalidTemplate", "Episode is unavailable."),
-            "episodeTitle" => match.EpisodeTitle ?? throw new RenameException("InvalidTemplate", "Episode title is unavailable."),
+            "episodeTitle" => MetadataText(match.EpisodeTitle ?? throw new RenameException("InvalidTemplate", "Episode title is unavailable.")),
             _ => throw new RenameException("InvalidTemplate", "Unknown template field.")
         }, RegexOptions.CultureInvariant, NamingRules.RegexTimeout);
         if (result.Contains('{') || result.Contains('}') || result.Contains('/') || result.Contains('\\'))
             throw new RenameException("InvalidTemplate", "Templates must render a single path segment without braces.");
+        return result;
+    }
+
+    private static string MetadataText(string value)
+    {
+        var result = new string(value.Select(c => c switch
+        {
+            '{' => '(',
+            '}' => ')',
+            _ when c < 32 || "<>:\"/\\|?*".Contains(c) => '-',
+            _ => c
+        }).ToArray()).TrimEnd(' ', '.');
+        if (result.Length == 0)
+            throw new RenameException("InvalidMetadataName", "TMDB returned text that cannot form a filename.");
+        if (result.StartsWith(".namerre-", StringComparison.OrdinalIgnoreCase)
+            || Regex.IsMatch(result, @"^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\.|$)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, NamingRules.RegexTimeout))
+            result = "_" + result;
         return result;
     }
 

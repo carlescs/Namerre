@@ -13,6 +13,45 @@
     A workflow supports at most 200 files. Remove files before previewing.
   </p>
 }
+@if (tmdbPlugins().length) {
+  <section aria-labelledby="matching-heading">
+    <h3 id="matching-heading">TMDB matching</h3>
+    <p>
+      Match each file before reviewing the final preview. Show choices can be reused, but every file
+      and episode must be verified and confirmed separately.
+    </p>
+    @for (row of matchRows(); track row.fileId + ':' + row.plugin.instanceId) {
+      <article>
+        <h4>{{ row.fileId }} — step {{ row.position }}</h4>
+        @if (row.step; as step) {
+          <p>
+            Step input: <code>{{ step.inputPath }}</code>
+          </p>
+          @if (step.error && isMatchingIssue(step.error.code)) {
+            <p>Match required.</p>
+          } @else {
+            <p>Metadata confirmed for this step.</p>
+          }
+          <button
+            type="button"
+            (click)="match(row.fileId, step)"
+            [disabled]="loadingPreview() || preparing() || executing()"
+          >
+            Choose / change TMDB match
+          </button>
+        } @else {
+          <p>
+            {{
+              loadingPreview() || !preview()
+                ? 'Evaluating step input…'
+                : 'Complete or correct the preceding steps first.'
+            }}
+          </p>
+        }
+      </article>
+    }
+  </section>
+}
 <div class="actions">
   <button
     type="button"
@@ -35,21 +74,31 @@
   <section aria-labelledby="preview-heading">
     <h3 id="preview-heading">Preview — no files have been changed</h3>
     @if (!result.canPrepare) {
-      <p class="error">Resolve the errors and conflicts below before preparing.</p>
+      @if (metadataPending()) {
+        <p>Complete TMDB matching above, then resolve any remaining errors before preparing.</p>
+      } @else {
+        <p class="error">Resolve the errors and conflicts below before preparing.</p>
+      }
     }
     @for (file of result.files; track file.id) {
       <article>
         <h4>{{ file.sourcePath }}</h4>
-        <p>
-          Folder: <code>{{ folder(file.sourcePath) }}</code> →
-          <code>{{ folder(file.targetPath) }}</code>
-        </p>
-        <p>
-          Final target: <code>{{ file.targetPath }}</code> —
-          {{ file.unchanged ? 'Unchanged' : 'Will move / rename' }}
-        </p>
+        @if (awaitingMetadata(file)) {
+          <p>The final target is available after TMDB matching is complete.</p>
+        } @else {
+          <p>
+            Folder: <code>{{ folder(file.sourcePath) }}</code> →
+            <code>{{ folder(file.targetPath) }}</code>
+          </p>
+          <p>
+            Final target: <code>{{ file.targetPath }}</code> —
+            {{ file.unchanged ? 'Unchanged' : 'Will move / rename' }}
+          </p>
+        }
         @for (issue of file.issues; track $index) {
-          <p class="error">{{ issue.code }}: {{ issue.message }}</p>
+          @if (!isMatchingIssue(issue.code)) {
+            <p class="error">{{ issue.code }}: {{ issue.message }}</p>
+          }
         }
         <details>
           <summary>Per-plugin trace ({{ file.steps.length }} steps)</summary>
@@ -64,16 +113,11 @@
                   Output: <code>{{ step.outputPath ?? 'Blocked — no output' }}</code>
                 </p>
                 @if (step.error) {
-                  <p class="error">{{ step.error.code }}: {{ step.error.message }}</p>
-                }
-                @if (step.typeId === 'tmdb') {
-                  <button
-                    type="button"
-                    (click)="match(file.id, step)"
-                    [disabled]="preparing() || executing()"
-                  >
-                    Choose / change TMDB match for this step
-                  </button>
+                  @if (isMatchingIssue(step.error.code)) {
+                    <p>Awaiting TMDB matching.</p>
+                  } @else {
+                    <p class="error">{{ step.error.code }}: {{ step.error.message }}</p>
+                  }
                 }
               </li>
             }
@@ -132,6 +176,7 @@
 @if (matching(); as context) {
   <app-tmdb-picker
     [context]="context"
+    (stateChanged)="rememberMatch($event)"
     (confirmed)="acceptMatch($event)"
     (dismissed)="matching.set(null)"
   />

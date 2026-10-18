@@ -160,6 +160,17 @@ export interface MatchContext {
   fileId: string;
   plugin: PluginInstance;
   inputPath: string;
+  state?: TmdbPickerState;
+  reusedShow?: boolean;
+}
+export interface TmdbPickerState {
+  query: string;
+  mediaType: string;
+  language: string;
+  season: number;
+  episode: number;
+  matches: TmdbMatch[];
+  selected: TmdbMatch | null;
 }
 
 @Injectable({ providedIn: 'root' })

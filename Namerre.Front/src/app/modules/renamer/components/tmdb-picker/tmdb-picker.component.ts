@@ -3,6 +3,7 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  OnInit,
   inject,
   input,
   output,
@@ -18,6 +19,7 @@ import {
   MetadataSelection,
   RenameApi,
   TmdbMatch,
+  TmdbPickerState,
   TmdbRequest,
   renameError,
 } from '../../rename-api';
@@ -28,10 +30,11 @@ import {
   styleUrl: './tmdb-picker.component.scss',
   templateUrl: './tmdb-picker.component.html',
 })
-export class TmdbPickerComponent implements AfterViewInit {
+export class TmdbPickerComponent implements OnInit, AfterViewInit {
   readonly context = input.required<MatchContext>();
   readonly confirmed = output<MetadataSelection>();
   readonly dismissed = output<void>();
+  readonly stateChanged = output<TmdbPickerState>();
   private readonly api = inject(RenameApi);
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
@@ -45,7 +48,7 @@ export class TmdbPickerComponent implements AfterViewInit {
       validators: [
         Validators.required,
         Validators.min(0),
-        Validators.max(9999),
+        Validators.max(999),
         Validators.pattern(/^\d+$/),
       ],
     }),
@@ -91,18 +94,27 @@ export class TmdbPickerComponent implements AfterViewInit {
     });
   }
 
-  ngAfterViewInit(): void {
+  ngOnInit(): void {
     const context = this.context();
     const name = context.inputPath.split('/').pop() ?? '';
     this.form.patchValue({
       query: name.replace(/\.[^.]+$/, ''),
       language: context.plugin.options.language ?? 'en-US',
+      ...context.state,
     });
+    if (context.state) {
+      this.matches.set(context.state.matches);
+      this.selected.set(context.state.selected);
+      this.searched.set(context.state.matches.length > 0);
+    }
+  }
+
+  ngAfterViewInit(): void {
     this.dialog().nativeElement.showModal();
   }
 
   protected search(): void {
-    if (!this.validRequest()) return;
+    if (!this.validSearch()) return;
     this.request?.unsubscribe();
     const revision = ++this.revision;
     this.busy.set(true);
@@ -141,7 +153,7 @@ export class TmdbPickerComponent implements AfterViewInit {
     this.busy.set(true);
     this.error.set('');
     const request: TmdbRequest = {
-      ...this.searchRequest(),
+      ...this.searchRequest(true),
       id: match.id,
       fileId: context.fileId,
       instanceId: context.plugin.instanceId,
@@ -176,6 +188,7 @@ export class TmdbPickerComponent implements AfterViewInit {
     const match = this.resolved();
     if (!match?.confirmationToken || this.busy()) return;
     const context = this.context();
+    this.rememberState();
     this.confirmed.emit({
       fileId: context.fileId,
       instanceId: context.plugin.instanceId,
@@ -188,6 +201,7 @@ export class TmdbPickerComponent implements AfterViewInit {
   protected cancel(): void {
     this.revision++;
     this.request?.unsubscribe();
+    this.rememberState();
     this.dialog().nativeElement.close();
     this.dismissed.emit();
   }
@@ -195,19 +209,32 @@ export class TmdbPickerComponent implements AfterViewInit {
   protected validRequest(): boolean {
     const controls = this.form.controls;
     return (
-      controls.query.valid &&
-      controls.language.valid &&
+      this.validSearch() &&
       (controls.mediaType.value !== 'tv' || (controls.season.valid && controls.episode.valid))
     );
   }
 
-  private searchRequest(): TmdbRequest {
+  protected validSearch(): boolean {
+    return this.form.controls.query.valid && this.form.controls.language.valid;
+  }
+
+  private rememberState(): void {
+    this.stateChanged.emit({
+      ...this.form.getRawValue(),
+      matches: this.matches(),
+      selected: this.selected(),
+    });
+  }
+
+  private searchRequest(includeEpisode = false): TmdbRequest {
     const value = this.form.getRawValue();
     return {
       mediaType: value.mediaType,
       query: value.query,
       language: value.language,
-      ...(value.mediaType === 'tv' ? { season: value.season, episode: value.episode } : {}),
+      ...(includeEpisode && value.mediaType === 'tv'
+        ? { season: value.season, episode: value.episode }
+        : {}),
     };
   }
 }

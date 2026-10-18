@@ -3,10 +3,18 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { Router, provideRouter } from '@angular/router';
-import { PlanView, PreviewResult } from '../../rename-api';
+import { optionsHash } from '../../options-hash';
+import {
+  MetadataSelection,
+  PlanView,
+  PluginInstance,
+  PreviewResult,
+  TmdbPickerState,
+} from '../../rename-api';
 import { RenamerFile } from '../../renamer-file';
 import { PluginEditorComponent } from '../plugin-editor/plugin-editor.component';
 import { RenameWorkflowComponent } from './rename-workflow.component';
+import { TmdbPickerComponent } from '../tmdb-picker/tmdb-picker.component';
 
 describe('RenameWorkflowComponent', () => {
   let fixture: ComponentFixture<RenameWorkflowComponent>;
@@ -53,6 +61,59 @@ describe('RenameWorkflowComponent', () => {
     issues: [],
     createdAt: '2026-10-18T00:00:00Z',
   };
+  const tmdb: PluginInstance = {
+    instanceId: 'tmdb-1',
+    typeId: 'tmdb',
+    version: 1,
+    enabled: true,
+    options: { nameTemplate: '', language: 'en-US' },
+  };
+  const selection: MetadataSelection = {
+    fileId: 'a.txt',
+    instanceId: tmdb.instanceId,
+    inputPath: 'a.txt',
+    optionsHash: optionsHash(JSON.stringify(tmdb.options)),
+    confirmationToken: 'confirmed-file-a',
+  };
+  const missing = { code: 'MetadataRequired', message: 'Confirm a match.' };
+  const tmdbPreview: PreviewResult = {
+    files: [
+      {
+        ...preview.files[0],
+        targetPath: 'a.txt',
+        unchanged: true,
+        steps: [
+          {
+            instanceId: tmdb.instanceId,
+            typeId: 'tmdb',
+            inputPath: 'a.txt',
+            outputPath: null,
+            error: missing,
+          },
+        ],
+        issues: [missing],
+      },
+    ],
+    canPrepare: false,
+  };
+  const matchedPreview: PreviewResult = {
+    files: [
+      {
+        ...tmdbPreview.files[0],
+        targetPath: 'Movie (2000).txt',
+        unchanged: false,
+        steps: [
+          {
+            ...tmdbPreview.files[0].steps[0],
+            outputPath: 'Movie (2000).txt',
+            error: null,
+          },
+        ],
+        issues: [],
+      },
+    ],
+    canPrepare: true,
+  };
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -60,6 +121,8 @@ describe('RenameWorkflowComponent', () => {
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     }).compileComponents();
     http = TestBed.inject(HttpTestingController);
+    HTMLDialogElement.prototype.showModal = vi.fn();
+    HTMLDialogElement.prototype.close = vi.fn();
     fixture = TestBed.createComponent(RenameWorkflowComponent);
     fixture.componentRef.setInput('files', files);
     await fixture.whenStable();
@@ -72,6 +135,7 @@ describe('RenameWorkflowComponent', () => {
   afterEach(() => {
     fixture.destroy();
     http.verify();
+    vi.restoreAllMocks();
   });
 
   it('sends an empty pipeline and never prepares unchanged files', async () => {
@@ -222,6 +286,213 @@ describe('RenameWorkflowComponent', () => {
       { status: 409, statusText: 'Conflict' },
     );
   });
+
+  it('automatically exposes matching outside the collapsed trace before a manual preview', async () => {
+    changePlugins([tmdb]);
+    await fixture.whenStable();
+    expect(text()).toContain('TMDB matching');
+    await new Promise((resolve) => setTimeout(resolve, 310));
+    http.expectOne('/api/rename-previews').flush(tmdbPreview);
+    await fixture.whenStable();
+    const matchingStage = fixture.nativeElement.querySelector(
+      '[aria-labelledby="matching-heading"]',
+    ) as HTMLElement;
+    expect(matchingStage.querySelector('button')?.textContent).toContain('Choose / change');
+    expect(matchingStage.closest('details')).toBeNull();
+    expect(text()).toContain('Match required.');
+    expect(text()).not.toContain('MetadataRequired');
+    expect(text()).not.toContain('Final target:');
+    expect(button('Prepare immutable').disabled).toBe(true);
+  });
+
+  it('retains matches across downstream edits and collection additions but still invalidates plans', async () => {
+    await confirmMetadata();
+    button('Prepare immutable').click();
+    http.expectOne('/api/rename-plans').flush({ id: 'plan-1', status: 'Preparing', location: '' });
+    await waitForPoll();
+    http.expectOne('/api/rename-plans/plan-1').flush(ready);
+    await fixture.whenStable();
+    expect(button('Confirm and execute').disabled).toBe(false);
+    changePlugins([
+      tmdb,
+      {
+        instanceId: 'case-2',
+        typeId: 'case',
+        version: 1,
+        enabled: true,
+        options: { mode: 'lower' },
+      },
+    ]);
+    await fixture.whenStable();
+    expect(text()).not.toContain('Immutable plan plan-1');
+    expect(button('Prepare immutable').disabled).toBe(true);
+    button('Preview').click();
+    const changed = http.expectOne('/api/rename-previews');
+    expect(changed.request.body.selections).toEqual([selection]);
+    changed.flush(matchedPreview);
+    await fixture.whenStable();
+    fixture.componentRef.setInput('files', [
+      ...files,
+      { ...files[0], path: 'b.txt', name: 'b.txt' },
+    ]);
+    await fixture.whenStable();
+    button('Preview').click();
+    const added = http.expectOne('/api/rename-previews');
+    expect(added.request.body.selections).toEqual([selection]);
+    added.flush(matchedPreview);
+    await fixture.whenStable();
+    fixture.componentRef.setInput('files', [{ ...files[0], path: 'b.txt', name: 'b.txt' }]);
+    await fixture.whenStable();
+    button('Preview').click();
+    const removed = http.expectOne('/api/rename-previews');
+    expect(removed.request.body.selections).toEqual([]);
+    removed.flush({ files: [], canPrepare: false });
+  });
+
+  it('drops a match when its TMDB options change', async () => {
+    await confirmMetadata();
+    changePlugins([{ ...tmdb, options: { ...tmdb.options, nameTemplate: '{title}' } }]);
+    await fixture.whenStable();
+    button('Preview').click();
+    const changed = http.expectOne('/api/rename-previews');
+    expect(changed.request.body.selections).toEqual([]);
+    changed.flush(tmdbPreview);
+  });
+
+  it('drops a match rejected for a changed step input and keeps preparation blocked', async () => {
+    await confirmMetadata();
+    changePlugins([
+      {
+        instanceId: 'upstream',
+        typeId: 'case',
+        version: 1,
+        enabled: true,
+        options: { mode: 'upper' },
+      },
+      tmdb,
+    ]);
+    await fixture.whenStable();
+    button('Preview').click();
+    http.expectOne('/api/rename-previews').flush({
+      ...tmdbPreview,
+      files: [
+        {
+          ...tmdbPreview.files[0],
+          steps: [{ ...tmdbPreview.files[0].steps[0], inputPath: 'A.txt' }],
+        },
+      ],
+    });
+    await fixture.whenStable();
+    expect(button('Prepare immutable').disabled).toBe(true);
+    button('Preview').click();
+    const next = http.expectOne('/api/rename-previews');
+    expect(next.request.body.selections).toEqual([]);
+    next.flush(tmdbPreview);
+  });
+
+  it('restores per-file picker state and reuses a show without approving another episode', async () => {
+    fixture.componentRef.setInput('files', [
+      ...files,
+      { ...files[0], path: 'b.txt', name: 'b.txt' },
+    ]);
+    changePlugins([tmdb]);
+    await fixture.whenStable();
+    button('Preview').click();
+    const twoFiles = {
+      ...tmdbPreview,
+      files: [
+        tmdbPreview.files[0],
+        {
+          ...tmdbPreview.files[0],
+          id: 'b.txt',
+          sourcePath: 'b.txt',
+          steps: [{ ...tmdbPreview.files[0].steps[0], inputPath: 'b.txt' }],
+        },
+      ],
+    };
+    http.expectOne('/api/rename-previews').flush(twoFiles);
+    await fixture.whenStable();
+    button('Choose / change').click();
+    await fixture.whenStable();
+    const show = {
+      id: 42,
+      mediaType: 'tv',
+      title: 'A Show',
+      year: '2000',
+      season: null,
+      episode: null,
+      episodeTitle: null,
+      confirmationToken: null,
+    };
+    const state: TmdbPickerState = {
+      query: 'A Show',
+      mediaType: 'tv',
+      language: 'en-US',
+      season: 2,
+      episode: 7,
+      matches: [show],
+      selected: show,
+    };
+    picker().stateChanged.emit(state);
+    picker().confirmed.emit(selection);
+    await fixture.whenStable();
+    button('Preview').click();
+    const current = http.expectOne('/api/rename-previews');
+    expect(current.request.body.selections).toEqual([selection]);
+    current.flush({ ...twoFiles, files: [matchedPreview.files[0], twoFiles.files[1]] });
+    await fixture.whenStable();
+    button('Choose / change').click();
+    await fixture.whenStable();
+    expect(picker().context().state).toEqual(state);
+    expect(picker().context().reusedShow).toBe(false);
+    button('Cancel matching').click();
+    await fixture.whenStable();
+    const choices = fixture.nativeElement.querySelectorAll(
+      '[aria-labelledby="matching-heading"] button',
+    ) as NodeListOf<HTMLButtonElement>;
+    choices[1].click();
+    await fixture.whenStable();
+    expect(picker().context()).toMatchObject({
+      fileId: 'b.txt',
+      reusedShow: true,
+      state: { ...state, episode: 1 },
+    });
+    expect(text()).not.toContain('Confirm this match');
+    button('Cancel matching').click();
+    await fixture.whenStable();
+    button('Preview').click();
+    const unconfirmed = http.expectOne('/api/rename-previews');
+    expect(unconfirmed.request.body.selections).toEqual([selection]);
+    unconfirmed.flush(twoFiles);
+  });
+
+  function changePlugins(plugins: PluginInstance[]): void {
+    const editor = fixture.debugElement.query(By.directive(PluginEditorComponent))
+      .componentInstance as PluginEditorComponent;
+    editor.pluginsChanged.emit(plugins);
+  }
+
+  function picker(): TmdbPickerComponent {
+    return fixture.debugElement.query(By.directive(TmdbPickerComponent))
+      .componentInstance as TmdbPickerComponent;
+  }
+
+  async function confirmMetadata(): Promise<void> {
+    changePlugins([tmdb]);
+    await fixture.whenStable();
+    button('Preview').click();
+    http.expectOne('/api/rename-previews').flush(tmdbPreview);
+    await fixture.whenStable();
+    button('Choose / change').click();
+    await fixture.whenStable();
+    picker().confirmed.emit(selection);
+    await fixture.whenStable();
+    button('Preview').click();
+    const confirmed = http.expectOne('/api/rename-previews');
+    expect(confirmed.request.body.selections).toEqual([selection]);
+    confirmed.flush(matchedPreview);
+    await fixture.whenStable();
+  }
 
   async function showPreview(): Promise<void> {
     button('Preview').click();
