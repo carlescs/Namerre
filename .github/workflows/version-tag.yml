@@ -1,0 +1,60 @@
+name: Create version tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version increment
+        required: true
+        default: patch
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+
+permissions:
+  contents: write
+
+concurrency:
+  group: create-version-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push version tag
+        env:
+          VERSION_BUMP: ${{ inputs.bump }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version_tags=$(git tag --list 'v*' --sort=-version:refname)
+          version="0.0.0"
+          while IFS= read -r tag; do
+            if [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              version="${tag#v}"
+              break
+            fi
+          done <<< "$version_tags"
+
+          IFS=. read -r major minor patch <<< "$version"
+          case "$VERSION_BUMP" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+            *) echo "::error::Unsupported version increment: $VERSION_BUMP"; exit 1 ;;
+          esac
+
+          new_tag="v${major}.${minor}.${patch}"
+          git tag "$new_tag" "$GITHUB_SHA"
+          git push origin "refs/tags/$new_tag"
+          printf 'Created tag **%s** at `%s` (previous stable version: `%s`).\n' \
+            "$new_tag" "$GITHUB_SHA" "$version" >> "$GITHUB_STEP_SUMMARY"
