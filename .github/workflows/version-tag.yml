@@ -14,6 +14,7 @@ on:
           - patch
 
 permissions:
+  actions: write
   contents: write
 
 concurrency:
@@ -29,9 +30,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create and push version tag
+      - name: Create version tag and start release pipeline
         env:
           VERSION_BUMP: ${{ inputs.bump }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
@@ -56,5 +59,6 @@ jobs:
           new_tag="v${major}.${minor}.${patch}"
           git tag "$new_tag" "$GITHUB_SHA"
           git push origin "refs/tags/$new_tag"
-          printf 'Created tag **%s** at `%s` (previous stable version: `%s`).\n' \
+          gh workflow run docker.yml --ref "$new_tag"
+          printf 'Created tag **%s** at `%s` (previous stable version: `%s`) and dispatched the Docker release pipeline.\n' \
             "$new_tag" "$GITHUB_SHA" "$version" >> "$GITHUB_STEP_SUMMARY"
