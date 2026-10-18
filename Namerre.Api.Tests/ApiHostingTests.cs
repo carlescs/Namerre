@@ -4,8 +4,8 @@ using Xunit;
 
 namespace Namerre.Api.Tests;
 
-public sealed class ApiHostingTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class ApiHostingTests(AuthWebApplicationFactory factory)
+    : IClassFixture<AuthWebApplicationFactory>
 {
     [Theory]
     [InlineData("/api/WeatherForecast")]

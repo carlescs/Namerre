@@ -25,7 +25,7 @@ public sealed class FolderBrowsingTests : IDisposable
     public async Task ListsRootAndSelectedFolderThroughMediator()
     {
         using var factory = CreateFactory(root);
-        using var client = CreateClient(factory);
+        using var client = await AuthWebApplicationFactory.AuthenticatedClient(factory);
 
         var listing = await client.GetFromJsonAsync<FolderListing>("/api/folders");
 
@@ -61,7 +61,7 @@ public sealed class FolderBrowsingTests : IDisposable
     {
         File.WriteAllText(Path.Combine(root, "Movies", "Nested", "notes.txt"), "nested");
         using var factory = CreateFactory(root);
-        using var client = CreateClient(factory);
+        using var client = await AuthWebApplicationFactory.AuthenticatedClient(factory);
 
         var folders = await client.GetFromJsonAsync<FolderListing[]>(
             $"/api/folders/selection?path={path}&includeSubfolders={includeSubfolders}");
@@ -90,7 +90,7 @@ public sealed class FolderBrowsingTests : IDisposable
     public async Task SelectionDefaultsToCurrentFolderOnly()
     {
         using var factory = CreateFactory(root);
-        using var client = CreateClient(factory);
+        using var client = await AuthWebApplicationFactory.AuthenticatedClient(factory);
 
         var folders = await client.GetFromJsonAsync<FolderListing[]>("/api/folders/selection");
 
@@ -110,7 +110,7 @@ public sealed class FolderBrowsingTests : IDisposable
     public async Task RejectsPathsOutsideRoot(string path)
     {
         using var factory = CreateFactory(root);
-        using var client = CreateClient(factory);
+        using var client = await AuthWebApplicationFactory.AuthenticatedClient(factory);
 
         foreach (var endpoint in new[] { "/api/folders", "/api/folders/selection" })
         {
@@ -128,7 +128,7 @@ public sealed class FolderBrowsingTests : IDisposable
     public async Task MissingOrNonDirectoryPathsReturnNotFound(string path)
     {
         using var factory = CreateFactory(root);
-        using var client = CreateClient(factory);
+        using var client = await AuthWebApplicationFactory.AuthenticatedClient(factory);
 
         using var response = await client.GetAsync($"/api/folders?path={path}");
 
@@ -139,7 +139,7 @@ public sealed class FolderBrowsingTests : IDisposable
     public async Task UnconfiguredRootReturnsExplicitUnavailableError()
     {
         using var factory = CreateFactory("");
-        using var client = CreateClient(factory);
+        using var client = await AuthWebApplicationFactory.AuthenticatedClient(factory);
 
         using var response = await client.GetAsync("/api/folders");
 
@@ -151,7 +151,7 @@ public sealed class FolderBrowsingTests : IDisposable
     public async Task MissingConfiguredRootReturnsUnavailableWithoutLeakingItsPath()
     {
         using var factory = CreateFactory(Path.Combine(root, "missing"));
-        using var client = CreateClient(factory);
+        using var client = await AuthWebApplicationFactory.AuthenticatedClient(factory);
 
         using var response = await client.GetAsync("/api/folders");
 
@@ -183,7 +183,7 @@ public sealed class FolderBrowsingTests : IDisposable
         try
         {
             using var factory = CreateFactory(root);
-            using var client = CreateClient(factory);
+            using var client = await AuthWebApplicationFactory.AuthenticatedClient(factory);
             var listing = await client.GetFromJsonAsync<FolderListing>("/api/folders");
             Assert.NotNull(listing);
             Assert.DoesNotContain(listing.Directories, entry => entry.Name == "Link");
@@ -217,18 +217,12 @@ public sealed class FolderBrowsingTests : IDisposable
     }
 
     private static WebApplicationFactory<Program> CreateFactory(string rootPath)
-        => new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        => new AuthWebApplicationFactory().WithWebHostBuilder(builder =>
             builder.ConfigureAppConfiguration((_, configuration) =>
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["FileBrowser:RootPath"] = rootPath
                 })));
-
-    private static HttpClient CreateClient(WebApplicationFactory<Program> factory)
-        => factory.CreateClient(new WebApplicationFactoryClientOptions
-        {
-            BaseAddress = new Uri("https://localhost")
-        });
 
     public void Dispose() => Directory.Delete(root, recursive: true);
 }

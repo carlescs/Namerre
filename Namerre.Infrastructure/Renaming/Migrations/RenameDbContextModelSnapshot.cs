@@ -16,6 +16,29 @@ namespace Namerre.Infrastructure.Renaming.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
 
+            modelBuilder.Entity("Namerre.Infrastructure.Renaming.AdministratorAccount", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Administrators", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Administrators_Singleton", "\"Id\" = 1");
+                        });
+                });
+
             modelBuilder.Entity("Namerre.Infrastructure.Renaming.DurableRenameJob", b =>
                 {
                     b.Property<string>("Id")

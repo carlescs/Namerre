@@ -1,0 +1,28 @@
+<main>
+  <h1>Sign in to Namerre</h1>
+  <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="busy()">
+    <label for="username">Username</label>
+    <input
+      id="username"
+      formControlName="username"
+      autocomplete="username"
+      maxlength="128"
+      required
+    />
+    <label for="password">Password</label>
+    <input
+      id="password"
+      type="password"
+      formControlName="password"
+      autocomplete="current-password"
+      maxlength="1024"
+      required
+    />
+    @if (error()) {
+      <p role="alert">{{ error() }}</p>
+    }
+    <button type="submit" [disabled]="busy() || form.invalid">
+      {{ busy() ? 'Signing in...' : 'Sign in' }}
+    </button>
+  </form>
+</main>

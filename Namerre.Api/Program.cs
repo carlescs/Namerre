@@ -3,6 +3,13 @@ using Namerre.Application.Folders;
 using Namerre.Infrastructure.Folders;
 using Namerre.Application.Renaming;
 using Namerre.Infrastructure.Renaming;
+using Namerre.Authentication;
+
+if (args is ["--hash-password"])
+{
+    AdminAccount.GeneratePasswordHash();
+    return;
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,11 +34,13 @@ builder.Services.AddSingleton<IFolderBrowser>(services => new ServerFolderBrowse
     services.GetRequiredService<IConfiguration>()["FileBrowser:RootPath"],
     services.GetRequiredService<IHostEnvironment>().ContentRootPath,
     services.GetRequiredService<RenameStore>().IsOwnedEntry));
-builder.Services.AddControllers();
+builder.Services.AddControllersWithViews();
+builder.Services.AddAdminAuthentication();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+_ = app.Services.GetRequiredService<AdminAccount>();
 
 if (!string.IsNullOrWhiteSpace(app.Configuration["Rename:DataPath"]))
 {
@@ -41,7 +50,11 @@ if (!string.IsNullOrWhiteSpace(app.Configuration["Rename:DataPath"]))
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.MapOpenApi().RequireAuthorization();
+}
+else
+{
+    app.UseHsts();
 }
 
 app.UseHttpsRedirection();
@@ -49,9 +62,26 @@ app.UseHttpsRedirection();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.UseAuthorization();
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/api"))
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        if (!context.Request.IsHttps)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await context.Response.WriteAsJsonAsync(new { message = "HTTPS is required." });
+            return;
+        }
+    }
+    await next(context);
+});
 
-app.MapControllers();
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRateLimiter();
+
+app.MapControllers().RequireAuthorization();
 app.MapFallback("/api/{**path}", () => Results.NotFound());
 app.MapFallbackToFile("index.html");
 

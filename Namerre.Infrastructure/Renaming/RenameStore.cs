@@ -255,7 +255,7 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         transaction.Commit();
     }
 
-    private RenameDbContext Open()
+    internal RenameDbContext Open()
     {
         CheckBinding();
         return new RenameDbContext(options!);

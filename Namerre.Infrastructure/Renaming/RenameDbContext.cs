@@ -9,6 +9,7 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
     public DbSet<DurableRenameJob> Jobs => Set<DurableRenameJob>();
     public DbSet<RenameOperation> Operations => Set<RenameOperation>();
     public DbSet<RenameSetting> Settings => Set<RenameSetting>();
+    public DbSet<AdministratorAccount> Administrators => Set<AdministratorAccount>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -37,7 +38,23 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
             entity.HasOne<RenameDocument>().WithMany().HasForeignKey(e => e.Target).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<RenameSetting>().HasKey(e => e.Key);
+        modelBuilder.Entity<AdministratorAccount>(entity =>
+        {
+            entity.ToTable("Administrators", table =>
+                table.HasCheckConstraint("CK_Administrators_Singleton", "\"Id\" = 1"));
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Username).HasMaxLength(128).IsRequired();
+            entity.Property(e => e.PasswordHash).HasMaxLength(256).IsRequired();
+        });
     }
+}
+
+public sealed class AdministratorAccount
+{
+    public int Id { get; set; }
+    public string Username { get; set; } = "";
+    public string PasswordHash { get; set; } = "";
 }
 
 public sealed class RenameDocument

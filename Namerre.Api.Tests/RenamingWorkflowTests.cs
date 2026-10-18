@@ -55,7 +55,7 @@ public sealed class RenamingWorkflowTests : IDisposable
         Write("alpha.txt", "original");
         string runId;
         using (var factory = Factory())
-        using (var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") }))
+        using (var client = await AuthWebApplicationFactory.AuthenticatedClient(factory))
         {
             var catalog = await client.GetFromJsonAsync<PluginDescriptor[]>("/api/rename-plugins");
             Assert.Equal(["literal", "regex", "case", "tmdb"], catalog!.Select(p => p.TypeId));
@@ -91,7 +91,7 @@ public sealed class RenamingWorkflowTests : IDisposable
             Assert.DoesNotContain(listing!.Files, f => f.Name.StartsWith(".namerre-", StringComparison.Ordinal));
         }
         using (var factory = Factory())
-        using (var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") }))
+        using (var client = await AuthWebApplicationFactory.AuthenticatedClient(factory))
         {
             var run = await client.GetFromJsonAsync<RunView>("/api/rename-runs/" + runId);
             Assert.Equal("Completed", run!.Status);
@@ -525,12 +525,12 @@ public sealed class RenamingWorkflowTests : IDisposable
     public async Task ReadOnlyPreviewDoesNotRequireStorageOrTmdbCredentials()
     {
         Write("alpha.txt", "A");
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration(
+        using var factory = new AuthWebApplicationFactory().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration(
             (_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["FileBrowser:RootPath"] = Root, ["Rename:DataPath"] = ""
             })));
-        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        using var client = await AuthWebApplicationFactory.AuthenticatedClient(factory);
         using var preview = await client.PostAsJsonAsync("/api/rename-previews", UpperRequest(["alpha.txt"]));
         Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
         using var prepare = await client.PostAsJsonAsync("/api/rename-plans", UpperRequest(["alpha.txt"]));
@@ -539,7 +539,7 @@ public sealed class RenamingWorkflowTests : IDisposable
         Assert.False(Directory.Exists(Data));
     }
 
-    private WebApplicationFactory<Program> Factory() => new WebApplicationFactory<Program>().WithWebHostBuilder(
+    private WebApplicationFactory<Program> Factory() => new AuthWebApplicationFactory().WithWebHostBuilder(
         builder => builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
             new Dictionary<string, string?> { ["FileBrowser:RootPath"] = Root, ["Rename:DataPath"] = Data })));
     private WebApplicationFactory<Program> FactoryWithoutWorker() => Factory().WithWebHostBuilder(

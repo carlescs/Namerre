@@ -1,1 +1,20 @@
-<router-outlet />
+@if (loading()) {
+  <p role="status">Connecting...</p>
+} @else {
+  @if (error()) {
+    <p role="alert">{{ error() }}</p>
+  }
+  @if (auth.username(); as username) {
+    <header>
+      <span>Signed in as {{ username }}</span>
+      <button type="button" (click)="logout()" [disabled]="signingOut()">Sign out</button>
+    </header>
+    <router-outlet />
+  } @else if (error()) {
+    <button type="button" (click)="initialize()">Retry</button>
+  } @else if (auth.requiresSetup()) {
+    <app-setup />
+  } @else {
+    <app-login />
+  }
+}
