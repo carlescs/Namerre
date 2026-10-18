@@ -7,8 +7,8 @@ self-hosted environment. The Angular frontend is the browser interface, and the
 ASP.NET Core API hosts the application and will handle file-renaming operations.
 Keep future functionality focused on this self-hosted file-maintenance purpose.
 
-The current code is an application scaffold; file-renaming features are not yet
-implemented. There are currently no application API endpoints.
+The app supports browsing server folders under a configured root and listing
+their files. File-renaming operations are not yet implemented.
 
 ## Build, run, test, and formatting
 
@@ -69,8 +69,9 @@ in `tsconfig.spec.json`.
 - Backend projects follow clean architecture: Domain has no dependencies;
   Application references Domain; Infrastructure references Application; API
   references Application and Infrastructure and is the composition root.
-  Domain and Infrastructure are empty scaffolds until real business rules and
-  external adapters are needed.
+  Domain is an empty scaffold. Infrastructure implements `IFolderBrowser` for
+  server filesystem access. `FileBrowser:RootPath` must be configured explicitly;
+  never allow browsing outside that root or through symbolic links/junctions.
 - Application uses CMediator v1.1.3 from GitHub Packages. Requests are sealed;
   handlers are internal sealed. Keep both in Application, where the generator
   runs, and rely on `AddApplication()` for generated scoped registration.
@@ -90,8 +91,8 @@ in `tsconfig.spec.json`.
 - The frontend is a client-rendered standalone Angular application:
   `src\main.ts` bootstraps `App` using `appConfig`. Application-wide providers
   belong in `src\app\app.config.ts`, and routes in `src\app\app.routes.ts`.
-  `App` imports `RouterOutlet`; the route list is currently empty and the page
-  is still Angular's starter template.
+  `App` imports `RouterOutlet`; the root route lazy-loads the renamer feature.
+  Folder browsing uses same-origin `HttpClient` requests to `/api/folders`.
 - The API uses ASP.NET Core controllers. `Program.cs` registers controllers
   and OpenAPI, exposes OpenAPI only in Development, enables HTTPS redirection
   and authorization middleware, and serves default/static files from `wwwroot`.

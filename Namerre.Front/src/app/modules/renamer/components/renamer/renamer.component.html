@@ -1,3 +1,87 @@
 <main>
   <h1>Renamer</h1>
+  <p>Choose a folder on the server to view its files.</p>
+
+  <section aria-labelledby="folder-heading" [attr.aria-busy]="loading()">
+    <h2 id="folder-heading">Server folder</h2>
+    @if (error()) {
+      <div class="error" role="alert">
+        <p>{{ error() }}</p>
+        <button type="button" (click)="retry()" [disabled]="loading()">Try again</button>
+      </div>
+    }
+    <p role="status">
+      @if (loading()) {
+        Loading folder...
+      } @else if (folder(); as selected) {
+        Selected folder: {{ selected.path || 'Server root' }}
+      }
+    </p>
+
+    @if (folder(); as selected) {
+      <nav aria-label="Folder navigation">
+        <button type="button" (click)="openFolder('')" [disabled]="loading() || !selected.path">
+          Server root
+        </button>
+        @if (selected.parentPath !== null) {
+          <button type="button" (click)="openFolder(selected.parentPath)" [disabled]="loading()">
+            Parent folder
+          </button>
+        }
+        <button type="button" (click)="openFolder(selected.path)" [disabled]="loading()">
+          Refresh
+        </button>
+      </nav>
+
+      <h3>Subfolders</h3>
+      @if (selected.directories.length) {
+        <ul class="folders">
+          @for (directory of selected.directories; track directory.path) {
+            <li>
+              <button type="button" (click)="openFolder(directory.path)" [disabled]="loading()">
+                {{ directory.name }}
+              </button>
+            </li>
+          }
+        </ul>
+      } @else {
+        <p>No subfolders in this folder.</p>
+      }
+      <p class="hint">
+        Only folders within the configured server root are available. Links are excluded.
+      </p>
+
+      <h3>Files ({{ selected.files.length }})</h3>
+      @if (selected.files.length) {
+        <div class="file-list">
+          <table>
+            <caption>
+              Files in
+              {{
+                selected.path || 'Server root'
+              }}
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Size (bytes)</th>
+                <th scope="col">Last modified</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (file of selected.files; track file.name) {
+                <tr>
+                  <td>{{ file.name }}</td>
+                  <td>{{ file.length | number }}</td>
+                  <td>{{ file.lastModifiedUtc | date: 'medium' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else {
+        <p>No files in this folder.</p>
+      }
+    }
+  </section>
 </main>

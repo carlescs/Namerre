@@ -1,0 +1,91 @@
+:host {
+  display: block;
+  color: #1e293b;
+  font-family: system-ui, sans-serif;
+}
+
+main {
+  max-width: 64rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+section {
+  padding: 1.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+}
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+button {
+  padding: 0.6rem 0.9rem;
+  border: 1px solid #64748b;
+  border-radius: 0.25rem;
+  background: #f8fafc;
+  color: #1e293b;
+  font: inherit;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+
+  &:hover:not(:disabled) {
+    background: #e2e8f0;
+  }
+
+  &:focus-visible {
+    outline: 3px solid #1d4ed8;
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
+.folders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.hint {
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.error {
+  padding: 1rem;
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #991b1b;
+}
+
+.file-list {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+caption {
+  text-align: left;
+  margin-bottom: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+th,
+td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #cbd5e1;
+  overflow-wrap: anywhere;
+}

@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <Target Name="BuildAngularFrontend"
-          BeforeTargets="AssignTargetPaths"
+          BeforeTargets="ResolveProjectStaticWebAssets;AssignTargetPaths"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(BuildFrontend)' != 'false'">
     <Exec WorkingDirectory="$(MSBuildProjectDirectory)\..\Namerre.Front"
           Command="npm run build" />

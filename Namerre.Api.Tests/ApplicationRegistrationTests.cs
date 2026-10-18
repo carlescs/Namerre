@@ -1,6 +1,8 @@
 using CMediator.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Namerre.Application;
+using Namerre.Application.Folders;
+using Namerre.Infrastructure.Folders;
 using Xunit;
 
 namespace Namerre.Api.Tests;
@@ -12,6 +14,7 @@ public sealed class ApplicationRegistrationTests
     {
         var services = new ServiceCollection();
         services.AddApplication();
+        services.AddSingleton<IFolderBrowser>(new ServerFolderBrowser(null, Path.GetTempPath()));
         using var provider = services.BuildServiceProvider(
             new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
         using var scope = provider.CreateScope();

@@ -1,8 +1,13 @@
 using Namerre.Application;
+using Namerre.Application.Folders;
+using Namerre.Infrastructure.Folders;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddApplication();
+builder.Services.AddSingleton<IFolderBrowser>(services => new ServerFolderBrowser(
+    services.GetRequiredService<IConfiguration>()["FileBrowser:RootPath"],
+    services.GetRequiredService<IHostEnvironment>().ContentRootPath));
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();

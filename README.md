@@ -1,7 +1,31 @@
 # Namerre
 
-A self-hosted, web-based file renamer. The application is currently a scaffold;
-file-renaming features and application API endpoints are not yet implemented.
+A self-hosted, web-based file renamer. Browse server folders and list their files;
+file-renaming operations are not yet implemented.
+
+## Server folder browsing
+
+Set `FileBrowser:RootPath` in the server configuration, or use the environment
+variable `FileBrowser__RootPath`, to an existing folder the API process can read.
+Relative roots resolve from the API content root. No folders are exposed until
+this setting is configured.
+
+```powershell
+$env:FileBrowser__RootPath = 'D:\Media'
+dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https
+```
+
+Open the app and select subfolders to list their immediate files, sizes and
+modification dates. Navigation stays within the configured root; symbolic links
+and junctions are excluded. `GET /api/folders?path=Movies` accepts a relative
+folder path; omit `path` to list the root. This endpoint lists metadata only,
+not file contents.
+
+For Docker, mount the desired server folder read-only and set
+`FileBrowser__RootPath` to its path **inside the container**. Expose only folders
+you intend users to see, and restrict network access to trusted users: the app
+does not currently implement authentication. The configured folder tree must
+not be writable by untrusted processes while browsing.
 
 ## Backend architecture
 
@@ -18,8 +42,8 @@ file-renaming features and application API endpoints are not yet implemented.
 Dependencies point inward. Domain has no framework dependencies; Application
 must not reference Infrastructure or ASP.NET Core. Define interfaces needed by
 use cases in Application and implement them in Infrastructure. Register concrete
-adapters from the API composition root when they are introduced. Domain and
-Infrastructure intentionally contain no placeholder business types or services.
+adapters from the API composition root. Infrastructure implements server folder
+browsing; Domain remains empty until business rules are needed.
 
 Organize future commands and queries by feature in
 Application; keep HTTP concerns in the API.
