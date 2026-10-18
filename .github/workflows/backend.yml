@@ -1,10 +1,10 @@
-name: Build and test backend
+name: Build and test application
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_call:
+    secrets:
+      CMEDIATOR_PACKAGES_TOKEN:
+        required: true
   workflow_dispatch:
 
 permissions:
@@ -40,5 +40,43 @@ jobs:
       - name: Build
         run: dotnet build Namerre.slnx --configuration Release --no-restore
 
-      - name: Test
-        run: dotnet test Namerre.slnx --configuration Release --no-build --no-restore
+      - name: Test with coverage
+        run: >-
+          dotnet test Namerre.slnx --configuration Release --no-build --no-restore
+          --collect:"XPlat Code Coverage" --logger trx --results-directory TestResults
+
+      - name: Upload backend test results and coverage
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-test-results
+          path: TestResults/
+          if-no-files-found: error
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: Namerre.Front/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix Namerre.Front
+
+      - name: Test with coverage
+        working-directory: Namerre.Front
+        run: npm test -- --watch=false --coverage --coverage-reporters=text-summary --coverage-reporters=html --coverage-reporters=cobertura
+
+      - name: Upload frontend coverage
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: frontend-coverage
+          path: Namerre.Front/coverage/
+          if-no-files-found: error

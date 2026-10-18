@@ -3,7 +3,7 @@ name: Build and publish Docker image
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -12,8 +12,17 @@ permissions:
   contents: read
 
 jobs:
+  tests:
+    uses: ./.github/workflows/backend.yml
+    secrets:
+      CMEDIATOR_PACKAGES_TOKEN: ${{ secrets.CMEDIATOR_PACKAGES_TOKEN }}
+
   docker:
+    needs: tests
     runs-on: ubuntu-latest
+    outputs:
+      tags: ${{ steps.metadata.outputs.tags }}
+      digest: ${{ steps.build.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -45,6 +54,7 @@ jobs:
             type=sha
 
       - name: Build and publish image
+        id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
@@ -56,3 +66,59 @@ jobs:
             github_packages_credentials=Username=${{ github.repository_owner }};Password=${{ secrets.CMEDIATOR_PACKAGES_TOKEN }};ValidAuthenticationTypes=Basic
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release:
+    needs: docker
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out release history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Publish release with change summary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          IMAGE_TAGS: ${{ needs.docker.outputs.tags }}
+          IMAGE_DIGEST: ${{ needs.docker.outputs.digest }}
+        run: |
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            release_tag="$REF_NAME"
+            release_title="$REF_NAME"
+            release_options=(--verify-tag)
+            tag_patterns=('v*')
+          else
+            release_tag="main-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+            release_title="Main build ${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+            release_options=(--prerelease --latest=false)
+            tag_patterns=('main-*' 'v*')
+          fi
+
+          previous_tags=$(git tag --merged "$COMMIT_SHA" --sort=-creatordate --list "${tag_patterns[@]}")
+          log_range="$COMMIT_SHA"
+          while IFS= read -r previous_tag; do
+            if [[ -n "$previous_tag" && "$previous_tag" != "$release_tag" ]]; then
+              log_range="$previous_tag..$COMMIT_SHA"
+              release_options+=(--notes-start-tag "$previous_tag")
+              break
+            fi
+          done <<< "$previous_tags"
+
+          changes=$(git log --format='- %s (%h)' "$log_range")
+          release_notes=$(printf '## Changes\n\n%s\n\n## Docker image\n\n```text\n%s\n```\n\nDigest: `%s`\n' "$changes" "$IMAGE_TAGS" "$IMAGE_DIGEST")
+          gh release create "$release_tag" \
+            --target "$COMMIT_SHA" \
+            --title "$release_title" \
+            --generate-notes \
+            --notes "$release_notes" \
+            "${release_options[@]}"
+
+          gh release view "$release_tag" --json body --jq .body >> "$GITHUB_STEP_SUMMARY"
