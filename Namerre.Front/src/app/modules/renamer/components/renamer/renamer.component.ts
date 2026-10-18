@@ -1,59 +1,38 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, inject, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { finalize } from 'rxjs';
+import { Component, signal } from '@angular/core';
 import { FolderListing } from '../../folder-listing';
+import { RenamerFile } from '../../renamer-file';
+import { FolderPickerComponent } from '../folder-picker/folder-picker.component';
 
 @Component({
   selector: 'app-renamer',
-  imports: [DatePipe, DecimalPipe],
+  imports: [DatePipe, DecimalPipe, FolderPickerComponent],
   styleUrl: './renamer.component.scss',
   templateUrl: './renamer.component.html',
 })
 export class RenamerComponent {
-  private readonly http = inject(HttpClient);
-  private readonly destroyRef = inject(DestroyRef);
-  private requestedPath = '';
+  protected readonly files = signal<RenamerFile[]>([]);
 
-  protected readonly folder = signal<FolderListing | null>(null);
-  protected readonly loading = signal(false);
-  protected readonly error = signal('');
-
-  constructor() {
-    this.openFolder('');
+  protected clearFiles(): void {
+    this.files.set([]);
   }
 
-  protected openFolder(path: string): void {
-    if (this.loading()) {
-      return;
-    }
-
-    this.requestedPath = path;
-    this.error.set('');
-    this.loading.set(true);
-    this.http
-      .get<FolderListing>('/api/folders', { params: { path } })
-      .pipe(
-        takeUntilDestroyed(this.destroyRef),
-        finalize(() => this.loading.set(false)),
-      )
-      .subscribe({
-        next: (folder) => this.folder.set(folder),
-        error: (error: HttpErrorResponse) => {
-          const messages: Record<number, string> = {
-            0: 'Cannot reach the server. Check your connection and try again.',
-            400: 'Choose a folder within the configured server root.',
-            403: 'The server cannot access this folder. Links and junctions cannot be browsed.',
-            404: 'This folder no longer exists. Select another folder.',
-            503: 'Server folder browsing is unavailable. Check FileBrowser:RootPath and server permissions.',
-          };
-          this.error.set(messages[error.status] ?? 'The folder could not be loaded. Try again.');
-        },
-      });
+  protected removeFile(path: string): void {
+    this.files.update((files) => files.filter((file) => file.path !== path));
   }
 
-  protected retry(): void {
-    this.openFolder(this.requestedPath);
+  protected addFolder(folder: FolderListing): void {
+    this.files.update((files) => {
+      const paths = new Set(files.map((file) => file.path));
+      const additions: RenamerFile[] = [];
+      for (const file of folder.files) {
+        const path = folder.path ? `${folder.path}/${file.name}` : file.name;
+        if (!paths.has(path)) {
+          paths.add(path);
+          additions.push({ ...file, path, folderPath: folder.path });
+        }
+      }
+      return [...files, ...additions];
+    });
   }
 }

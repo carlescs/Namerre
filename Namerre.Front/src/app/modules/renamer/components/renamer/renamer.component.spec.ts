@@ -1,12 +1,14 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { FolderListing } from '../../folder-listing';
+import { FolderPickerComponent } from '../folder-picker/folder-picker.component';
 import { RenamerComponent } from './renamer.component';
 
 describe('RenamerComponent', () => {
-  let component: RenamerComponent;
   let fixture: ComponentFixture<RenamerComponent>;
+  let picker: FolderPickerComponent;
   let http: HttpTestingController;
   const root: FolderListing = {
     path: '',
@@ -20,73 +22,142 @@ describe('RenamerComponent', () => {
       imports: [RenamerComponent],
       providers: [provideHttpClient(), provideHttpClientTesting()],
     }).compileComponents();
-
     fixture = TestBed.createComponent(RenamerComponent);
-    component = fixture.componentInstance;
     http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/folders?path=').flush(root);
     await fixture.whenStable();
+    picker = fixture.debugElement
+      .query(By.directive(FolderPickerComponent))
+      .injector.get(FolderPickerComponent);
   });
 
   afterEach(() => http.verify());
 
-  it('should create', () => {
-    expect(component).toBeTruthy();
+  it('starts with an empty renaming collection', () => {
+    expect(main().textContent).toContain('Files for renaming (0)');
+    expect(main().textContent).toContain('No files added yet.');
+    expect(rows()).toHaveLength(0);
   });
 
-  it('lists the configured server root and its immediate files', () => {
-    const element: HTMLElement = fixture.nativeElement;
-    expect(element.textContent).toContain('Selected folder: Server root');
-    expect(element.textContent).toContain('notes.txt');
-    expect(element.textContent).toContain('Movies');
-    expect(element.querySelectorAll('tbody tr')).toHaveLength(1);
+  it('opens the dedicated folder picker', () => {
+    const open = vi.spyOn(picker, 'open').mockImplementation(() => {});
+    main().querySelector('button')?.click();
+    expect(open).toHaveBeenCalledOnce();
   });
 
-  it('navigates into a server folder and back to its parent', async () => {
-    clickButton('Movies');
-    const request = http.expectOne('/api/folders?path=Movies');
-    expect(fixture.nativeElement.textContent).toContain('Loading folder...');
-    request.flush({
-      path: 'Movies',
-      parentPath: '',
-      directories: [],
-      files: [],
+  it('adds confirmed files and displays their source folder', async () => {
+    await select(root);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].textContent).toContain('notes.txt');
+    expect(rows()[0].textContent).toContain('Server root');
+    expect(main().textContent).toContain('Files for renaming (1)');
+  });
+
+  it('accumulates files from different folders even when their names match', async () => {
+    await select(root);
+    await select({ ...root, path: 'Movies', parentPath: '' });
+    expect(rows()).toHaveLength(2);
+    expect(rows()[0].textContent).toContain('Server root');
+    expect(rows()[1].textContent).toContain('Movies');
+    expect(main().textContent).toContain('Files for renaming (2)');
+  });
+
+  it('skips existing paths while adding newly discovered files', async () => {
+    await select(root);
+    await select(root);
+    expect(rows()).toHaveLength(1);
+    await select({
+      ...root,
+      files: [
+        ...root.files,
+        { name: 'new.txt', length: 3, lastModifiedUtc: '2026-10-18T08:00:00Z' },
+      ],
     });
-    await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Selected folder: Movies');
-    expect(fixture.nativeElement.textContent).toContain('No files in this folder.');
-    clickButton('Parent folder');
-    http.expectOne('/api/folders?path=').flush(root);
-    await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('notes.txt');
+    expect(rows()).toHaveLength(2);
+    expect(rows()[1].textContent).toContain('new.txt');
   });
 
-  it('shows failures without replacing the selected folder and supports retry', async () => {
-    clickButton('Movies');
-    http.expectOne('/api/folders?path=Movies').flush({}, { status: 403, statusText: 'Forbidden' });
-    await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain(
-      'The server cannot access this folder.',
-    );
-    expect(fixture.nativeElement.textContent).toContain('Selected folder: Server root');
-    clickButton('Try again');
-    http.expectOne('/api/folders?path=Movies').flush({
-      path: 'Movies',
-      parentPath: '',
-      directories: [],
-      files: [],
-    });
-    await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
+  it('does not clear existing files when an empty folder is selected', async () => {
+    await select(root);
+    await select({ path: 'Empty', parentPath: '', directories: [], files: [] });
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].textContent).toContain('notes.txt');
   });
 
-  function clickButton(label: string): void {
-    const element: HTMLElement = fixture.nativeElement;
-    const button = Array.from(element.querySelectorAll('button')).find(
-      (candidate) => candidate.textContent?.trim() === label,
+  it('disables clearing an empty collection', () => {
+    expect(clearButton().disabled).toBe(true);
+  });
+
+  it('clears the collection and allows adding the same files again', async () => {
+    await select(root);
+    await select({ ...root, path: 'Movies', parentPath: '' });
+    expect(clearButton().disabled).toBe(false);
+    clearButton().click();
+    await fixture.whenStable();
+    expect(rows()).toHaveLength(0);
+    expect(main().textContent).toContain('Files for renaming (0)');
+    expect(main().textContent).toContain('No files added yet.');
+    expect(clearButton().disabled).toBe(true);
+    await select(root);
+    expect(rows()).toHaveLength(1);
+  });
+
+  it('removes only the selected path when filenames match across folders', async () => {
+    await select(root);
+    await select({ ...root, path: 'Movies', parentPath: '' });
+    const remove = rows()[1].querySelector('button');
+    expect(remove?.getAttribute('aria-label')).toBe('Remove Movies/notes.txt from collection');
+    remove?.click();
+    await fixture.whenStable();
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].textContent).toContain('Server root');
+    expect(main().textContent).toContain('Files for renaming (1)');
+    await select({ ...root, path: 'Movies', parentPath: '' });
+    expect(rows()).toHaveLength(2);
+  });
+
+  it('shows the empty collection state after removing the final item', async () => {
+    await select(root);
+    rows()[0].querySelector('button')?.click();
+    await fixture.whenStable();
+    expect(rows()).toHaveLength(0);
+    expect(main().textContent).toContain('No files added yet.');
+    expect(clearButton().disabled).toBe(true);
+  });
+
+  it('leaves the collection unchanged when the picker is cancelled', async () => {
+    await select(root);
+    const dialog: HTMLDialogElement = fixture.nativeElement.querySelector('dialog');
+    dialog.showModal = vi.fn(() => dialog.setAttribute('open', ''));
+    dialog.close = vi.fn(() => dialog.removeAttribute('open'));
+    main().querySelector('button')?.click();
+    const request = http.expectOne('/api/folders?path=');
+    dialog.dispatchEvent(new Event('cancel'));
+    await fixture.whenStable();
+    expect(request.cancelled).toBe(true);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].textContent).toContain('notes.txt');
+  });
+
+  async function select(folder: FolderListing): Promise<void> {
+    picker.folderSelected.emit(folder);
+    await fixture.whenStable();
+  }
+
+  function main(): HTMLElement {
+    return fixture.nativeElement.querySelector('main');
+  }
+
+  function clearButton(): HTMLButtonElement {
+    const button = Array.from(main().querySelectorAll('button')).find(
+      (candidate) => candidate.textContent?.trim() === 'Clear collection',
     );
-    expect(button).toBeDefined();
-    button!.click();
-    fixture.detectChanges();
+    if (!button) {
+      throw new Error('Clear collection button not found');
+    }
+    return button;
+  }
+
+  function rows(): NodeListOf<HTMLTableRowElement> {
+    return main().querySelectorAll('tbody tr');
   }
 });

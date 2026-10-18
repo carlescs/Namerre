@@ -15,8 +15,11 @@ $env:FileBrowser__RootPath = 'D:\Media'
 dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https
 ```
 
-Open the app and select subfolders to list their immediate files, sizes and
-modification dates. Navigation stays within the configured root; symbolic links
+Open the folder picker and confirm a folder to add its immediate files to the
+renaming collection. Subsequent selections add files without duplicating
+server-relative paths. The collection displays source folders, sizes and
+modification dates and remains in memory while the renamer is open.
+Navigation stays within the configured root; symbolic links
 and junctions are excluded. `GET /api/folders?path=Movies` accepts a relative
 folder path; omit `path` to list the root. This endpoint lists metadata only,
 not file contents.

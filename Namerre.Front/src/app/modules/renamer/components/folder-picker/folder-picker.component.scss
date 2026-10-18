@@ -1,0 +1,78 @@
+:host {
+  color: #1e293b;
+  font-family: system-ui, sans-serif;
+}
+
+dialog {
+  width: min(36rem, calc(100% - 4rem));
+  max-height: calc(100% - 4rem);
+  overflow-y: auto;
+  padding: 1.5rem;
+  border: 1px solid #64748b;
+  border-radius: 0.5rem;
+  color: inherit;
+
+  &::backdrop {
+    background: rgb(15 23 42 / 50%);
+  }
+}
+
+.current-path {
+  overflow-wrap: anywhere;
+
+  &:focus-visible {
+    outline: 3px solid #1d4ed8;
+    outline-offset: 2px;
+  }
+}
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+button {
+  padding: 0.6rem 0.9rem;
+  border: 1px solid #64748b;
+  border-radius: 0.25rem;
+  background: #f8fafc;
+  color: #1e293b;
+  font: inherit;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+
+  &:hover:not(:disabled) {
+    background: #e2e8f0;
+  }
+
+  &:focus-visible {
+    outline: 3px solid #1d4ed8;
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
+.folders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.hint {
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.error {
+  padding: 1rem;
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #991b1b;
+}

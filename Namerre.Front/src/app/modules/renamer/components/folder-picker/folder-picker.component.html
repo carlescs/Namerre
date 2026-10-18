@@ -1,0 +1,66 @@
+<dialog
+  #folderPicker
+  aria-labelledby="picker-heading"
+  aria-describedby="picker-description"
+  (cancel)="cancelPicker()"
+>
+  <h2 id="picker-heading">Choose server folder</h2>
+  <p id="picker-description">Browse to a folder, then select it to add its files for renaming.</p>
+  <button type="button" (click)="cancelPicker()">Cancel</button>
+  <div [attr.aria-busy]="loading()">
+    @if (error()) {
+      <div class="error" role="alert">
+        <p>{{ error() }}</p>
+        <button type="button" (click)="retry()" [disabled]="loading()">Try again</button>
+      </div>
+    }
+    <p #currentPath tabindex="-1" role="status" class="current-path">
+      @if (loading()) {
+        Loading folder...
+      } @else if (browsingFolder(); as selected) {
+        Current folder: {{ selected.path || 'Server root' }}
+      }
+    </p>
+
+    @if (browsingFolder(); as selected) {
+      <nav aria-label="Folder navigation">
+        <button type="button" (click)="openFolder('')" [disabled]="loading() || !selected.path">
+          Server root
+        </button>
+        @if (selected.parentPath !== null) {
+          <button type="button" (click)="openFolder(selected.parentPath)" [disabled]="loading()">
+            Parent folder
+          </button>
+        }
+        <button type="button" (click)="openFolder(selected.path)" [disabled]="loading()">
+          Refresh
+        </button>
+      </nav>
+
+      <h3>Subfolders</h3>
+      @if (selected.directories.length) {
+        <ul class="folders">
+          @for (directory of selected.directories; track directory.path) {
+            <li>
+              <button type="button" (click)="openFolder(directory.path)" [disabled]="loading()">
+                {{ directory.name }}
+              </button>
+            </li>
+          }
+        </ul>
+      } @else {
+        <p>No subfolders in this folder.</p>
+      }
+      <p class="hint">
+        Only folders within the configured server root are available. Links are excluded.
+      </p>
+    }
+  </div>
+  <button
+    type="button"
+    (click)="selectFolder()"
+    [disabled]="loading() || !browsingFolder() || !!error()"
+  >
+    Select folder
+  </button>
+</dialog>
