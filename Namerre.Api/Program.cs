@@ -6,6 +6,8 @@ using Namerre.Infrastructure.Renaming;
 using Namerre.Authentication;
 using Microsoft.Extensions.Options;
 using Namerre.Infrastructure.Configuration;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Net;
 
 if (args is ["--hash-password"])
 {
@@ -18,6 +20,15 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplication();
 builder.Services.AddOptions<NamerreOptions>()
     .Bind(builder.Configuration.GetSection(NamerreOptions.SectionName));
+builder.Services.AddOptions<ForwardedHeadersOptions>()
+    .Configure<IOptions<NamerreOptions>>((options, settings) =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        foreach (var proxy in settings.Value.ReverseProxy.KnownProxies)
+            options.KnownProxies.Add(IPAddress.Parse(proxy));
+        foreach (var network in settings.Value.ReverseProxy.KnownNetworks)
+            options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));
+    });
 builder.Services.AddSingleton(services => new BoundedFileSystem(
     services.GetRequiredService<IOptions<NamerreOptions>>().Value.RootPath,
     services.GetRequiredService<IHostEnvironment>().ContentRootPath));
@@ -52,6 +63,8 @@ if (!string.IsNullOrWhiteSpace(app.Services.GetRequiredService<IOptions<NamerreO
 }
 
 // Configure the HTTP request pipeline.
+app.UseForwardedHeaders();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi().RequireAuthorization();

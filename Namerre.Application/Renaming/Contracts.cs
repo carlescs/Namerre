@@ -42,7 +42,8 @@ public sealed record TmdbMatch(int Id, string MediaType, string Title, string? Y
     int? Episode, string? EpisodeTitle, string? ConfirmationToken = null);
 public sealed record TmdbSearchResult(IReadOnlyList<TmdbMatch> Matches);
 
-public sealed class RenameException(string code, string message, int status = 400, string? fileId = null) : Exception(message)
+public sealed class RenameException(string code, string message, int status = 400, string? fileId = null,
+    Exception? innerException = null) : Exception(message, innerException)
 {
     public string Code { get; } = code;
     public int Status { get; } = status;

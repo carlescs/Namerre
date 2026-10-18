@@ -7,7 +7,7 @@ previews, persistent run history, and selected-file rollback.
 
 These steps run the complete app locally from source. For containers, see
 [Persistent storage and deployment](#persistent-storage-and-deployment), including
-the required HTTPS configuration.
+the required browser-facing HTTPS and reverse-proxy configuration.
 
 1. Install the **.NET 10 SDK**, a Node.js version compatible with Angular 22, and
    **npm 11.13.0**. Clone this repository and open a terminal at its root.
@@ -66,6 +66,10 @@ Application settings live in one `Namerre` section in `Namerre.Api\appsettings.j
     "Tmdb": {
       "ReadAccessToken": "",
       "Language": "en"
+    },
+    "ReverseProxy": {
+      "KnownProxies": [],
+      "KnownNetworks": []
     }
   }
 }
@@ -137,11 +141,18 @@ credentials or include them in Angular assets or Docker build arguments. Changin
 and restarting the app invalidates existing sessions. To recover access, generate a
 new hash, update the server configuration, and restart.
 
-**HTTPS is required**, including the connection to ASP.NET Core: use the `https`
-launch profile locally (`https://localhost:7151`). For containers, configure Kestrel
-HTTPS with a certificate mounted at runtime, or use a reverse proxy with an HTTPS
-upstream to Kestrel. HTTP-only port 8080 is not sufficient for sign-in. Do not disable
-secure cookies or blindly trust forwarded headers to work around TLS configuration.
+**Browser-facing HTTPS is required**, but Traefik can terminate TLS and forward
+requests to Namerre over **HTTP on port 8080**. No backend certificate is needed.
+Configure `Namerre:ReverseProxy:KnownProxies` with Traefik's IP address, or
+`Namerre:ReverseProxy:KnownNetworks` with a dedicated proxy network's CIDR.
+For example, set `Namerre__ReverseProxy__KnownProxies__0=172.30.0.2`.
+Namerre processes `X-Forwarded-Proto` and `X-Forwarded-For` before HTTPS checks,
+redirects, and authentication. Traefik must send `X-Forwarded-Proto: https`.
+Only configured proxies/networks and ASP.NET Core's default loopback proxies are
+trusted. Keep the backend port private and trust only proxy-controlled networks;
+do not trust arbitrary clients or enable unrestricted forwarded-header trust.
+Secure cookies and CSRF protection remain enabled.
+For direct local access, use the `https` launch profile (`https://localhost:7151`).
 The separate Angular development server is not configured for same-origin API access;
 use the API-hosted frontend.
 
@@ -249,6 +260,15 @@ The API user needs read/write access to this directory and rename/create-directo
 permissions within the media root. Missing or unavailable durable storage must not
 be worked around by renaming without a journal.
 
+Storage initialization also opens `owner.lock` in the data directory and
+`.namerre-owner` in the media root for exclusive read/write access. Even before any
+renames, database-backed authentication requires a writable media root for this lock;
+a read-only media mount works only without durable storage and with server-configured
+authentication. If startup reports `StorageUnavailable`, inspect the failing step
+and inner exception in the container logs. Check mount permissions for the application
+UID, read-only mounts, and competing app instances. Do not delete the database or lock
+files to bypass the error.
+
 Run only one app instance against the root and data directory. Keep the configured
 root mapping stable across restarts; do not remap an existing history database to an
 unrelated media tree. A mount within the root can be a different filesystem and is
@@ -271,28 +291,33 @@ make rollback unsafe. Keep interrupted-operation evidence until recovery is reso
 The container runs as its non-root application user. Ensure writable media and data
 mounts are owned by, or grant access to, that user's numeric UID. Do not grant broad
 host filesystem access or use privileged mode to bypass mount permissions.
-For example, after building the image, set `Kestrel__Certificates__Default__Password`
-in the invoking environment using your secret-management mechanism. Mount a TLS
-certificate valid for the hostname users visit; the example uses a password-protected
-PFX file. Restrict access to the certificate's private key and ensure the container
-user can read it:
+For a Traefik deployment, attach Namerre to the existing private Docker network
+shared with Traefik. The following example assumes that network is named `traefik`
+and Traefik has the fixed address `172.30.0.2`; replace both with your actual values.
+Traefik's `websecure` entrypoint must already have a valid browser-facing TLS
+certificate configured:
 
 ```powershell
 docker volume create namerre-data
-docker run --rm -p 8443:8443 `
+docker run --rm --name namerre --network traefik `
   --mount type=bind,source=D:\Media,target=/media `
   --mount type=volume,source=namerre-data,target=/data `
-  --mount type=bind,source=D:\Certificates\namerre.pfx,target=/https/namerre.pfx,readonly `
   -e Namerre__RootPath=/media `
   -e Namerre__DataPath=/data `
-  -e ASPNETCORE_URLS=https://+:8443 `
-  -e Kestrel__Certificates__Default__Path=/https/namerre.pfx `
-  -e Kestrel__Certificates__Default__Password `
+  -e ASPNETCORE_HTTP_PORTS=8080 `
+  -e Namerre__ReverseProxy__KnownProxies__0=172.30.0.2 `
+  --label 'traefik.enable=true' `
+  --label 'traefik.docker.network=traefik' `
+  --label 'traefik.http.routers.namerre.rule=Host(`namerre.example.com`)' `
+  --label 'traefik.http.routers.namerre.entrypoints=websecure' `
+  --label 'traefik.http.routers.namerre.tls=true' `
+  --label 'traefik.http.services.namerre.loadbalancer.server.port=8080' `
+  --label 'traefik.http.services.namerre.loadbalancer.server.scheme=http' `
   namerre
 ```
 
-Open `https://<certificate-hostname>:8443`. Do not publish the HTTP port alongside
-this example. Docker environment values are visible to host administrators; use
+Open `https://namerre.example.com` through Traefik. The backend HTTP port is not
+published to the host. Docker environment values are visible to host administrators; use
 your platform's protected runtime configuration when that is not acceptable.
 Complete installation using the token in `docker logs <container>`; the administrator
 is saved alongside history in the mounted `/data` database. To skip installation,

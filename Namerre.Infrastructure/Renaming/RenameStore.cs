@@ -38,11 +38,15 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
             var databasePath = Path.Combine(data, "renaming.sqlite3");
             foreach (var path in new[] { ownerPath, rootOwnerPath, databasePath, databasePath + "-wal", databasePath + "-shm" })
                 BoundedFileSystem.CheckAncestors(path);
+            var operation = "acquiring the data directory lock";
             try
             {
                 ownership = new FileStream(ownerPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                operation = "acquiring the media root lock";
                 rootOwnership = new FileStream(rootOwnerPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                operation = "checking the media root identity";
                 binding = fileSystem.RootBinding;
+                operation = "opening and migrating the SQLite database";
                 options = new DbContextOptionsBuilder<RenameDbContext>()
                     .UseSqlite($"Data Source=\"{databasePath.Replace("\"", "\"\"")}\";Pooling=False;Foreign Keys=True;Default Timeout=5")
                     .Options;
@@ -51,6 +55,7 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
                 if (db.Database.GetPendingMigrations().Any()
                     || db.Database.GetAppliedMigrations().Except(db.Database.GetMigrations()).Any())
                     throw new RenameException("SchemaVersion", "The database schema could not be migrated.", 503);
+                operation = "checking the stored root mapping";
                 var previous = db.Settings.SingleOrDefault(s => s.Key == "root");
                 if (previous is not null && previous.Value != binding)
                     throw new RenameException("RootChanged", "This database belongs to a different root mapping. Restore that mapping before recovery.", 503);
@@ -59,6 +64,7 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
                     db.Settings.Add(new RenameSetting { Key = "root", Value = binding });
                     db.SaveChanges();
                 }
+                operation = "classifying interrupted jobs";
                 ClassifyInterrupted(db);
             }
             catch (Exception exception)
@@ -69,7 +75,9 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
                 rootOwnership = null;
                 options = null;
                 if (exception is RenameException) throw;
-                throw new RenameException("StorageUnavailable", "Durable storage or exclusive ownership is unavailable.", 503);
+                throw new RenameException("StorageUnavailable",
+                    $"Durable storage or exclusive ownership is unavailable while {operation}.", 503,
+                    innerException: exception);
             }
         }
     }

@@ -36,6 +36,6 @@ WORKDIR /app
 USER root
 RUN mkdir -p /data && chown "$APP_UID" /data
 USER $APP_UID
-ENV Rename__DataPath=/data
+ENV Namerre__DataPath=/data
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "Namerre.Api.dll"]

@@ -8,6 +8,7 @@ public sealed class NamerreOptions
     public string? DataPath { get; set; }
     public AuthenticationOptions Authentication { get; set; } = new();
     public TmdbOptions Tmdb { get; set; } = new();
+    public ReverseProxyOptions ReverseProxy { get; set; } = new();
 }
 
 public sealed class AuthenticationOptions
@@ -20,4 +21,10 @@ public sealed class TmdbOptions
 {
     public string? ReadAccessToken { get; set; }
     public string? Language { get; set; } = "en";
+}
+
+public sealed class ReverseProxyOptions
+{
+    public string[] KnownProxies { get; set; } = [];
+    public string[] KnownNetworks { get; set; } = [];
 }

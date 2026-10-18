@@ -47,6 +47,33 @@ public sealed class RenamingWorkflowTests : IDisposable
         var exception = Assert.Throws<RenameException>(() => { _ = factory.Server; });
 
         Assert.Equal("StorageUnavailable", exception.Code);
+        Assert.Contains("opening and migrating the SQLite database", exception.Message);
+        Assert.IsType<Microsoft.Data.Sqlite.SqliteException>(exception.InnerException);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StorageLockFailurePreservesCauseAndAllowsRetry(bool mediaRoot)
+    {
+        Directory.CreateDirectory(Data);
+        var lockPath = mediaRoot ? Path.Combine(Root, ".namerre-owner") : Path.Combine(Data, "owner.lock");
+        using var harness = Harness();
+        using (var competingLock = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+        {
+            var exception = Assert.Throws<RenameException>(() => harness.Store.Initialize());
+
+            Assert.Equal("StorageUnavailable", exception.Code);
+            Assert.Contains(mediaRoot ? "media root lock" : "data directory lock", exception.Message);
+            Assert.IsAssignableFrom<IOException>(exception.InnerException);
+            if (mediaRoot)
+            {
+                using var releasedDataLock = new FileStream(Path.Combine(Data, "owner.lock"),
+                    FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            }
+        }
+
+        harness.Store.Initialize();
     }
 
     [Fact]
