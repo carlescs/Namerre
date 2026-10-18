@@ -443,7 +443,9 @@ public sealed class RenamingWorkflowTests : IDisposable
         harness.Store.Initialize();
         using var context = new RenameDbContext(new DbContextOptionsBuilder<RenameDbContext>()
             .UseSqlite($"Data Source={Path.Combine(Data, "renaming.sqlite3")};Pooling=False").Options);
-        Assert.Single(context.Database.GetAppliedMigrations());
+        var migrations = context.Database.GetMigrations().ToArray();
+        Assert.NotEmpty(migrations);
+        Assert.Equal(migrations, context.Database.GetAppliedMigrations().ToArray());
         Assert.True(context.Model.FindEntityType(typeof(RenameDocument))!.FindProperty("Revision")!.IsConcurrencyToken);
         Assert.True(context.Model.FindEntityType(typeof(DurableRenameJob))!.FindProperty("Revision")!.IsConcurrencyToken);
     }
