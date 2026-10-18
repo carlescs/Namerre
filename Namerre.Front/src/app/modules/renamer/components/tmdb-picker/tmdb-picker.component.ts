@@ -14,6 +14,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { optionsHash } from '../../options-hash';
+import { tmdbFilename } from '../../tmdb-filename';
 import {
   MatchContext,
   MetadataSelection,
@@ -96,9 +97,12 @@ export class TmdbPickerComponent implements OnInit, AfterViewInit {
 
   ngOnInit(): void {
     const context = this.context();
-    const name = context.inputPath.split('/').pop() ?? '';
+    const inferred = tmdbFilename(context.inputPath, context.state?.mediaType ?? 'movie');
     this.form.patchValue({
-      query: name.replace(/\.[^.]+$/, ''),
+      query: inferred.query,
+      ...(inferred.season !== undefined
+        ? { season: inferred.season, episode: inferred.episode }
+        : {}),
       language: context.plugin.options.language ?? 'en-US',
       ...context.state,
     });
@@ -222,7 +226,7 @@ export class TmdbPickerComponent implements OnInit, AfterViewInit {
     this.stateChanged.emit({
       ...this.form.getRawValue(),
       matches: this.matches(),
-      selected: this.selected(),
+      selected: this.resolved() ?? this.selected(),
     });
   }
 

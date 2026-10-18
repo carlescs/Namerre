@@ -17,9 +17,34 @@
   <section aria-labelledby="matching-heading">
     <h3 id="matching-heading">TMDB matching</h3>
     <p>
-      Match each file before reviewing the final preview. Show choices can be reused, but every file
-      and episode must be verified and confirmed separately.
+      Choose what to search for. Titles, years and S01E02 / 1x02 episode numbers are inferred from
+      filenames. Review each proposal before accepting it, or search again to correct a match.
     </p>
+    <div class="actions" aria-label="Automatic TMDB search type">
+      <button
+        type="button"
+        [attr.aria-pressed]="searchType() === 'movie'"
+        [disabled]="
+          suggesting() || preparing() || executing() || !files().length || files().length > 200
+        "
+        (click)="suggestMatches('movie')"
+      >
+        Match movies automatically
+      </button>
+      <button
+        type="button"
+        [attr.aria-pressed]="searchType() === 'tv'"
+        [disabled]="
+          suggesting() || preparing() || executing() || !files().length || files().length > 200
+        "
+        (click)="suggestMatches('tv')"
+      >
+        Match episodes automatically
+      </button>
+    </div>
+    @if (suggesting()) {
+      <p role="status">Searching and verifying per-file TMDB suggestions…</p>
+    }
     @for (row of matchRows(); track row.fileId + ':' + row.plugin.instanceId) {
       <article>
         <h4>{{ row.fileId }} — step {{ row.position }}</h4>
@@ -27,17 +52,49 @@
           <p>
             Step input: <code>{{ step.inputPath }}</code>
           </p>
+          @if (row.suggestion; as suggestion) {
+            @if (suggestion.match; as match) {
+              <section aria-label="TMDB file information">
+                <p>
+                  <strong>{{ match.title }}</strong> ({{ match.year ?? 'Year unknown' }}) — TMDB
+                  {{ match.id }}
+                </p>
+                @if (match.mediaType === 'tv') {
+                  <p>
+                    Season {{ match.season }}, episode {{ match.episode }}: {{ match.episodeTitle }}
+                  </p>
+                } @else {
+                  <p>Movie</p>
+                }
+              </section>
+              @if (step.error && isMatchingIssue(step.error.code)) {
+                <p>Proposed match — review before accepting.</p>
+                <button
+                  type="button"
+                  (click)="acceptSuggestion(suggestion)"
+                  [disabled]="loadingPreview() || suggesting() || preparing() || executing()"
+                >
+                  Accept proposed match
+                </button>
+              }
+            }
+            @if (suggestion.error) {
+              <p class="error" role="alert">{{ suggestion.error }}</p>
+            }
+          }
           @if (step.error && isMatchingIssue(step.error.code)) {
             <p>Match required.</p>
-          } @else {
+          } @else if (!step.error) {
             <p>Metadata confirmed for this step.</p>
+          } @else {
+            <p class="error">{{ step.error.message }}</p>
           }
           <button
             type="button"
             (click)="match(row.fileId, step)"
-            [disabled]="loadingPreview() || preparing() || executing()"
+            [disabled]="loadingPreview() || suggesting() || preparing() || executing()"
           >
-            Choose / change TMDB match
+            Choose / change TMDB match — search again
           </button>
         } @else {
           <p>
@@ -56,7 +113,9 @@
   <button
     type="button"
     (click)="refreshPreview()"
-    [disabled]="!files().length || files().length > 200 || preparing() || executing()"
+    [disabled]="
+      !files().length || files().length > 200 || suggesting() || preparing() || executing()
+    "
   >
     Preview
   </button>

@@ -10,7 +10,17 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
-import { exhaustMap, Subscription, timer } from 'rxjs';
+import {
+  catchError,
+  concatMap,
+  exhaustMap,
+  from,
+  of,
+  Subscription,
+  switchMap,
+  tap,
+  timer,
+} from 'rxjs';
 import {
   MatchContext,
   MetadataSelection,
@@ -22,14 +32,25 @@ import {
   PreviewResult,
   RenameApi,
   StepTrace,
+  TmdbMatch,
   TmdbPickerState,
   operationId,
   renameError,
 } from '../../rename-api';
 import { optionsHash } from '../../options-hash';
+import { preferredTmdbMatch, tmdbFilename } from '../../tmdb-filename';
 import { RenamerFile } from '../../renamer-file';
 import { PluginEditorComponent } from '../plugin-editor/plugin-editor.component';
 import { TmdbPickerComponent } from '../tmdb-picker/tmdb-picker.component';
+
+interface MatchSuggestion {
+  fileId: string;
+  instanceId: string;
+  inputPath: string;
+  optionsHash: string;
+  match: TmdbMatch | null;
+  error: string;
+}
 
 @Component({
   imports: [PluginEditorComponent, TmdbPickerComponent, RouterLink],
@@ -55,6 +76,9 @@ export class RenameWorkflowComponent {
   protected readonly error = signal('');
   protected readonly catalogError = signal('');
   protected readonly planId = signal('');
+  protected readonly suggesting = signal(false);
+  protected readonly searchType = signal('movie');
+  private readonly suggestions = signal<MatchSuggestion[]>([]);
   protected readonly tmdbPlugins = computed(() =>
     this.plugins().filter((plugin) => plugin.enabled && plugin.typeId === 'tmdb'),
   );
@@ -64,6 +88,9 @@ export class RenameWorkflowComponent {
         fileId: file.path,
         plugin,
         position: this.plugins().indexOf(plugin) + 1,
+        suggestion: this.suggestions().find(
+          (entry) => entry.fileId === file.path && entry.instanceId === plugin.instanceId,
+        ),
         step: this.preview()
           ?.files.find((entry) => entry.id === file.path)
           ?.steps.find((step) => step.instanceId === plugin.instanceId),
@@ -85,6 +112,8 @@ export class RenameWorkflowComponent {
   private polling?: Subscription;
   private debounce?: ReturnType<typeof setTimeout>;
   private executeOperation = '';
+  private suggestionRequest?: Subscription;
+  private pendingSuggestions = false;
 
   constructor() {
     this.loadCatalog();
@@ -97,6 +126,7 @@ export class RenameWorkflowComponent {
       this.request?.unsubscribe();
       this.preparation?.unsubscribe();
       this.polling?.unsubscribe();
+      this.suggestionRequest?.unsubscribe();
     });
   }
 
@@ -155,6 +185,21 @@ export class RenameWorkflowComponent {
           this.preview.set(preview);
           this.previewRevision = revision;
           this.loadingPreview.set(false);
+          this.suggestions.update((suggestions) =>
+            suggestions.filter((suggestion) =>
+              preview.files
+                .find((file) => file.id === suggestion.fileId)
+                ?.steps.some(
+                  (step) =>
+                    step.instanceId === suggestion.instanceId &&
+                    step.inputPath === suggestion.inputPath,
+                ),
+            ),
+          );
+          if (this.pendingSuggestions) {
+            this.pendingSuggestions = false;
+            this.suggestMatches(this.searchType());
+          }
         },
         error: (error: unknown) => {
           if (revision !== this.revision) return;
@@ -250,11 +295,28 @@ export class RenameWorkflowComponent {
     this.matchingRevision = this.revision;
     const saved = this.pickerStates.get(plugin.instanceId)?.get(fileId);
     const show = this.showStates.get(plugin.instanceId);
+    const inferred = tmdbFilename(step.inputPath, this.searchType());
     this.matching.set({
       fileId,
       plugin,
       inputPath: step.inputPath,
-      state: saved ?? (show ? { ...show, episode: 1 } : undefined),
+      state:
+        saved ??
+        (show
+          ? {
+              ...show,
+              season: inferred.season ?? show.season,
+              episode: inferred.episode ?? 1,
+            }
+          : {
+              query: inferred.query,
+              mediaType: this.searchType(),
+              language: plugin.options.language ?? 'en-US',
+              season: inferred.season ?? 1,
+              episode: inferred.episode ?? 1,
+              matches: [],
+              selected: null,
+            }),
       reusedShow: !saved && !!show,
     });
   }
@@ -287,6 +349,10 @@ export class RenameWorkflowComponent {
 
   protected acceptMatch(selection: MetadataSelection): void {
     if (this.matchingRevision !== this.revision) return;
+    const match = this.pickerStates.get(selection.instanceId)?.get(selection.fileId)?.selected;
+    if (match?.confirmationToken === selection.confirmationToken) {
+      this.setSuggestion({ ...selection, match, error: '' });
+    }
     this.selections.update((selections) => [
       ...selections.filter(
         (entry) => entry.fileId !== selection.fileId || entry.instanceId !== selection.instanceId,
@@ -295,6 +361,150 @@ export class RenameWorkflowComponent {
     ]);
     this.matching.set(null);
     this.invalidate();
+  }
+
+  protected suggestMatches(mediaType: string): void {
+    if (
+      this.suggesting() ||
+      this.preparing() ||
+      this.executing() ||
+      !this.files().length ||
+      this.files().length > 200
+    )
+      return;
+    this.searchType.set(mediaType);
+    if (this.previewRevision !== this.revision) {
+      this.pendingSuggestions = true;
+      this.refreshPreview();
+      return;
+    }
+    const rows = this.matchRows().filter(
+      (row) =>
+        row.step &&
+        (!row.step.error || this.isMatchingIssue(row.step.error.code)) &&
+        !this.selections().some(
+          (entry) => entry.fileId === row.fileId && entry.instanceId === row.plugin.instanceId,
+        ),
+    );
+    this.suggesting.set(true);
+    this.suggestionRequest = from(rows)
+      .pipe(
+        concatMap((row) => {
+          const step = row.step!;
+          const inferred = tmdbFilename(step.inputPath, mediaType);
+          const binding = {
+            fileId: row.fileId,
+            instanceId: row.plugin.instanceId,
+            inputPath: step.inputPath,
+            optionsHash: optionsHash(JSON.stringify(row.plugin.options)),
+          };
+          const state: TmdbPickerState = {
+            query: inferred.query,
+            mediaType,
+            language: row.plugin.options.language ?? 'en-US',
+            season: inferred.season ?? 1,
+            episode: inferred.episode ?? 1,
+            matches: [],
+            selected: null,
+          };
+          let states = this.pickerStates.get(row.plugin.instanceId);
+          if (!states) {
+            states = new Map();
+            this.pickerStates.set(row.plugin.instanceId, states);
+          }
+          states.set(row.fileId, state);
+          this.setSuggestion({ ...binding, match: null, error: '' });
+          if (
+            !inferred.query ||
+            (mediaType === 'tv' && (inferred.season === undefined || !inferred.episode))
+          ) {
+            this.setSuggestion({
+              ...binding,
+              match: null,
+              error:
+                'Could not infer the title or episode numbers. Search again and enter them manually.',
+            });
+            return of(null);
+          }
+          return this.api
+            .tmdb({
+              mediaType,
+              query: state.query,
+              language: state.language,
+            })
+            .pipe(
+              switchMap((result) => {
+                state.matches = result.matches;
+                const candidate = preferredTmdbMatch(result.matches, inferred);
+                state.selected = candidate ?? null;
+                if (!candidate) {
+                  this.setSuggestion({
+                    ...binding,
+                    match: null,
+                    error: 'No TMDB matches. Search again with a different title.',
+                  });
+                  return of(null);
+                }
+                return this.api
+                  .tmdb({
+                    ...binding,
+                    mediaType,
+                    query: state.query,
+                    language: state.language,
+                    id: candidate.id,
+                    ...(mediaType === 'tv' ? { season: state.season, episode: state.episode } : {}),
+                  })
+                  .pipe(
+                    tap((verified) => {
+                      const match = verified.matches.find(
+                        (entry) => entry.id === candidate.id && entry.confirmationToken,
+                      );
+                      if (match) state.selected = match;
+                      this.setSuggestion({
+                        ...binding,
+                        match: match ?? null,
+                        error: match
+                          ? ''
+                          : 'TMDB could not verify this match. Search again to correct it.',
+                      });
+                    }),
+                  );
+              }),
+              catchError((error: unknown) => {
+                this.setSuggestion({ ...binding, match: null, error: renameError(error) });
+                return of(null);
+              }),
+            );
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({ complete: () => this.suggesting.set(false) });
+  }
+
+  protected acceptSuggestion(suggestion: MatchSuggestion): void {
+    if (
+      !suggestion.match?.confirmationToken ||
+      this.previewRevision !== this.revision ||
+      this.suggesting()
+    )
+      return;
+    this.matchingRevision = this.revision;
+    this.acceptMatch({
+      fileId: suggestion.fileId,
+      instanceId: suggestion.instanceId,
+      inputPath: suggestion.inputPath,
+      optionsHash: suggestion.optionsHash,
+      confirmationToken: suggestion.match.confirmationToken,
+    });
+  }
+
+  private setSuggestion(suggestion: MatchSuggestion): void {
+    this.suggestions.update((suggestions) => [
+      ...suggestions.filter(
+        (entry) => entry.fileId !== suggestion.fileId || entry.instanceId !== suggestion.instanceId,
+      ),
+      suggestion,
+    ]);
   }
 
   private snapshot(): PipelineRequest {
@@ -312,6 +522,9 @@ export class RenameWorkflowComponent {
     this.request?.unsubscribe();
     this.preparation?.unsubscribe();
     this.polling?.unsubscribe();
+    this.suggestionRequest?.unsubscribe();
+    this.suggesting.set(false);
+    this.pendingSuggestions = false;
     clearTimeout(this.debounce);
     this.preview.set(null);
     this.plan.set(null);
@@ -332,6 +545,13 @@ export class RenameWorkflowComponent {
         (selection) =>
           files.has(selection.fileId) &&
           plugins.get(selection.instanceId) === selection.optionsHash,
+      ),
+    );
+    this.suggestions.update((suggestions) =>
+      suggestions.filter(
+        (suggestion) =>
+          files.has(suggestion.fileId) &&
+          plugins.get(suggestion.instanceId) === suggestion.optionsHash,
       ),
     );
     for (const [instanceId, states] of this.pickerStates) {
