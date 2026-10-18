@@ -1,0 +1,12 @@
+@use '../../workflow';
+
+:host {
+  color: #1e293b;
+  font-family: system-ui, sans-serif;
+}
+
+main {
+  max-width: 70rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}

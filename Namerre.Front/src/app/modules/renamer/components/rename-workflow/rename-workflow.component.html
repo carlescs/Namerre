@@ -1,0 +1,151 @@
+<nav aria-label="Rename navigation"><a routerLink="/runs">Saved runs and recovery</a></nav>
+@if (catalogError()) {
+  <p class="error" role="alert">{{ catalogError() }}</p>
+  <button type="button" (click)="loadCatalog()">Retry plugin catalog</button>
+}
+@if (catalogLoaded()) {
+  <app-plugin-editor [catalog]="catalog()" (pluginsChanged)="changePlugins($event)" />
+} @else if (!catalogError()) {
+  <p role="status">Loading plugin catalog…</p>
+}
+@if (files().length > 200) {
+  <p class="error" role="alert">
+    A workflow supports at most 200 files. Remove files before previewing.
+  </p>
+}
+<div class="actions">
+  <button
+    type="button"
+    (click)="refreshPreview()"
+    [disabled]="!files().length || files().length > 200 || preparing() || executing()"
+  >
+    Preview
+  </button>
+  <button type="button" (click)="prepare()" [disabled]="!canPrepare()">
+    Prepare immutable plan and hash files
+  </button>
+</div>
+@if (loadingPreview()) {
+  <p role="status">Evaluating ordered plugins…</p>
+}
+@if (error()) {
+  <p class="error" role="alert">{{ error() }}</p>
+}
+@if (preview(); as result) {
+  <section aria-labelledby="preview-heading">
+    <h3 id="preview-heading">Preview — no files have been changed</h3>
+    @if (!result.canPrepare) {
+      <p class="error">Resolve the errors and conflicts below before preparing.</p>
+    }
+    @for (file of result.files; track file.id) {
+      <article>
+        <h4>{{ file.sourcePath }}</h4>
+        <p>
+          Folder: <code>{{ folder(file.sourcePath) }}</code> →
+          <code>{{ folder(file.targetPath) }}</code>
+        </p>
+        <p>
+          Final target: <code>{{ file.targetPath }}</code> —
+          {{ file.unchanged ? 'Unchanged' : 'Will move / rename' }}
+        </p>
+        @for (issue of file.issues; track $index) {
+          <p class="error">{{ issue.code }}: {{ issue.message }}</p>
+        }
+        <details>
+          <summary>Per-plugin trace ({{ file.steps.length }} steps)</summary>
+          <ol>
+            @for (step of file.steps; track step.instanceId) {
+              <li>
+                <strong>{{ step.typeId }}</strong> <small>({{ step.instanceId }})</small>
+                <p>
+                  Input: <code>{{ step.inputPath }}</code>
+                </p>
+                <p>
+                  Output: <code>{{ step.outputPath ?? 'Blocked — no output' }}</code>
+                </p>
+                @if (step.error) {
+                  <p class="error">{{ step.error.code }}: {{ step.error.message }}</p>
+                }
+                @if (step.typeId === 'tmdb') {
+                  <button
+                    type="button"
+                    (click)="match(file.id, step)"
+                    [disabled]="preparing() || executing()"
+                  >
+                    Choose / change TMDB match for this step
+                  </button>
+                }
+              </li>
+            }
+          </ol>
+        </details>
+      </article>
+    }
+  </section>
+}
+@if (preparing()) {
+  <p role="status">
+    Preparing immutable snapshot and hashing {{ plan()?.completedFiles ?? 0 }} /
+    {{ files().length }} files…
+  </p>
+  <progress
+    [value]="plan()?.completedFiles ?? 0"
+    [max]="files().length"
+    aria-label="Files hashed"
+  ></progress>
+}
+@if (plan(); as prepared) {
+  <section aria-labelledby="plan-heading">
+    <h3 id="plan-heading">Immutable plan {{ prepared.id }} — version {{ prepared.version }}</h3>
+    <p role="status">
+      {{ prepared.status }}. {{ prepared.files.length }} files; {{ changedCount() }} changes.
+    </p>
+    @for (issue of prepared.issues; track $index) {
+      <p class="error">{{ issue.code }}: {{ issue.message }}</p>
+    }
+    <ul>
+      @for (file of prepared.files; track file.id) {
+        <li>
+          <code>{{ file.sourcePath }}</code> → <code>{{ file.targetPath }}</code>
+          <details>
+            <summary>Prepared content hash</summary>
+            <code>{{ file.hash }}</code>
+          </details>
+        </li>
+      }
+    </ul>
+    <p>
+      Confirm only the paths above. Any collection, configuration, or match change invalidates this
+      approval.
+    </p>
+    <button type="button" (click)="confirm()" [disabled]="!canConfirm()">
+      Confirm and execute this exact plan
+    </button>
+  </section>
+}
+@if (planId() && error()) {
+  <button type="button" (click)="retryPlan()">Retry preparation status</button>
+}
+@if (executing()) {
+  <p role="status">Submitting durable execution. Do not submit a different operation.</p>
+}
+@if (matching(); as context) {
+  <app-tmdb-picker
+    [context]="context"
+    (confirmed)="acceptMatch($event)"
+    (dismissed)="matching.set(null)"
+  />
+}
+<aside aria-label="About and credits">
+  <h3>About / Credits</h3>
+  <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer">
+    <img src="/tmdb-logo.svg" alt="The Movie Database (TMDB)" width="100" height="72" />
+  </a>
+  <p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+  <p>
+    Metadata matching is explicit. TMDB credentials stay on the server.
+    <a href="https://developer.themoviedb.org/docs/faq" target="_blank" rel="noopener noreferrer"
+      >TMDB attribution and commercial licensing</a
+    >
+  </p>
+</aside>

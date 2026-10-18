@@ -1,0 +1,237 @@
+<main>
+  <nav aria-label="Rename navigation">
+    <a routerLink="/">File collection</a> · <a routerLink="/runs">Saved runs</a>
+  </nav>
+  <h1 #pageHeading tabindex="-1">{{ runId() ? 'Saved run details' : 'Rename history' }}</h1>
+  <button type="button" (click)="refresh()" [disabled]="loading() || busy()">
+    Refresh / retry
+  </button>
+  @if (loading()) {
+    <p role="status">Loading saved status…</p>
+  }
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+  @if (history(); as list) {
+    @if (!list.items.length) {
+      <p>No saved runs yet.</p>
+    }
+    <ul>
+      @for (item of list.items; track item.id) {
+        <li>
+          <a [routerLink]="['/runs', item.id]">{{ item.kind }} {{ item.id }}</a> —
+          {{ item.status }} — {{ item.createdAt | date: 'medium' }} — {{ item.files.length }} files
+        </li>
+      }
+    </ul>
+    <div class="actions">
+      <button type="button" (click)="changePage(-1)" [disabled]="page() <= 1 || loading()">
+        Previous page
+      </button>
+      <span>Page {{ list.page }}</span>
+      <button type="button" (click)="changePage(1)" [disabled]="!list.hasMore || loading()">
+        Next page
+      </button>
+    </div>
+  }
+  @if (run(); as current) {
+    <h2>{{ current.kind }} {{ current.id }}</h2>
+    <p role="status">
+      Status: {{ current.status }}. This run is durable and can be reopened after a reload.
+    </p>
+    <p>Created {{ current.createdAt | date: 'medium' }}. Prepared plan: {{ current.planId }}</p>
+    <details #approvedPlan (toggle)="approvedPlan.open && inspectPlan()">
+      <summary>Inspect saved immutable configuration and hashes</summary>
+      @if (loadingPlan()) {
+        <p role="status">Loading saved plan…</p>
+      }
+      @if (planError()) {
+        <p class="error" role="alert">{{ planError() }}</p>
+        <button type="button" (click)="inspectPlan()">Retry saved plan</button>
+      }
+      @if (savedPlan(); as snapshot) {
+        <p>Plan {{ snapshot.id }}, version {{ snapshot.version }} — {{ snapshot.status }}</p>
+        <ol>
+          @for (plugin of snapshot.pipeline.plugins; track plugin.instanceId) {
+            <li>
+              {{ plugin.typeId }} — instance {{ plugin.instanceId }}, configuration version
+              {{ plugin.version }},
+              {{ plugin.enabled ? 'Enabled' : 'Disabled' }}
+              <pre>{{ plugin.options | json }}</pre>
+            </li>
+          }
+        </ol>
+        @if (!snapshot.pipeline.plugins.length) {
+          <p>Empty pipeline.</p>
+        }
+        <ul>
+          @for (file of snapshot.files; track file.id) {
+            <li>
+              <code>{{ file.sourcePath }}</code> → <code>{{ file.targetPath }}</code> — SHA256
+              <code>{{ file.hash }}</code>
+            </li>
+          }
+        </ul>
+      }
+    </details>
+    @if (current.parentRunId) {
+      <p>
+        Original run: <a [routerLink]="['/runs', current.parentRunId]">{{ current.parentRunId }}</a>
+      </p>
+    }
+    @if (current.error) {
+      <p class="error" role="alert">{{ current.error }}</p>
+    }
+    @if (current.status === 'RecoveryRequired') {
+      <section aria-labelledby="recovery-heading">
+        <h3 id="recovery-heading">Partial operation — explicit recovery required</h3>
+        <p>
+          Files may be completed, pending, staged, or uncertain. No automatic rollback is performed.
+          Inspect every root-relative location and the journal below. Ambiguous or changed content
+          remains blocked.
+        </p>
+        <button type="button" (click)="previewRecovery()" [disabled]="busy()">
+          Inspect recovery evidence
+        </button>
+      </section>
+    }
+    <div class="table-scroll">
+      <table>
+        <caption>
+          Per-file outcome and selected rollback
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Select</th>
+            <th scope="col">Original</th>
+            <th scope="col">Target</th>
+            <th scope="col">Staging location</th>
+            <th scope="col">Outcome</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (file of current.files; track file.id) {
+            <tr>
+              <td>
+                <input
+                  type="checkbox"
+                  [attr.aria-label]="'Select ' + file.sourcePath + ' for rollback'"
+                  [checked]="selected().has(file.id)"
+                  (change)="toggle(file.id)"
+                  [disabled]="
+                    busy() || current.status !== 'Completed' || file.status !== 'Completed'
+                  "
+                />
+              </td>
+              <td>
+                <code>{{ file.sourcePath }}</code>
+              </td>
+              <td>
+                <code>{{ file.targetPath }}</code>
+              </td>
+              <td>
+                <code>{{ file.stagingPath || 'Not staged' }}</code>
+              </td>
+              <td>
+                {{ file.status }}
+                @if (file.error) {
+                  <p class="error">
+                    @if (file.errorCode) {
+                      <strong>{{ file.errorCode }}: </strong>
+                    }
+                    {{ file.error }}
+                  </p>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <p>
+      {{ selected().size }} files explicitly selected. Dependency groups are never included
+      silently.
+    </p>
+    <button
+      type="button"
+      (click)="previewRollback()"
+      [disabled]="!selected().size || busy() || current.status !== 'Completed'"
+    >
+      Check selected-file rollback
+    </button>
+    @if (rollback(); as checked) {
+      <section aria-labelledby="rollback-heading">
+        <h3 id="rollback-heading">Rollback review — {{ safeCount() }} safe files</h3>
+        @for (file of checked.files; track file.id) {
+          <article>
+            <p>
+              <code>{{ file.currentPath }}</code> → <code>{{ file.destinationPath }}</code>
+            </p>
+            <strong>{{ file.safe ? 'Safe to roll back' : 'Blocked — left untouched' }}</strong>
+            @for (issue of file.issues; track $index) {
+              <p class="error">{{ issue.code }}: {{ issue.message }}</p>
+            }
+          </article>
+        }
+        <p>
+          Only the safe files shown here will be submitted. Blocked selections remain untouched. For
+          dependency conflicts, select the required participants and check again. Hashes and
+          destinations are revalidated during execution.
+        </p>
+        <button type="button" (click)="confirmRollback()" [disabled]="!safeCount() || busy()">
+          Confirm rollback of {{ safeCount() }} safe selected files
+        </button>
+      </section>
+    }
+    @if (recovery(); as evidence) {
+      <section aria-labelledby="evidence-heading">
+        <h3 id="evidence-heading">Recovery evidence — {{ evidence.action }}</h3>
+        @for (file of evidence.files; track file.id) {
+          <article>
+            <strong>{{ file.id }} — {{ file.state }}</strong>
+            <p>
+              Verified location: <code>{{ file.locatedPath ?? 'Unknown / ambiguous' }}</code>
+            </p>
+            @for (issue of file.issues; track $index) {
+              <p class="error">{{ issue.code }}: {{ issue.message }}</p>
+            }
+          </article>
+        }
+        <p>
+          Explicitly restore pre-operation locations only when evidence is unambiguous. Content
+          hashes prove equivalent content, not unique physical identity of identical copies.
+        </p>
+        @if (!evidence.canRecover) {
+          <p class="error">
+            Recovery is blocked. Preserve the files and journal; resolve the reported conflicts
+            before retrying.
+          </p>
+        }
+        <button
+          type="button"
+          (click)="confirmRecovery()"
+          [disabled]="!evidence.canRecover || busy()"
+        >
+          Confirm explicit restoration
+        </button>
+      </section>
+    }
+    @if (busy()) {
+      <p role="status">Processing the requested check / durable operation…</p>
+    }
+    @if (actionError()) {
+      <p class="error" role="alert">{{ actionError() }}</p>
+    }
+    <details>
+      <summary>Durable operation journal ({{ current.journal.length }} entries)</summary>
+      <ol>
+        @for (entry of current.journal; track entry.sequence) {
+          <li>
+            {{ entry.sequence }}. {{ entry.kind }} — {{ entry.status }}:
+            <code>{{ entry.fromPath }}</code> → <code>{{ entry.toPath }}</code>
+          </li>
+        }
+      </ol>
+    </details>
+  }
+</main>

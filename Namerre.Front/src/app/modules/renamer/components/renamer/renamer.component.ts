@@ -5,16 +5,18 @@ import { faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import { FolderListing } from '../../folder-listing';
 import { RenamerFile } from '../../renamer-file';
 import { FolderPickerComponent } from '../folder-picker/folder-picker.component';
+import { RenameWorkflowComponent } from '../rename-workflow/rename-workflow.component';
 
 @Component({
   selector: 'app-renamer',
-  imports: [DatePipe, DecimalPipe, FaIconComponent, FolderPickerComponent],
+  imports: [DatePipe, DecimalPipe, FaIconComponent, FolderPickerComponent, RenameWorkflowComponent],
   styleUrl: './renamer.component.scss',
   templateUrl: './renamer.component.html',
 })
 export class RenamerComponent {
   protected readonly files = signal<RenamerFile[]>([]);
   protected readonly trashIcon = faTrashCan;
+  protected readonly configuring = signal(false);
 
   protected clearFiles(): void {
     this.files.set([]);

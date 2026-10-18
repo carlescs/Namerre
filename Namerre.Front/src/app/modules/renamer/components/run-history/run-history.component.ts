@@ -1,0 +1,274 @@
+import { DatePipe, JsonPipe } from '@angular/common';
+import {
+  afterNextRender,
+  Component,
+  DestroyRef,
+  ElementRef,
+  inject,
+  Injector,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { exhaustMap, Subscription, timer } from 'rxjs';
+import {
+  RecoveryPreview,
+  PlanView,
+  RenameApi,
+  RunPage,
+  RunView,
+  SelectionPreview,
+  SelectionRequest,
+  operationId,
+  renameError,
+} from '../../rename-api';
+
+@Component({
+  imports: [RouterLink, DatePipe, JsonPipe],
+  selector: 'app-run-history',
+  styleUrl: './run-history.component.scss',
+  templateUrl: './run-history.component.html',
+})
+export class RunHistoryComponent {
+  private readonly api = inject(RenameApi);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
+  private readonly heading = viewChild<ElementRef<HTMLElement>>('pageHeading');
+  protected readonly run = signal<RunView | null>(null);
+  protected readonly history = signal<RunPage | null>(null);
+  protected readonly page = signal(1);
+  protected readonly runId = signal('');
+  protected readonly selected = signal<Set<string>>(new Set());
+  protected readonly rollback = signal<SelectionPreview | null>(null);
+  protected readonly recovery = signal<RecoveryPreview | null>(null);
+  protected readonly loading = signal(false);
+  protected readonly busy = signal(false);
+  protected readonly error = signal('');
+  protected readonly actionError = signal('');
+  protected readonly savedPlan = signal<PlanView | null>(null);
+  protected readonly planError = signal('');
+  protected readonly loadingPlan = signal(false);
+  private polling?: Subscription;
+  private action?: Subscription;
+  private revision = 0;
+  private selectionRequest: SelectionRequest | null = null;
+  private recoveryOperation = '';
+  private runSignature = '';
+  private planRequest?: Subscription;
+  private loadRevision = 0;
+
+  constructor() {
+    this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+      this.runId.set(params.get('id') ?? '');
+      this.run.set(null);
+      this.history.set(null);
+      this.selected.set(new Set());
+      this.planRequest?.unsubscribe();
+      this.savedPlan.set(null);
+      this.planError.set('');
+      this.loadingPlan.set(false);
+      this.invalidateApproval();
+      this.refresh();
+      afterNextRender(() => this.heading()?.nativeElement.focus(), { injector: this.injector });
+    });
+    this.destroyRef.onDestroy(() => {
+      this.polling?.unsubscribe();
+      this.action?.unsubscribe();
+      this.planRequest?.unsubscribe();
+    });
+  }
+
+  protected refresh(): void {
+    this.polling?.unsubscribe();
+    this.error.set('');
+    this.loading.set(true);
+    const id = this.runId();
+    const revision = ++this.loadRevision;
+    if (id) {
+      this.polling = timer(0, 1000)
+        .pipe(
+          exhaustMap(() => this.api.run(id)),
+          takeUntilDestroyed(this.destroyRef),
+        )
+        .subscribe({
+          next: (run) => {
+            if (revision !== this.loadRevision) return;
+            const signature = JSON.stringify({ status: run.status, files: run.files });
+            if (this.runSignature !== signature) {
+              this.runSignature = signature;
+              this.invalidateApproval();
+            }
+            this.run.set(run);
+            this.loading.set(false);
+            if (!['Queued', 'Running', 'RecoveryQueued', 'Recovering'].includes(run.status)) {
+              this.polling?.unsubscribe();
+            }
+          },
+          error: (error: unknown) => {
+            if (revision !== this.loadRevision) return;
+            this.loading.set(false);
+            this.error.set(renameError(error));
+          },
+        });
+    } else {
+      this.polling = this.api
+        .runs(this.page())
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (history) => {
+            if (revision !== this.loadRevision) return;
+            this.history.set(history);
+            this.loading.set(false);
+          },
+          error: (error: unknown) => {
+            if (revision !== this.loadRevision) return;
+            this.error.set(renameError(error));
+            this.loading.set(false);
+          },
+        });
+    }
+  }
+
+  protected inspectPlan(): void {
+    const id = this.run()?.planId;
+    if (!id || this.savedPlan() || this.loadingPlan()) return;
+    this.loadingPlan.set(true);
+    this.planError.set('');
+    const runId = this.runId();
+    this.planRequest = this.api
+      .plan(id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (plan) => {
+          if (runId !== this.runId()) return;
+          this.savedPlan.set(plan);
+          this.loadingPlan.set(false);
+        },
+        error: (error: unknown) => {
+          if (runId !== this.runId()) return;
+          this.loadingPlan.set(false);
+          this.planError.set(renameError(error));
+        },
+      });
+  }
+
+  protected changePage(direction: number): void {
+    this.page.update((page) => Math.max(1, page + direction));
+    this.refresh();
+  }
+
+  protected toggle(id: string): void {
+    this.selected.update((selection) => {
+      const next = new Set(selection);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    this.invalidateApproval();
+  }
+
+  protected previewRollback(): void {
+    if (!this.selected().size || this.busy() || this.run()?.status !== 'Completed') return;
+    this.invalidateApproval();
+    const revision = this.revision;
+    const request = { fileIds: [...this.selected()], operationId: operationId() };
+    this.selectionRequest = request;
+    this.busy.set(true);
+    this.action = this.api
+      .rollbackPreview(this.runId(), request)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (preview) => {
+          if (revision !== this.revision) return;
+          this.rollback.set(preview);
+          this.busy.set(false);
+        },
+        error: (error: unknown) => this.failAction(error, revision),
+      });
+  }
+
+  protected safeCount(): number {
+    return this.rollback()?.files.filter((file) => file.safe).length ?? 0;
+  }
+
+  protected confirmRollback(): void {
+    if (!this.selectionRequest || !this.safeCount() || this.busy()) return;
+    const revision = this.revision;
+    this.busy.set(true);
+    this.actionError.set('');
+    const request = {
+      ...this.selectionRequest,
+      fileIds:
+        this.rollback()
+          ?.files.filter((file) => file.safe)
+          .map((file) => file.id) ?? [],
+    };
+    this.action = this.api
+      .rollback(this.runId(), request)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (accepted) => {
+          void this.router.navigate(['/runs', accepted.id]);
+        },
+        error: (error: unknown) => this.failAction(error, revision),
+      });
+  }
+
+  protected previewRecovery(): void {
+    if (this.busy() || this.run()?.status !== 'RecoveryRequired') return;
+    this.invalidateApproval();
+    const revision = this.revision;
+    this.recoveryOperation = operationId();
+    this.busy.set(true);
+    this.action = this.api
+      .recoveryPreview(this.runId())
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (preview) => {
+          if (revision !== this.revision) return;
+          this.recovery.set(preview);
+          this.busy.set(false);
+        },
+        error: (error: unknown) => this.failAction(error, revision),
+      });
+  }
+
+  protected confirmRecovery(): void {
+    const recovery = this.recovery();
+    if (!recovery?.canRecover || this.busy()) return;
+    const revision = this.revision;
+    this.busy.set(true);
+    this.actionError.set('');
+    this.action = this.api
+      .recover(this.runId(), recovery.action, this.recoveryOperation)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (accepted) => {
+          this.busy.set(false);
+          this.recovery.set(null);
+          if (accepted.id === this.runId()) this.refresh();
+          else void this.router.navigate(['/runs', accepted.id]);
+        },
+        error: (error: unknown) => this.failAction(error, revision),
+      });
+  }
+
+  private invalidateApproval(): void {
+    this.revision++;
+    this.action?.unsubscribe();
+    this.rollback.set(null);
+    this.recovery.set(null);
+    this.selectionRequest = null;
+    this.busy.set(false);
+    this.actionError.set('');
+  }
+
+  private failAction(error: unknown, revision: number): void {
+    if (revision !== this.revision) return;
+    this.busy.set(false);
+    this.actionError.set(renameError(error));
+  }
+}

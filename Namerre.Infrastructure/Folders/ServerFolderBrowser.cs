@@ -2,7 +2,7 @@ using Namerre.Application.Folders;
 
 namespace Namerre.Infrastructure.Folders;
 
-public sealed class ServerFolderBrowser(string? rootPath, string basePath) : IFolderBrowser
+public sealed class ServerFolderBrowser(string? rootPath, string basePath, Func<string, bool>? isOwnedEntry = null) : IFolderBrowser
 {
     public Task<FolderListing> Browse(string path, CancellationToken cancellationToken)
     {
@@ -39,6 +39,7 @@ public sealed class ServerFolderBrowser(string? rootPath, string basePath) : IFo
                 {
                     continue;
                 }
+                if (isOwnedEntry?.Invoke(entry.FullName) == true) continue;
 
                 if (entry is DirectoryInfo)
                 {
@@ -98,11 +99,12 @@ public sealed class ServerFolderBrowser(string? rootPath, string basePath) : IFo
         try
         {
             var root = Path.GetFullPath(rootPath, basePath);
+            Namerre.Infrastructure.Renaming.BoundedFileSystem.CheckAncestors(root);
             EnsureDirectory(root);
             return root;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
-            or ArgumentException or FolderBrowserException)
+            or ArgumentException or FolderBrowserException or Namerre.Application.Renaming.RenameException)
         {
             throw new FolderBrowserException(
                 FolderBrowserError.Unavailable,

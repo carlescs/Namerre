@@ -55,6 +55,17 @@
       <p>No files added yet. Choose a folder to add its files.</p>
     }
   </section>
+  <section aria-labelledby="workflow-heading">
+    <h2 id="workflow-heading">Rename workflow</h2>
+    @if (configuring()) {
+      <app-rename-workflow [files]="files()" />
+    } @else {
+      <p>
+        Build an ordered pipeline, preview every step, then prepare and confirm an immutable plan.
+      </p>
+      <button type="button" (click)="configuring.set(true)">Configure renaming and history</button>
+    }
+  </section>
 </main>
 
 <app-folder-picker #folderPicker (folderSelected)="addFolder($event)" />

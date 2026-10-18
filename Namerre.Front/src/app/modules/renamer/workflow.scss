@@ -1,0 +1,83 @@
+:host {
+  display: block;
+}
+
+section,
+article {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+}
+
+label {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0.75rem 0;
+}
+
+input,
+select,
+button {
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem;
+  border: 1px solid #64748b;
+  border-radius: 0.25rem;
+  color: #1e293b;
+  background: #fff;
+  font: inherit;
+}
+
+input[type='checkbox'] {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+button {
+  cursor: pointer;
+  background: #f8fafc;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.error {
+  color: #991b1b;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+td,
+th {
+  padding: 0.5rem;
+  border-bottom: 1px solid #cbd5e1;
+  overflow-wrap: anywhere;
+}
+
+code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

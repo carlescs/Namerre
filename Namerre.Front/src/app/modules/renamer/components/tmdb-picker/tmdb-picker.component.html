@@ -1,0 +1,63 @@
+<dialog #dialog aria-labelledby="tmdb-heading" (cancel)="$event.preventDefault(); cancel()">
+  <h2 id="tmdb-heading">Explicit TMDB match</h2>
+  <p>
+    Current step input: <code>{{ context().inputPath }}</code>
+  </p>
+  <form [formGroup]="form" (ngSubmit)="search()">
+    <label
+      >Media type
+      <select formControlName="mediaType">
+        <option value="movie">Movie</option>
+        <option value="tv">TV episode</option>
+      </select>
+    </label>
+    <label>Search text <input formControlName="query" autofocus /></label>
+    <label>Language <input formControlName="language" /></label>
+    @if (form.controls.mediaType.value === 'tv') {
+      <p>Search for a show, select it, then verify the exact season and episode.</p>
+      <label>Season <input type="number" formControlName="season" min="0" max="9999" /></label>
+      <label>Episode <input type="number" formControlName="episode" min="1" max="9999" /></label>
+    }
+    <button type="submit" [disabled]="!validRequest() || busy()">Search TMDB</button>
+  </form>
+  @if (busy()) {
+    <p role="status">Looking up TMDB metadata…</p>
+  }
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+  @if (searched() && !matches().length) {
+    <p role="status">No matches. Correct the search text and retry.</p>
+  }
+  @if (matches().length) {
+    <fieldset>
+      <legend>Choose a candidate — nothing is selected automatically</legend>
+      @for (match of matches(); track match.id) {
+        <label
+          ><input
+            type="radio"
+            name="candidate"
+            [checked]="selected()?.id === match.id"
+            (change)="choose(match)"
+            [disabled]="busy()"
+          />
+          {{ match.title }} ({{ match.year ?? 'Year unknown' }}) — TMDB {{ match.id }}</label
+        >
+      }
+    </fieldset>
+    <button type="button" (click)="verify()" [disabled]="!selected() || busy() || !validRequest()">
+      Verify chosen movie / episode
+    </button>
+  }
+  @if (resolved(); as match) {
+    <section aria-label="Verified metadata">
+      <h3>{{ match.title }} ({{ match.year }})</h3>
+      @if (match.mediaType === 'tv') {
+        <p>Season {{ match.season }}, episode {{ match.episode }}: {{ match.episodeTitle }}</p>
+      }
+      <p>Confirm this metadata snapshot for this file and plugin instance only.</p>
+      <button type="button" (click)="confirm()" [disabled]="busy()">Confirm this match</button>
+    </section>
+  }
+  <button type="button" (click)="cancel()">Cancel matching</button>
+</dialog>

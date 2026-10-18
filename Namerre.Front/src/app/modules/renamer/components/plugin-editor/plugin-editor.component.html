@@ -1,0 +1,82 @@
+<h3>Ordered plugins ({{ cards().length }}/32)</h3>
+<p>
+  Start empty. Add any number of instances, including repeated types. Each enabled step consumes the
+  preceding output. Text transformations preserve the extension.
+</p>
+<div class="actions">
+  <label
+    >Plugin type
+    <select [formControl]="type">
+      <option value="">Choose a plugin</option>
+      @for (plugin of catalog(); track plugin.typeId) {
+        <option [value]="plugin.typeId">{{ plugin.name }}</option>
+      }
+    </select>
+  </label>
+  <button #addButton type="button" (click)="add()" [disabled]="!type.value || cards().length >= 32">
+    Add plugin
+  </button>
+</div>
+@if (!cards().length) {
+  <p>No plugins selected. Preview will leave every path unchanged.</p>
+}
+@for (card of cards(); track card.plugin.instanceId; let i = $index) {
+  <article [attr.aria-labelledby]="'plugin-' + card.plugin.instanceId">
+    <h4 #cardHeading tabindex="-1" [id]="'plugin-' + card.plugin.instanceId">
+      {{ i + 1 }}. {{ name(card.plugin.typeId) }}
+    </h4>
+    <div class="actions">
+      <label
+        ><input type="checkbox" [checked]="card.plugin.enabled" (change)="enable(i)" />
+        Enabled</label
+      >
+      <button
+        type="button"
+        (click)="move(i, -1)"
+        [disabled]="i === 0"
+        [attr.aria-label]="'Move plugin ' + (i + 1) + ' up'"
+      >
+        Move up
+      </button>
+      <button
+        type="button"
+        (click)="move(i, 1)"
+        [disabled]="i === cards().length - 1"
+        [attr.aria-label]="'Move plugin ' + (i + 1) + ' down'"
+      >
+        Move down
+      </button>
+      <button type="button" (click)="remove(i)" [attr.aria-label]="'Remove plugin ' + (i + 1)">
+        Remove
+      </button>
+    </div>
+    <div [formGroup]="card.form">
+      @for (field of card.fields; track field.key) {
+        <label
+          >{{ field.label }}
+          @if (field.checkbox) {
+            <input type="checkbox" [formControlName]="field.key" />
+          } @else if (field.choices) {
+            <select [formControlName]="field.key">
+              @for (choice of field.choices; track choice) {
+                <option [value]="choice">{{ choice }}</option>
+              }
+            </select>
+          } @else {
+            <input type="text" [formControlName]="field.key" />
+          }
+        </label>
+      }
+    </div>
+    @if (card.plugin.typeId === 'tmdb') {
+      <p>
+        Preview first, then explicitly match each file for this instance. Leave the filename
+        template empty to use the media-specific default. Movie default:
+        <code>{{ '{title} ({year})' }}</code
+        >. Episode template: <code>{{ '{title} - S{season}E{episode} - {episodeTitle}' }}</code
+        >. Folder changes are off by default. Template fields: title, year, season, episode,
+        episodeTitle.
+      </p>
+    }
+  </article>
+}

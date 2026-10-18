@@ -12,7 +12,11 @@ permissions:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     env:
       NuGetPackageSourceCredentials_Github: Username=${{ github.repository_owner }};Password=${{ secrets.CMEDIATOR_PACKAGES_TOKEN }};ValidAuthenticationTypes=Basic
     steps:
@@ -49,7 +53,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: backend-test-results
+          name: backend-test-results-${{ matrix.os }}
           path: TestResults/
           if-no-files-found: error
 
