@@ -68,6 +68,20 @@ describe('FolderPickerComponent', () => {
     expect(selected).toEqual([]);
   });
 
+  it('renders folders in a scrollable table with selection actions in the footer', async () => {
+    await openPicker();
+    const region = dialog.querySelector('.folder-table');
+    expect(region?.getAttribute('tabindex')).toBe('0');
+    expect(region?.getAttribute('aria-labelledby')).toBe('subfolders-heading');
+    expect(region?.querySelector('th')?.textContent).toBe('Folder name');
+    expect(region?.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(region?.querySelector('tbody button')?.textContent?.trim()).toBe('Movies');
+    const actions = Array.from(dialog.querySelectorAll('footer button')).map((button) =>
+      button.textContent?.trim(),
+    );
+    expect(actions).toEqual(['Cancel', 'Select folder']);
+  });
+
   it('disables selection on errors and supports retry', async () => {
     await openPicker();
     clickButton('Movies');
