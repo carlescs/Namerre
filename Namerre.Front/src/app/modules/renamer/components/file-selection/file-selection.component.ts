@@ -1,7 +1,7 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { Component, input, output } from '@angular/core';
+import { Component, computed, input, output, signal } from '@angular/core';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
-import { faTrashCan } from '@fortawesome/free-solid-svg-icons';
+import { faFolderOpen, faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import { FolderListing } from '../../folder-listing';
 import { RenamerFile } from '../../renamer-file';
 import { FolderPickerComponent } from '../folder-picker/folder-picker.component';
@@ -16,8 +16,17 @@ export class FileSelectionComponent {
   readonly files = input.required<RenamerFile[]>();
   readonly filesChanged = output<RenamerFile[]>();
   protected readonly trashIcon = faTrashCan;
+  protected readonly folderIcon = faFolderOpen;
+  protected readonly search = signal('');
+  protected readonly filteredFiles = computed(() => {
+    const query = this.search().trim().toLowerCase();
+    return this.files().filter((file) =>
+      `${file.folderPath || 'Server root'}/${file.name}`.toLowerCase().includes(query),
+    );
+  });
 
   protected clearFiles(): void {
+    this.search.set('');
     this.filesChanged.emit([]);
   }
 
@@ -26,6 +35,7 @@ export class FileSelectionComponent {
   }
 
   protected addFolder(folders: FolderListing[]): void {
+    this.search.set('');
     const files = this.files();
     const paths = new Set(files.map((file) => file.path));
     const additions: RenamerFile[] = [];

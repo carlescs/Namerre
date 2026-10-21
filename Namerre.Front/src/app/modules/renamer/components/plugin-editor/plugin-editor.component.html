@@ -1,9 +1,9 @@
 <h3>Ordered plugins ({{ cards().length }}/32)</h3>
-<p>
-  Start empty. Add any number of instances, including repeated types. Each enabled step consumes the
-  preceding output. Text transformations preserve the extension.
+<p class="text-slate-500">
+  Add up to 32 plugins, including repeated types, and arrange them in order. Text transformations
+  preserve the extension.
 </p>
-<div class="actions">
+<div class="actions rounded-xl border border-slate-200 bg-slate-50 p-4">
   <label
     >Plugin type
     <select [formControl]="type">
@@ -13,12 +13,21 @@
       }
     </select>
   </label>
-  <button #addButton type="button" (click)="add()" [disabled]="!type.value || cards().length >= 32">
+  <button
+    #addButton
+    class="btn-primary"
+    type="button"
+    (click)="add()"
+    [disabled]="!type.value || cards().length >= 32"
+  >
     Add plugin
   </button>
 </div>
 @if (!cards().length) {
-  <p>No plugins selected. Preview will leave every path unchanged.</p>
+  <div class="mt-5 rounded-xl border border-dashed border-slate-300 p-8 text-center">
+    <p class="mt-0 font-semibold text-slate-900">Build your renaming recipe</p>
+    <p class="mb-0 text-slate-500">No plugins selected. Preview will leave every path unchanged.</p>
+  </div>
 }
 @for (card of cards(); track card.plugin.instanceId; let i = $index) {
   <article [attr.aria-labelledby]="'plugin-' + card.plugin.instanceId">
@@ -50,7 +59,7 @@
         Remove
       </button>
     </div>
-    <div [formGroup]="card.form">
+    <div class="mt-4 grid gap-x-6 sm:grid-cols-2" [formGroup]="card.form">
       @for (field of card.fields; track field.key) {
         <label
           >{{ field.label }}

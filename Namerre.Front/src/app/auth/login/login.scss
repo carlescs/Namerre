@@ -1,21 +1,24 @@
 main {
-  max-width: 24rem;
-  margin: 10vh auto;
-  padding: 1.5rem;
-  font-family: system-ui, sans-serif;
+  max-width: 28rem;
+  margin: 8vh auto;
+  padding: 2rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 1.25rem;
+  background: white;
+  box-shadow: 0 12px 40px -20px rgb(15 23 42 / 20%);
 }
 
 form {
   display: grid;
-  gap: 0.75rem;
 }
 
-input,
-button {
-  padding: 0.75rem;
-  font: inherit;
+label {
+  margin-bottom: 0.5rem;
 }
 
-[role='alert'] {
-  color: #a31616;
+@media (max-width: 32rem) {
+  main {
+    margin: 1.5rem 1rem;
+    padding: 1.5rem;
+  }
 }

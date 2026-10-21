@@ -200,6 +200,65 @@ describe('RenamerComponent', () => {
     expect(rows()[0].textContent).toContain('notes.txt');
   });
 
+  it('filters by filename or folder without changing the selected collection', async () => {
+    await select(root);
+    await select({ ...root, path: 'Movies', parentPath: '' });
+    await filter('  MOVIES  ');
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].textContent).toContain('Movies');
+    expect(main().textContent).toContain('Files for renaming (2)');
+    expect(main().textContent).toContain('Showing 1 of 2 files');
+    expect(nextButton().disabled).toBe(false);
+    await filter('notes');
+    expect(rows()).toHaveLength(2);
+    await filter('not found');
+    expect(rows()).toHaveLength(0);
+    expect(main().textContent).toContain('No files match your filter.');
+    expect(nextButton().disabled).toBe(false);
+    const clearFilter = Array.from(main().querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Clear filter',
+    );
+    clearFilter?.click();
+    await fixture.whenStable();
+    expect(rows()).toHaveLength(2);
+  });
+
+  it('removes only a filtered file and keeps files hidden by the filter', async () => {
+    await select(root);
+    await select({ ...root, path: 'Movies', parentPath: '' });
+    await filter('movies');
+    rows()[0].querySelector('button')?.click();
+    await fixture.whenStable();
+    expect(main().textContent).toContain('Files for renaming (1)');
+    expect(rows()).toHaveLength(0);
+    await filter('');
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].textContent).toContain('Server root');
+  });
+
+  it('resets the filter when adding folders or clearing the whole collection', async () => {
+    await select(root);
+    await filter('missing');
+    await select({ ...root, path: 'Movies', parentPath: '' });
+    expect(rows()).toHaveLength(2);
+    expect((main().querySelector('#file-search') as HTMLInputElement).value).toBe('');
+    await filter('movies');
+    clearButton().click();
+    await fixture.whenStable();
+    expect(rows()).toHaveLength(0);
+    expect(nextButton().disabled).toBe(true);
+    await select(root);
+    expect(rows()).toHaveLength(1);
+    expect((main().querySelector('#file-search') as HTMLInputElement).value).toBe('');
+  });
+
+  async function filter(value: string): Promise<void> {
+    const search = main().querySelector('#file-search') as HTMLInputElement;
+    search.value = value;
+    search.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+  }
+
   async function select(folder: FolderListing): Promise<void> {
     picker.folderSelected.emit([folder]);
     await fixture.whenStable();

@@ -8,10 +8,18 @@
 }
 @if (result(); as preview) {
   <section aria-labelledby="preview-heading">
-    <h3 id="preview-heading">Preview — no files have been changed</h3>
+    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <h3 id="preview-heading">Preview — no files have been changed</h3>
+      <span
+        class="badge"
+        [class.bg-emerald-50]="preview.canPrepare"
+        [class.text-emerald-800]="preview.canPrepare"
+        >{{ preview.canPrepare ? 'Ready for review' : 'Needs attention' }}</span
+      >
+    </div>
     @if (!preview.canPrepare) {
       @if (metadataPending()) {
-        <p>
+        <p class="text-xs text-slate-500">
           Go back to complete TMDB matching, then resolve any remaining errors before preparing.
         </p>
       } @else {
@@ -31,10 +39,21 @@
             Folder: <code>{{ folder(file.sourcePath) }}</code> →
             <code>{{ folder(file.targetPath) }}</code>
           </p>
-          <p>
-            Final target: <code>{{ file.targetPath }}</code> —
-            {{ file.unchanged ? 'Unchanged' : 'Will move / rename' }}
-          </p>
+          <div class="mt-4 grid gap-3 sm:grid-cols-2">
+            <div class="rounded-lg bg-slate-50 p-4">
+              <p class="eyebrow mt-0 text-slate-500">Original path</p>
+              <code class="bg-transparent p-0">{{ file.sourcePath }}</code>
+            </div>
+            <div class="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
+              <p class="eyebrow mt-0">Proposed path</p>
+              <p class="m-0">
+                Final target: <code class="bg-transparent p-0">{{ file.targetPath }}</code>
+              </p>
+              <span class="mt-2 inline-block text-xs font-medium text-indigo-700">{{
+                file.unchanged ? 'Unchanged' : 'Will move / rename'
+              }}</span>
+            </div>
+          </div>
         }
         @for (issue of file.issues; track $index) {
           @if (!isMatchingIssue(issue.code)) {

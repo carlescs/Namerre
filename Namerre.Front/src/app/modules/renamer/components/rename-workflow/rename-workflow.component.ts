@@ -77,11 +77,39 @@ export class RenameWorkflowComponent {
   protected readonly stage = signal<WizardStage>('files');
   protected readonly backwards = signal(false);
   protected readonly stages = computed(() => [
-    { id: 'files', title: 'Select files' },
-    { id: 'plugins', title: 'Configure plugins' },
-    ...(this.tmdbPlugins().length ? [{ id: 'matching', title: 'Match TMDB metadata' }] : []),
-    { id: 'preview', title: 'Review filenames' },
-    { id: 'confirmation', title: 'Confirm renaming' },
+    {
+      id: 'files',
+      title: 'Select files',
+      description:
+        'Build your collection from server folders. Add files from one folder or bring several together.',
+    },
+    {
+      id: 'plugins',
+      title: 'Configure plugins',
+      description:
+        'Build a sequence of renaming rules. Each enabled plugin works on the output of the one before it.',
+    },
+    ...(this.tmdbPlugins().length
+      ? [
+          {
+            id: 'matching',
+            title: 'Match TMDB metadata',
+            description: 'Review and confirm the movie or episode metadata used to name each file.',
+          },
+        ]
+      : []),
+    {
+      id: 'preview',
+      title: 'Review filenames',
+      description:
+        'Compare the original and proposed paths. Resolve any conflicts before preparing your plan.',
+    },
+    {
+      id: 'confirmation',
+      title: 'Confirm renaming',
+      description:
+        'Review the exact prepared changes. Only your explicit confirmation can rename files.',
+    },
   ]);
   protected readonly stageIndex = computed(() =>
     this.stages().findIndex((stage) => stage.id === this.stage()),

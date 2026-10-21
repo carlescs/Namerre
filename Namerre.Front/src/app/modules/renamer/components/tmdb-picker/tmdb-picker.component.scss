@@ -3,12 +3,5 @@
 dialog {
   width: min(42rem, calc(100vw - 4rem));
   max-height: 85vh;
-  border: 1px solid #64748b;
-  border-radius: 0.5rem;
-  color: #1e293b;
-  font-family: system-ui, sans-serif;
-
-  &::backdrop {
-    background: rgb(15 23 42 / 55%);
-  }
+  padding: 1.5rem;
 }

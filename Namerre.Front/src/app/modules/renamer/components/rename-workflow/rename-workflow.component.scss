@@ -1,59 +1,15 @@
 @use '../../workflow';
 
-[hidden] {
-  display: none !important;
-}
-
-.wizard-steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1.5rem;
-  padding: 0;
-  margin: 1.5rem 0;
-  list-style: none;
-
-  li {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: #475569;
-  }
-
-  [aria-current='step'] {
-    color: #1d4ed8;
-    font-weight: 700;
-  }
-}
-
-.step-number {
-  display: inline-grid;
-  place-items: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-}
-
-.stage-header {
-  margin-bottom: 1.5rem;
-}
-
-.wizard-navigation {
-  margin-top: 1.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid #cbd5e1;
-}
-
 .wizard-screens {
-  --screen-offset: 1rem;
+  --screen-offset: 0.5rem;
 
   &.backwards {
-    --screen-offset: -1rem;
+    --screen-offset: -0.5rem;
   }
 }
 
 .wizard-screen {
-  animation: screen-enter 200ms ease-out;
+  animation: screen-enter 180ms ease-out;
 }
 
 @keyframes screen-enter {

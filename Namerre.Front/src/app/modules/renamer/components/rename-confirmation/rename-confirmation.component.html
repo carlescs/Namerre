@@ -1,4 +1,6 @@
-<p>Prepare a snapshot and check the exact changes below. Nothing is renamed until you confirm.</p>
+<p class="mt-0 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
+  Prepare a snapshot and check the exact changes below. Nothing is renamed until you confirm.
+</p>
 @if (preparing()) {
   <p role="status">
     Preparing immutable snapshot and hashing {{ plan()?.completedFiles ?? 0 }} /
@@ -34,7 +36,12 @@
       Confirm only the paths above. Any collection, configuration, or match change invalidates this
       approval.
     </p>
-    <button type="button" (click)="confirmRequested.emit()" [disabled]="!canConfirm()">
+    <button
+      class="btn-danger"
+      type="button"
+      (click)="confirmRequested.emit()"
+      [disabled]="!canConfirm()"
+    >
       Confirm and execute this exact plan
     </button>
   </section>

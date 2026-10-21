@@ -1,9 +1,18 @@
-<main>
-  <nav aria-label="Rename navigation">
-    <a routerLink="/">File collection</a> · <a routerLink="/runs">Saved runs</a>
+<main
+  id="main-content"
+  tabindex="-1"
+  class="workflow-content mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-10"
+>
+  <nav class="mb-6 flex gap-3 text-xs" aria-label="Rename navigation">
+    <a routerLink="/">Workspace</a> <span aria-hidden="true">/</span>
+    <a routerLink="/runs">Saved runs</a>
   </nav>
+  <p class="eyebrow">A record of every change</p>
   <h1 #pageHeading tabindex="-1">{{ runId() ? 'Saved run details' : 'Rename history' }}</h1>
-  <button type="button" (click)="refresh()" [disabled]="loading() || busy()">
+  <p class="mb-6 text-slate-500">
+    Inspect past operations, review file outcomes, and recover with confidence.
+  </p>
+  <button class="mb-5" type="button" (click)="refresh()" [disabled]="loading() || busy()">
     Refresh / retry
   </button>
   @if (loading()) {
@@ -14,13 +23,22 @@
   }
   @if (history(); as list) {
     @if (!list.items.length) {
-      <p>No saved runs yet.</p>
+      <div class="surface my-6 p-10 text-center">
+        <h2 class="text-lg">A fresh start</h2>
+        <p class="text-slate-500">No saved runs yet.</p>
+        <a routerLink="/" class="font-medium"
+          >Start in the workspace <span aria-hidden="true">&rarr;</span></a
+        >
+      </div>
     }
-    <ul>
+    <ul class="my-4 space-y-3">
       @for (item of list.items; track item.id) {
-        <li>
+        <li class="surface p-5">
           <a [routerLink]="['/runs', item.id]">{{ item.kind }} {{ item.id }}</a> —
-          {{ item.status }} — {{ item.createdAt | date: 'medium' }} — {{ item.files.length }} files
+          <span class="badge">{{ item.status }}</span>
+          <p class="mb-0 text-xs text-slate-500">
+            {{ item.createdAt | date: 'medium' }} — {{ item.files.length }} files
+          </p>
         </li>
       }
     </ul>

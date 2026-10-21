@@ -1,109 +1,146 @@
-<nav aria-label="Rename navigation"><a routerLink="/runs">Saved runs and recovery</a></nav>
-<nav aria-label="Renaming progress">
-  <ol class="wizard-steps">
+<nav class="surface mb-6 p-2" aria-label="Renaming progress">
+  <ol class="grid grid-cols-2 gap-1 lg:flex">
     @for (item of stages(); track item.id; let i = $index) {
-      <li [attr.aria-current]="item.id === stage() ? 'step' : null">
-        <span class="step-number" aria-hidden="true">{{ i + 1 }}</span>
-        {{ item.title }}
+      <li
+        class="step lg:flex-1"
+        [class.step-active]="item.id === stage()"
+        [class.step-complete]="i < stageIndex()"
+        [attr.aria-current]="item.id === stage() ? 'step' : null"
+      >
+        <span class="step-number" aria-hidden="true">
+          @if (i < stageIndex()) {
+            <svg
+              class="size-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="m5 12 4 4L19 6" />
+            </svg>
+          } @else {
+            {{ i + 1 }}
+          }
+        </span>
+        <span class="text-xs font-semibold">{{ item.title }}</span>
+        @if (i < stageIndex()) {
+          <span class="sr-only">Completed</span>
+        }
       </li>
     }
   </ol>
 </nav>
-<header class="stage-header">
-  <p>Step {{ stageIndex() + 1 }} of {{ stages().length }}</p>
-  <h2 #stageHeading tabindex="-1">{{ stages()[stageIndex()].title }}</h2>
-  @if (stage() !== 'files') {
-    <p>{{ files().length }} files selected. Use Back to change earlier choices.</p>
-  }
-</header>
-<div class="wizard-screens" [class.backwards]="backwards()">
-  <div class="wizard-screen" [hidden]="stage() !== 'files'">
-    <ng-content />
-  </div>
-  <app-plugin-configuration
-    class="wizard-screen"
-    [hidden]="stage() !== 'plugins'"
-    [catalog]="catalog()"
-    [loaded]="catalogLoaded()"
-    [error]="catalogError()"
-    (retryRequested)="loadCatalog()"
-    (pluginsChanged)="changePlugins($event)"
-  />
-  @if (tmdbPlugins().length) {
-    <app-tmdb-matching
+<div class="surface">
+  <header class="stage-header border-b border-slate-200 px-5 py-6 sm:px-8">
+    <p class="eyebrow mt-0">Step {{ stageIndex() + 1 }} of {{ stages().length }}</p>
+    <h2 #stageHeading tabindex="-1">{{ stages()[stageIndex()].title }}</h2>
+    <p class="mb-0 max-w-2xl text-slate-500">{{ stages()[stageIndex()].description }}</p>
+  </header>
+  <div class="wizard-screens workflow-content p-5 sm:p-8" [class.backwards]="backwards()">
+    <div class="wizard-screen" [hidden]="stage() !== 'files'">
+      <ng-content />
+    </div>
+    <app-plugin-configuration
       class="wizard-screen"
-      [hidden]="stage() !== 'matching'"
-      [rows]="matchRows()"
-      [searchType]="searchType()"
-      [suggesting]="suggesting()"
-      [loadingPreview]="loadingPreview()"
-      [hasPreview]="!!preview()"
-      [disabled]="!validCollection() || preparing() || executing()"
-      [canAcceptAll]="!!pendingMatches().length"
-      (searchRequested)="suggestMatches($event)"
-      (allAccepted)="acceptAllMatches()"
-      (suggestionAccepted)="acceptSuggestion($event)"
-      (matchRequested)="match($event.fileId, $event.step)"
+      [hidden]="stage() !== 'plugins'"
+      [catalog]="catalog()"
+      [loaded]="catalogLoaded()"
+      [error]="catalogError()"
+      (retryRequested)="loadCatalog()"
+      (pluginsChanged)="changePlugins($event)"
+    />
+    @if (tmdbPlugins().length) {
+      <app-tmdb-matching
+        class="wizard-screen"
+        [hidden]="stage() !== 'matching'"
+        [rows]="matchRows()"
+        [searchType]="searchType()"
+        [suggesting]="suggesting()"
+        [loadingPreview]="loadingPreview()"
+        [hasPreview]="!!preview()"
+        [disabled]="!validCollection() || preparing() || executing()"
+        [canAcceptAll]="!!pendingMatches().length"
+        (searchRequested)="suggestMatches($event)"
+        (allAccepted)="acceptAllMatches()"
+        (suggestionAccepted)="acceptSuggestion($event)"
+        (matchRequested)="match($event.fileId, $event.step)"
+        (previewRequested)="refreshPreview()"
+      />
+    }
+    <app-rename-preview
+      class="wizard-screen"
+      [hidden]="stage() !== 'preview'"
+      [result]="preview()"
+      [loading]="loadingPreview()"
+      [disabled]="!validCollection() || suggesting() || preparing() || executing()"
       (previewRequested)="refreshPreview()"
     />
+    <app-rename-confirmation
+      class="wizard-screen"
+      [hidden]="stage() !== 'confirmation'"
+      [plan]="plan()"
+      [fileCount]="files().length"
+      [preparing]="preparing()"
+      [executing]="executing()"
+      [canConfirm]="canConfirm()"
+      [canRetry]="!!planId() && !!error()"
+      (confirmRequested)="confirm()"
+      (retryRequested)="retryPlan()"
+    />
+  </div>
+  @if (error() && stage() !== 'files') {
+    <p class="error mx-5 sm:mx-8" role="alert">{{ error() }}</p>
   }
-  <app-rename-preview
-    class="wizard-screen"
-    [hidden]="stage() !== 'preview'"
-    [result]="preview()"
-    [loading]="loadingPreview()"
-    [disabled]="!validCollection() || suggesting() || preparing() || executing()"
-    (previewRequested)="refreshPreview()"
-  />
-  <app-rename-confirmation
-    class="wizard-screen"
-    [hidden]="stage() !== 'confirmation'"
-    [plan]="plan()"
-    [fileCount]="files().length"
-    [preparing]="preparing()"
-    [executing]="executing()"
-    [canConfirm]="canConfirm()"
-    [canRetry]="!!planId() && !!error()"
-    (confirmRequested)="confirm()"
-    (retryRequested)="retryPlan()"
-  />
-</div>
-@if (error() && stage() !== 'files') {
-  <p class="error" role="alert">{{ error() }}</p>
-}
-<nav class="actions wizard-navigation" aria-label="Wizard navigation">
-  <button
-    type="button"
-    (click)="back()"
-    [disabled]="stage() === 'files' || preparing() || executing()"
+  <nav
+    class="actions wizard-navigation sticky bottom-0 z-10 justify-between rounded-b-2xl border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur-sm sm:px-8"
+    aria-label="Wizard navigation"
   >
-    Back
-  </button>
-  @switch (stage()) {
-    @case ('files') {
-      <button type="button" (click)="next()" [disabled]="!validCollection()">
-        Next: configure plugins
-      </button>
+    <button
+      type="button"
+      (click)="back()"
+      [disabled]="stage() === 'files' || preparing() || executing()"
+    >
+      Back
+    </button>
+    <span class="hidden text-xs text-slate-500 sm:block" role="status"
+      >{{ files().length }} / 200 files selected</span
+    >
+    @switch (stage()) {
+      @case ('files') {
+        <button class="btn-primary" type="button" (click)="next()" [disabled]="!validCollection()">
+          Next: configure plugins
+        </button>
+      }
+      @case ('plugins') {
+        <button
+          class="btn-primary"
+          type="button"
+          (click)="next()"
+          [disabled]="!catalogLoaded() || !validCollection()"
+        >
+          {{ tmdbPlugins().length ? 'Next: match metadata' : 'Next: review filenames' }}
+        </button>
+      }
+      @case ('matching') {
+        <button class="btn-primary" type="button" (click)="next()" [disabled]="!canReview()">
+          Next: review filenames
+        </button>
+      }
+      @case ('preview') {
+        <button class="btn-primary" type="button" (click)="prepare()" [disabled]="!canPrepare()">
+          Prepare immutable plan and hash files
+        </button>
+      }
     }
-    @case ('plugins') {
-      <button type="button" (click)="next()" [disabled]="!catalogLoaded() || !validCollection()">
-        {{ tmdbPlugins().length ? 'Next: match metadata' : 'Next: review filenames' }}
-      </button>
-    }
-    @case ('matching') {
-      <button type="button" (click)="next()" [disabled]="!canReview()">
-        Next: review filenames
-      </button>
-    }
-    @case ('preview') {
-      <button type="button" (click)="prepare()" [disabled]="!canPrepare()">
-        Prepare immutable plan and hash files
-      </button>
-    }
-  }
-</nav>
+  </nav>
+</div>
+<footer class="mt-5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+  <p class="m-0">Preview first. Your files stay unchanged until final confirmation.</p>
+  <a routerLink="/runs">Saved runs and recovery <span aria-hidden="true">&rarr;</span></a>
+</footer>
 @if (matching(); as context) {
   <app-tmdb-picker
+    class="workflow-content"
     [context]="context"
     (stateChanged)="rememberMatch($event)"
     (confirmed)="acceptMatch($event)"

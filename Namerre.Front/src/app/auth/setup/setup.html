@@ -1,6 +1,15 @@
 <main>
+  <div
+    class="mb-6 grid size-12 place-items-center rounded-2xl bg-indigo-600 text-2xl font-bold text-white"
+    aria-hidden="true"
+  >
+    N
+  </div>
+  <p class="eyebrow">Make yourself at home</p>
   <h1>Set up Namerre</h1>
-  <p>Create the administrator account. Copy the one-time setup token from the server console.</p>
+  <p class="text-slate-500">
+    Create the administrator account. Copy the one-time setup token from the server console.
+  </p>
   <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="busy()">
     <label for="setup-token">Setup token</label>
     <input
@@ -44,7 +53,7 @@
     @if (error()) {
       <p role="alert">{{ error() }}</p>
     }
-    <button type="submit" [disabled]="busy() || form.invalid">
+    <button class="btn-primary mt-4 w-full" type="submit" [disabled]="busy() || form.invalid">
       {{ busy() ? 'Saving...' : 'Create administrator' }}
     </button>
   </form>

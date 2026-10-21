@@ -1,24 +1,47 @@
-<p>
-  Choose the server files you want to rename. No files will change until the final confirmation.
-</p>
-<section aria-labelledby="files-heading">
-  <h3 id="files-heading">Files for renaming ({{ files().length }})</h3>
-  <div class="collection-actions">
-    <button #chooseFolder type="button" (click)="folderPicker.open()">Choose folder</button>
-    <button type="button" (click)="clearFiles(); chooseFolder.focus()" [disabled]="!files().length">
-      Clear collection
-    </button>
+<section class="collection" aria-labelledby="files-heading">
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h3 id="files-heading">Files for renaming ({{ files().length }})</h3>
+      <p class="mb-0 mt-1 text-slate-500">Choose the server files you want to rename.</p>
+    </div>
+    <div class="collection-actions">
+      <button #chooseFolder class="btn-primary" type="button" (click)="folderPicker.open()">
+        <fa-icon [icon]="folderIcon" aria-hidden="true" /> Choose folder
+      </button>
+      <button
+        type="button"
+        (click)="clearFiles(); chooseFolder.focus()"
+        [disabled]="!files().length"
+      >
+        Clear collection
+      </button>
+    </div>
   </div>
-  <p role="status">{{ files().length }} files ready for renaming.</p>
   @if (files().length > 200) {
     <p class="error" role="alert">
       A workflow supports at most 200 files. Remove files before previewing.
     </p>
   }
   @if (files().length) {
+    <div class="my-5 flex flex-wrap items-center justify-between gap-3">
+      <label for="file-search" class="sr-only">Filter files by name or folder</label>
+      <input
+        id="file-search"
+        type="search"
+        class="w-full sm:max-w-xs"
+        placeholder="Filter by filename or folder..."
+        [value]="search()"
+        (input)="search.set($event.target.value)"
+        aria-controls="collection-table"
+      />
+      <p class="m-0 text-xs text-slate-500" role="status">
+        Showing {{ filteredFiles().length }} of {{ files().length }} files. Filtering does not
+        change your collection.
+      </p>
+    </div>
     <div class="file-list" tabindex="0" role="region" aria-label="Files added for renaming">
-      <table>
-        <caption>
+      <table id="collection-table">
+        <caption class="sr-only">
           Files added for renaming
         </caption>
         <thead>
@@ -31,15 +54,16 @@
           </tr>
         </thead>
         <tbody>
-          @for (file of files(); track file.path) {
+          @for (file of filteredFiles(); track file.path) {
             <tr>
-              <td>{{ file.name }}</td>
-              <td>{{ file.folderPath || 'Server root' }}</td>
-              <td>{{ file.length | number }}</td>
-              <td>{{ file.lastModifiedUtc | date: 'medium' }}</td>
+              <td class="font-medium text-slate-900">{{ file.name }}</td>
+              <td class="text-slate-500">{{ file.folderPath || 'Server root' }}</td>
+              <td class="tabular-nums">{{ file.length | number }}</td>
+              <td class="text-xs text-slate-500">{{ file.lastModifiedUtc | date: 'medium' }}</td>
               <td>
                 <button
                   type="button"
+                  class="text-slate-500 hover:text-rose-700"
                   aria-label="Remove {{ file.path }} from collection"
                   (click)="removeFile(file.path); chooseFolder.focus()"
                 >
@@ -51,8 +75,31 @@
         </tbody>
       </table>
     </div>
+    <p class="mb-0 mt-2 text-xs text-slate-500 sm:hidden">
+      Scroll the table horizontally for details and file actions.
+    </p>
+    @if (!filteredFiles().length) {
+      <div class="py-8 text-center">
+        <p class="font-medium text-slate-900">No files match your filter.</p>
+        <button type="button" (click)="search.set('')">Clear filter</button>
+      </div>
+    }
   } @else {
-    <p>No files added yet. Choose a folder to add its files.</p>
+    <div
+      class="mt-6 grid justify-items-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/60 px-6 py-14 text-center"
+    >
+      <span
+        class="mb-4 grid size-14 place-items-center rounded-2xl border border-indigo-100 bg-indigo-50 text-2xl text-indigo-600"
+        ><fa-icon [icon]="folderIcon" aria-hidden="true"
+      /></span>
+      <h4>Your next tidy collection starts here</h4>
+      <p class="mb-0 max-w-sm text-slate-500">
+        No files added yet. Choose a folder to add its files.
+      </p>
+      <p class="mb-0 text-xs text-slate-500">
+        Add from multiple folders. Duplicate paths are skipped automatically.
+      </p>
+    </div>
   }
 </section>
 <app-folder-picker #folderPicker (folderSelected)="addFolder($event)" />
