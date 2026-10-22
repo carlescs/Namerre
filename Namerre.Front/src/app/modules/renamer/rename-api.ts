@@ -10,6 +10,7 @@ export interface PluginOptions {
   mode?: string;
   nameTemplate?: string;
   changeFolder?: boolean;
+  baseFolder?: string;
   folderTemplate?: string;
   language?: string;
 }

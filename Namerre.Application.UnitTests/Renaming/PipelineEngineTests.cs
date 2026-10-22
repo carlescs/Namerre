@@ -111,6 +111,15 @@ public sealed class PipelineEngineTests
         }]) with { Selections = [selection] }, default);
         Assert.True(folderChanged.CanPrepare);
         Assert.Equal("2000/Resolved.MKV", Assert.Single(folderChanged.Files).TargetPath);
+        var baseFolderChanged = await engine.Preview(Request([plugin with
+        {
+            Options = JsonSerializer.SerializeToElement(new {
+                nameTemplate = "{title}", changeFolder = true, baseFolder = "Library/Movies",
+                folderTemplate = "{year}"
+            })
+        }]) with { Selections = [selection] }, default);
+        Assert.True(baseFolderChanged.CanPrepare);
+        Assert.Equal("Library/Movies/2000/Resolved.MKV", Assert.Single(baseFolderChanged.Files).TargetPath);
         var languageChanged = await engine.Preview(Request([plugin with
         {
             Options = JsonSerializer.SerializeToElement(new { nameTemplate = "{title}", language = "fr" })
@@ -125,7 +134,7 @@ public sealed class PipelineEngineTests
             var invalid = await engine.Preview(Request([plugin]) with { Selections = [invalidSelection] }, default);
             Assert.Equal("MetadataRequired", Assert.Single(Assert.Single(invalid.Files).Issues).Code);
         }
-        metadata.Received(3).Resolve(selection);
+        metadata.Received(4).Resolve(selection);
     }
 
     [Fact]
@@ -149,6 +158,58 @@ public sealed class PipelineEngineTests
         Assert.True(preview.CanPrepare);
         Assert.Equal("Show- A-B-C- (2000)/show- a-b-c- - s02e03 - episode -one- -two----(end).MKV",
             Assert.Single(preview.Files).TargetPath);
+    }
+
+    [Theory]
+    [InlineData("", true, "Resolved (2000)/Resolved.MKV")]
+    [InlineData("Movies", true, "Movies/Resolved (2000)/Resolved.MKV")]
+    [InlineData("Library/Movies", true, "Library/Movies/Resolved (2000)/Resolved.MKV")]
+    [InlineData("Library/Movies", false, "folder/Resolved.MKV")]
+    [InlineData("../ignored", false, "folder/Resolved.MKV")]
+    public async Task FolderChangesStartUnderTheOptionalBaseFolder(
+        string baseFolder, bool changeFolder, string expected)
+    {
+        fileSystem.When(fs => fs.Validate(Arg.Any<string>()))
+            .Do(call => NamingRules.ValidateRelativePath((string)call[0]));
+        var plugin = Plugin("tmdb", "tmdb", new
+        {
+            nameTemplate = "{title}", changeFolder, baseFolder, folderTemplate = "{title} ({year})"
+        });
+        var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
+            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+        metadata.Resolve(selection).Returns(new TmdbMatch(10, "movie", "Resolved", "2000", null, null, null));
+
+        var preview = await new PipelineEngine(metadata, fileSystem).Preview(
+            Request([plugin]) with { Selections = [selection] }, default);
+
+        Assert.True(preview.CanPrepare);
+        Assert.Equal(expected, Assert.Single(preview.Files).TargetPath);
+    }
+
+    [Theory]
+    [InlineData("../escape")]
+    [InlineData("/absolute")]
+    [InlineData("C:\\Movies")]
+    [InlineData("Movies\\Archive")]
+    [InlineData("Movies/../Archive")]
+    [InlineData("Movies/")]
+    [InlineData("Movies//Archive")]
+    [InlineData("Movies/CON")]
+    [InlineData(" ")]
+    public async Task InvalidBaseFoldersBlockRenaming(string baseFolder)
+    {
+        fileSystem.When(fs => fs.Validate(Arg.Any<string>()))
+            .Do(call => NamingRules.ValidateRelativePath((string)call[0]));
+        var plugin = Plugin("tmdb", "tmdb", new { changeFolder = true, baseFolder });
+        var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
+            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+        metadata.Resolve(selection).Returns(new TmdbMatch(10, "movie", "Resolved", "2000", null, null, null));
+
+        var preview = await new PipelineEngine(metadata, fileSystem).Preview(
+            Request([plugin]) with { Selections = [selection] }, default);
+
+        Assert.False(preview.CanPrepare);
+        Assert.Equal("InvalidConfiguration", Assert.Single(Assert.Single(preview.Files).Issues).Code);
     }
 
     [Theory]

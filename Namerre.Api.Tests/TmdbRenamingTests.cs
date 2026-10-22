@@ -17,9 +17,13 @@ public sealed class TmdbRenamingTests : IDisposable
     private string Data => Path.Combine(workspace, "data");
     public TmdbRenamingTests() => Directory.CreateDirectory(Root);
 
-    [Fact]
-    public async Task ConfirmationValidatesRemoteIdsBindsExactStepAndPersistsSnapshotWithoutCredentials()
+    [Theory]
+    [InlineData("")]
+    [InlineData("Library/Movies")]
+    public async Task ConfirmationValidatesRemoteIdsBindsExactStepAndPersistsSnapshotWithoutCredentials(string baseFolder)
     {
+        var prefix = baseFolder.Length > 0 ? baseFolder + "/" : "";
+        var destination = prefix + "A Movie (2001)/A Movie (2001).mkv";
         File.WriteAllText(Path.Combine(Root, "input.mkv"), "content");
         var filesystem = new BoundedFileSystem(Root, workspace);
         var calls = 0;
@@ -38,7 +42,7 @@ public sealed class TmdbRenamingTests : IDisposable
         {
             var metadata = new TmdbMetadata(client, Config("server-only-secret"), store);
             var options = JsonSerializer.SerializeToElement(new { nameTemplate = "", changeFolder = true,
-                folderTemplate = "{title} ({year})" });
+                baseFolder, folderTemplate = "{title} ({year})" });
             var result = await metadata.Search(new("movie", "", Id: 42, FileId: "file", InstanceId: "tmdb1",
                 InputPath: "input.mkv", OptionsHash: PipelineEngine.OptionsHash(options)), default);
             var match = Assert.Single(result.Matches);
@@ -51,8 +55,10 @@ public sealed class TmdbRenamingTests : IDisposable
                 [new("tmdb1", "tmdb", 1, true, options)], [selection]);
             var engine = new PipelineEngine(metadata, filesystem);
             var preview = await engine.Preview(pipeline, default);
-            Assert.Equal("A Movie (2001)/A Movie (2001).mkv", Assert.Single(preview.Files).TargetPath);
+            Assert.Equal(destination, Assert.Single(preview.Files).TargetPath);
             Assert.False(Directory.Exists(Path.Combine(Root, "A Movie (2001)")));
+            if (baseFolder.Length > 0)
+                Assert.False(Directory.Exists(Path.Combine(Root, baseFolder.Replace('/', Path.DirectorySeparatorChar))));
             var edited = pipeline with
             {
                 Plugins = [new("tmdb1", "tmdb", 1, true, JsonSerializer.SerializeToElement(new {
@@ -67,6 +73,7 @@ public sealed class TmdbRenamingTests : IDisposable
             await service.ProcessNext(default);
             plan = await service.GetPlan(prepared.Id, default);
             Assert.Equal("Ready", plan.Status);
+            Assert.Equal(destination, Assert.Single(plan.Files).TargetPath);
         }
         using (var store = new RenameStore(filesystem, Data, workspace))
         {
@@ -78,7 +85,7 @@ public sealed class TmdbRenamingTests : IDisposable
             var run = await service.GetRun(job.Id, default);
             Assert.Equal("Completed", run.Status);
             Assert.Contains(run.Journal, j => j.Kind == "CreateDirectory" && j.Status == "Completed");
-            Assert.Equal("content", File.ReadAllText(Path.Combine(Root, "A Movie (2001)", "A Movie (2001).mkv")));
+            Assert.Equal("content", File.ReadAllText(Path.Combine(Root, destination.Replace('/', Path.DirectorySeparatorChar))));
             Assert.Equal(1, calls);
         }
         foreach (var file in Directory.GetFiles(Data, "renaming.sqlite3*"))

@@ -29,7 +29,7 @@ public sealed class PipelineEngine(ITmdbMetadata metadata, IRenameFileSystem fil
         new("regex", 1, "Regular expression", new { pattern = "", replacement = "", ignoreCase = false }),
         new("case", 1, "Case change", new { mode = "lower" }),
         new("tmdb", 1, "TMDB metadata", new { nameTemplate = "", changeFolder = false,
-            folderTemplate = "{title} ({year})", language = "en-US" })
+            baseFolder = "", folderTemplate = "{title} ({year})", language = "en-US" })
     ];
 
     public Task<PreviewResult> Preview(PipelineRequest request, CancellationToken cancellationToken)
@@ -159,7 +159,12 @@ public sealed class PipelineEngine(ITmdbMetadata metadata, IRenameFileSystem fil
                 var nameTemplate = S("nameTemplate");
                 stem = Render(string.IsNullOrWhiteSpace(nameTemplate) ? defaultTemplate : nameTemplate, match);
                 if (B("changeFolder"))
-                    folder = Render(S("folderTemplate", "{title} ({year})"), match) + "/";
+                {
+                    var baseFolder = S("baseFolder");
+                    if (baseFolder.Length > 0) fileSystem.Validate(baseFolder);
+                    folder = (baseFolder.Length > 0 ? baseFolder + "/" : "")
+                        + Render(S("folderTemplate", "{title} ({year})"), match) + "/";
+                }
                 break;
         }
         if (stem.Length == 0 || stem.Contains('/') || stem.Contains('\\'))

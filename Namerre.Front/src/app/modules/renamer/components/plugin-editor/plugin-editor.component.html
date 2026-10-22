@@ -83,8 +83,10 @@
         filename template empty to use the media-specific default. Movie default:
         <code>{{ '{title} ({year})' }}</code
         >. Episode template: <code>{{ '{title} - S{season}E{episode} - {episodeTitle}' }}</code
-        >. Folder changes are off by default. Template fields: title, year, season, episode,
-        episodeTitle.
+        >. Folder changes are off by default. The base folder is relative to the configured server
+        root. Use forward slashes without a trailing slash, for example <code>Movies/Archive</code>,
+        or leave it empty to start at the server root. The folder template creates a folder inside
+        that base folder. Template fields: title, year, season, episode, episodeTitle.
       </p>
     }
   </article>

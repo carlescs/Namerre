@@ -17,6 +17,7 @@ const testCatalog: PluginDescriptor[] = [
     defaultOptions: {
       nameTemplate: '{title} ({year})',
       changeFolder: false,
+      baseFolder: '',
       folderTemplate: '{title} ({year})',
       language: 'en-US',
     },
@@ -74,6 +75,34 @@ describe('PluginEditorComponent', () => {
     await fixture.whenStable();
     expect(plugins).toHaveLength(1);
     expect(plugins[0].instanceId).toBe(literalId);
+  });
+
+  it('emits an optional base folder independently for each TMDB plugin', async () => {
+    await add('tmdb');
+    await add('tmdb');
+    expect(plugins.map((plugin) => plugin.options.baseFolder)).toEqual(['', '']);
+    expect(plugins[0].options.changeFolder).toBe(false);
+    const card = fixture.nativeElement.querySelector('article') as HTMLElement;
+    const input = (label: string) =>
+      [...card.querySelectorAll('label')]
+        .find((element) => element.textContent?.includes(label))!
+        .querySelector('input')!;
+    const changeFolder = input('Allow folder change');
+    changeFolder.click();
+    const baseFolder = input('Base folder');
+    baseFolder.value = 'Library/Movies';
+    baseFolder.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+
+    expect(plugins[0].options.changeFolder).toBe(true);
+    expect(plugins[0].options.baseFolder).toBe('Library/Movies');
+    expect(plugins[1].options.baseFolder).toBe('');
+    expect(fixture.nativeElement.textContent).toContain('relative to the configured server root');
+
+    changeFolder.click();
+    await fixture.whenStable();
+    expect(plugins[0].options.changeFolder).toBe(false);
+    expect(plugins[0].options.baseFolder).toBe('Library/Movies');
   });
 
   async function add(type: string): Promise<void> {

@@ -36,6 +36,7 @@ const fields: Record<string, OptionField[]> = {
     { key: 'nameTemplate', label: 'Filename stem template' },
     { key: 'language', label: 'Metadata language' },
     { key: 'changeFolder', label: 'Allow folder change', checkbox: true },
+    { key: 'baseFolder', label: 'Base folder (only used when folder change is enabled)' },
     { key: 'folderTemplate', label: 'Folder template (only used when enabled)' },
   ],
 };
