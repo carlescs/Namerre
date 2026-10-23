@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -29,7 +30,8 @@ public sealed class PipelineEngine(ITmdbMetadata metadata, IRenameFileSystem fil
         new("regex", 1, "Regular expression", new { pattern = "", replacement = "", ignoreCase = false }),
         new("case", 1, "Case change", new { mode = "lower" }),
         new("tmdb", 1, "TMDB metadata", new { nameTemplate = "", changeFolder = false,
-            baseFolder = "", folderTemplate = "{title} ({year})", language = "en-US" })
+            baseFolder = "", folderTemplate = "{title} ({year})", seasonFolder = false,
+            seasonFolderTemplate = "Season {season}", language = "en-US" })
     ];
 
     public Task<PreviewResult> Preview(PipelineRequest request, CancellationToken cancellationToken)
@@ -164,6 +166,9 @@ public sealed class PipelineEngine(ITmdbMetadata metadata, IRenameFileSystem fil
                     if (baseFolder.Length > 0) fileSystem.Validate(baseFolder);
                     folder = (baseFolder.Length > 0 ? baseFolder + "/" : "")
                         + Render(S("folderTemplate", "{title} ({year})"), match) + "/";
+                    // Season folders nest inside the show folder and only apply to episode matches.
+                    if (B("seasonFolder") && match.Season is not null)
+                        folder += Render(S("seasonFolderTemplate", "Season {season}"), match) + "/";
                 }
                 break;
         }
@@ -180,6 +185,8 @@ public sealed class PipelineEngine(ITmdbMetadata metadata, IRenameFileSystem fil
             "title" => MetadataText(match.Title),
             "year" => match.Year is null ? "" : MetadataText(match.Year),
             "season" => match.Season?.ToString("00") ?? throw new RenameException("InvalidTemplate", "Season is unavailable."),
+            "seasonNumber" => match.Season?.ToString(CultureInfo.InvariantCulture)
+                ?? throw new RenameException("InvalidTemplate", "Season is unavailable."),
             "episode" => match.Episode?.ToString("00") ?? throw new RenameException("InvalidTemplate", "Episode is unavailable."),
             "episodeTitle" => MetadataText(match.EpisodeTitle ?? throw new RenameException("InvalidTemplate", "Episode title is unavailable.")),
             _ => throw new RenameException("InvalidTemplate", "Unknown template field.")

@@ -19,6 +19,8 @@ const testCatalog: PluginDescriptor[] = [
       changeFolder: false,
       baseFolder: '',
       folderTemplate: '{title} ({year})',
+      seasonFolder: false,
+      seasonFolderTemplate: 'Season {season}',
       language: 'en-US',
     },
   },
@@ -103,6 +105,26 @@ describe('PluginEditorComponent', () => {
     await fixture.whenStable();
     expect(plugins[0].options.changeFolder).toBe(false);
     expect(plugins[0].options.baseFolder).toBe('Library/Movies');
+  });
+
+  it('emits a season folder option and template for each TMDB plugin', async () => {
+    await add('tmdb');
+    expect(plugins[0].options.seasonFolder).toBe(false);
+    expect(plugins[0].options.seasonFolderTemplate).toBe('Season {season}');
+    const card = fixture.nativeElement.querySelector('article') as HTMLElement;
+    const input = (label: string) =>
+      [...card.querySelectorAll('label')]
+        .find((element) => element.textContent?.includes(label))!
+        .querySelector('input')!;
+    input('Add season folder').click();
+    const template = input('Season folder template');
+    template.value = 'Season {seasonNumber}';
+    template.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+
+    expect(plugins[0].options.seasonFolder).toBe(true);
+    expect(plugins[0].options.seasonFolderTemplate).toBe('Season {seasonNumber}');
+    expect(fixture.nativeElement.textContent).toContain('Season {seasonNumber}');
   });
 
   async function add(type: string): Promise<void> {

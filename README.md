@@ -370,7 +370,11 @@ Search for a movie or TV show, correct the query when necessary, and confirm the
 intended match. Episodes require a confirmed show, season, and episode. Metadata
 defaults to English; names default to `Movie Title (Year)` or
 `Show Title - S01E02 - Episode Title`, preserving the extension. Folder changes are
-optional and off by default. Confirmed metadata is snapshotted for the run so a
+optional and off by default. When folder changes are enabled, episodes can additionally
+be placed in a season folder inside the show folder (for example
+`TV/Show Title (2010)/Season 01/`). The season folder template defaults to
+`Season {season}` (two-digit, `Season 01`); use `{seasonNumber}` for the unpadded number
+(`Season 1`) or any other single-segment format such as `S{season}`. Movies ignore it. Confirmed metadata is snapshotted for the run so a
 later TMDB change or outage does not alter an approved execution or rollback.
 
 The TMDB matching stage appears automatically when an enabled TMDB plugin is added.

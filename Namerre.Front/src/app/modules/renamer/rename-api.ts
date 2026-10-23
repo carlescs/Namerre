@@ -12,6 +12,8 @@ export interface PluginOptions {
   changeFolder?: boolean;
   baseFolder?: string;
   folderTemplate?: string;
+  seasonFolder?: boolean;
+  seasonFolderTemplate?: string;
   language?: string;
 }
 export interface PluginInstance {

@@ -187,6 +187,73 @@ public sealed class PipelineEngineTests
     }
 
     [Theory]
+    [InlineData(true, "Season {season}", 2, "TV/Show/Season 02/Show - S02E05.MKV")]
+    [InlineData(true, "Season {seasonNumber}", 2, "TV/Show/Season 2/Show - S02E05.MKV")]
+    [InlineData(true, "S{season}", 2, "TV/Show/S02/Show - S02E05.MKV")]
+    [InlineData(true, "Season {season}", 0, "TV/Show/Season 00/Show - S00E05.MKV")]
+    [InlineData(false, "Season {season}", 2, "TV/Show/Show - S02E05.MKV")]
+    public async Task SeasonFoldersNestInsideTheShowFolderUsingTheirTemplate(
+        bool seasonFolder, string seasonFolderTemplate, int season, string expected)
+    {
+        var plugin = Plugin("tmdb", "tmdb", new
+        {
+            nameTemplate = "{title} - S{season}E{episode}", changeFolder = true, baseFolder = "TV",
+            folderTemplate = "{title}", seasonFolder, seasonFolderTemplate
+        });
+        var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
+            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+        metadata.Resolve(selection).Returns(new TmdbMatch(10, "tv", "Show", "2000", season, 5, "Pilot"));
+
+        var preview = await new PipelineEngine(metadata, fileSystem).Preview(
+            Request([plugin]) with { Selections = [selection] }, default);
+
+        Assert.True(preview.CanPrepare);
+        Assert.Equal(expected, Assert.Single(preview.Files).TargetPath);
+    }
+
+    [Theory]
+    [InlineData(false, "movie", "folder/Resolved.MKV")]
+    [InlineData(true, "movie", "Resolved (2000)/Resolved.MKV")]
+    public async Task SeasonFoldersRequireFolderChangesAndAnEpisodeMatch(
+        bool changeFolder, string mediaType, string expected)
+    {
+        var plugin = Plugin("tmdb", "tmdb", new
+        {
+            nameTemplate = "{title}", changeFolder, seasonFolder = true, seasonFolderTemplate = "Season {season}"
+        });
+        var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
+            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+        metadata.Resolve(selection).Returns(new TmdbMatch(10, mediaType, "Resolved", "2000", null, null, null));
+
+        var preview = await new PipelineEngine(metadata, fileSystem).Preview(
+            Request([plugin]) with { Selections = [selection] }, default);
+
+        Assert.True(preview.CanPrepare);
+        Assert.Equal(expected, Assert.Single(preview.Files).TargetPath);
+    }
+
+    [Theory]
+    [InlineData("Season/{season}")]
+    [InlineData("{unknown}")]
+    [InlineData("Season {season")]
+    public async Task InvalidSeasonFolderTemplatesBlockRenaming(string seasonFolderTemplate)
+    {
+        var plugin = Plugin("tmdb", "tmdb", new
+        {
+            changeFolder = true, folderTemplate = "{title}", seasonFolder = true, seasonFolderTemplate
+        });
+        var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
+            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+        metadata.Resolve(selection).Returns(new TmdbMatch(10, "tv", "Show", "2000", 1, 2, "Pilot"));
+
+        var preview = await new PipelineEngine(metadata, fileSystem).Preview(
+            Request([plugin]) with { Selections = [selection] }, default);
+
+        Assert.False(preview.CanPrepare);
+        Assert.Equal("InvalidTemplate", Assert.Single(Assert.Single(preview.Files).Issues).Code);
+    }
+
+    [Theory]
     [InlineData("../escape")]
     [InlineData("/absolute")]
     [InlineData("C:\\Movies")]

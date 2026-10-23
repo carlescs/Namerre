@@ -86,7 +86,11 @@
         >. Folder changes are off by default. The base folder is relative to the configured server
         root. Use forward slashes without a trailing slash, for example <code>Movies/Archive</code>,
         or leave it empty to start at the server root. The folder template creates a folder inside
-        that base folder. Template fields: title, year, season, episode, episodeTitle.
+        that base folder. With folder changes enabled, episodes can also be placed in a season
+        folder inside it, for example <code>{{ 'Season {season}' }}</code> (Season 01),
+        <code>{{ 'Season {seasonNumber}' }}</code> (Season 1) or <code>{{ 'S{season}' }}</code>
+        (S01); movies ignore it. Template fields: title, year, season, seasonNumber, episode,
+        episodeTitle.
       </p>
     }
   </article>

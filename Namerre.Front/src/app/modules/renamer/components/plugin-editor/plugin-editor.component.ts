@@ -38,6 +38,8 @@ const fields: Record<string, OptionField[]> = {
     { key: 'changeFolder', label: 'Allow folder change', checkbox: true },
     { key: 'baseFolder', label: 'Base folder (only used when folder change is enabled)' },
     { key: 'folderTemplate', label: 'Folder template (only used when enabled)' },
+    { key: 'seasonFolder', label: 'Add season folder for episodes', checkbox: true },
+    { key: 'seasonFolderTemplate', label: 'Season folder template (only used when enabled)' },
   ],
 };
 
