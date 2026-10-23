@@ -4,6 +4,7 @@ using Namerre.Infrastructure.Folders;
 using Namerre.Application.Renaming;
 using Namerre.Infrastructure.Renaming;
 using Namerre.Authentication;
+using Namerre.Telemetry;
 using Microsoft.Extensions.Options;
 using Namerre.Infrastructure.Configuration;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -51,6 +52,7 @@ builder.Services.AddSingleton<IFolderBrowser>(services => new ServerFolderBrowse
     services.GetRequiredService<RenameStore>().IsOwnedEntry));
 builder.Services.AddControllersWithViews();
 builder.Services.AddAdminAuthentication();
+builder.AddOptionalTelemetry();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 

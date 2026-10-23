@@ -70,6 +70,12 @@ Application settings live in one `Namerre` section in `Namerre.Api\appsettings.j
     "ReverseProxy": {
       "KnownProxies": [],
       "KnownNetworks": []
+    },
+    "Telemetry": {
+      "OtlpEndpoint": "",
+      "Protocol": "Grpc",
+      "Headers": "",
+      "ServiceName": "namerre"
     }
   }
 }
@@ -84,6 +90,28 @@ When upgrading, move the former `FileBrowser:RootPath` and `Rename:DataPath` val
 to `Namerre:RootPath` and `Namerre:DataPath`, and move `Authentication` and `Tmdb`
 under `Namerre`. Update environment variables and user secrets accordingly;
 the old top-level application sections are no longer read.
+
+## Telemetry (optional)
+
+Namerre can export OpenTelemetry traces, metrics and logs over OTLP to an
+OpenTelemetry Collector (or any OTLP-compatible backend). It is disabled unless
+`Namerre:Telemetry:OtlpEndpoint` is set; with no endpoint, no telemetry is collected.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `OtlpEndpoint` | empty (disabled) | Absolute `http`/`https` collector URL, e.g. `http://otel-collector:4317`. |
+| `Protocol` | `Grpc` | `Grpc` (usually port 4317) or `HttpProtobuf` (usually port 4318). For `HttpProtobuf`, give the base URL; `/v1/traces`, `/v1/metrics` and `/v1/logs` are appended. |
+| `Headers` | empty | Optional exporter headers as `key1=value1,key2=value2` (for example collector authentication). Treat as a secret. |
+| `ServiceName` | `namerre` | Reported as `service.name`. |
+
+Exported signals: ASP.NET Core and outgoing `HttpClient` (TMDB) traces and metrics,
+.NET runtime metrics, and application logs. Query strings are redacted by the
+instrumentation, but request paths and log messages may contain media file and folder
+names, so send telemetry only to a collector you trust. Invalid settings fail startup.
+
+```powershell
+$env:Namerre__Telemetry__OtlpEndpoint = 'http://otel-collector:4317'
+```
 
 ## Authentication (required)
 
