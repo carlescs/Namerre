@@ -187,10 +187,11 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         {
             using var db = Open();
             using var transaction = db.Database.BeginTransaction();
-            var root = Read<RunView>(db, id, "Run");
-            var runs = db.Documents.AsNoTracking().Where(d => d.Kind == "Run").Select(d => d.Json).ToList()
-                .Select(json => JsonSerializer.Deserialize<RunView>(json, Json)!).ToArray();
-            var deleted = new List<RunView> { root };
+            var root = Read<RunLink>(db, id, "Run");
+            // Only the run graph is needed: stream the history and skip materializing files and journals.
+            var runs = db.Documents.AsNoTracking().Where(d => d.Kind == "Run").Select(d => d.Json).AsEnumerable()
+                .Select(json => JsonSerializer.Deserialize<RunLink>(json, Json)!).ToArray();
+            var deleted = new List<RunLink> { root };
             for (var i = 0; i < deleted.Count; i++)
                 deleted.AddRange(runs.Where(r => r.ParentRunId == deleted[i].Id));
             if (deleted.Any(r => !RunTransitions.IsSettled(r.Status)))
@@ -200,11 +201,11 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
             var planIds = deleted.Select(r => r.PlanId)
                 .Where(plan => !runs.Any(r => !runIds.Contains(r.Id) && r.PlanId == plan)).ToHashSet();
             var ids = runIds.Concat(planIds).ToArray();
-            db.Operations.RemoveRange(db.Operations.Where(o => ids.Contains(o.Target)));
-            db.Jobs.RemoveRange(db.Jobs.Where(j => ids.Contains(j.Target)));
-            db.Documents.RemoveRange(db.Documents.Where(d => ids.Contains(d.Id)));
+            // Set-based deletes stay inside the transaction, so a failure before Commit still rolls everything back.
+            db.Operations.Where(o => ids.Contains(o.Target)).ExecuteDelete();
+            db.Jobs.Where(j => ids.Contains(j.Target)).ExecuteDelete();
+            db.Documents.Where(d => ids.Contains(d.Id)).ExecuteDelete();
             boundary?.Invoke("Delete:Before");
-            db.SaveChanges();
             transaction.Commit();
             boundary?.Invoke("Delete:After");
             return deleted.Select(r => r.Id).ToArray();
@@ -315,8 +316,16 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
 
     private static void Write<T>(RenameDbContext db, string id, string kind, string status, T value)
     {
-        var document = db.Documents.Local.FirstOrDefault(d => d.Id == id)
-            ?? db.Documents.SingleOrDefault(d => d.Id == id);
+        var document = db.Documents.Local.FirstOrDefault(d => d.Id == id);
+        if (document is null)
+        {
+            // The previous JSON payload is always replaced, so load only the row metadata and attach it.
+            document = db.Documents.AsNoTracking().Where(d => d.Id == id).Select(d => new RenameDocument
+            {
+                Id = d.Id, Kind = d.Kind, Status = d.Status, Order = d.Order, Revision = d.Revision
+            }).SingleOrDefault();
+            if (document is not null) db.Documents.Attach(document);
+        }
         if (document is null)
         {
             document = new RenameDocument { Id = id, Kind = kind, Order = DateTime.UtcNow.Ticks };
@@ -339,6 +348,8 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         return List<RunView>("Run", ["Queued", "Running", "RecoveryRequired", "RecoveryQueued", "Recovering"]).Any(r => r.Files.Any(f => f.StagingPath == path)
             || r.Journal.Any(j => j.Kind != "CreateDirectory" && (j.FromPath == path || j.ToPath == path)));
     }
+
+    private sealed record RunLink(string Id, string PlanId, string? ParentRunId, string Status);
 
     public void Dispose()
     {
