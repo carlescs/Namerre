@@ -4,6 +4,8 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging.Abstractions;
 using Namerre.Application.Renaming;
+using Namerre.Application.Renaming.Metadata;
+using Namerre.Application.Renaming.Plans;
 using Namerre.Infrastructure.Configuration;
 using Namerre.Infrastructure.Renaming;
 using Xunit;

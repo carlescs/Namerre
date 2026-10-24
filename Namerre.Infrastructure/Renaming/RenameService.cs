@@ -1,5 +1,10 @@
 using Microsoft.Extensions.Logging;
 using Namerre.Application.Renaming;
+using Namerre.Application.Renaming.Plans;
+using Namerre.Application.Renaming.Previews;
+using Namerre.Application.Renaming.Recovery;
+using Namerre.Application.Renaming.Rollback;
+using Namerre.Application.Renaming.Runs;
 
 namespace Namerre.Infrastructure.Renaming;
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Namerre.Application.Renaming;
+using Namerre.Application.Renaming.Metadata;
 using Namerre.Domain.Renaming;
 using NSubstitute;
 using Xunit;

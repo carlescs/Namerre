@@ -54,9 +54,11 @@ routes always start with `api/` — `RenamingController` uses per-action routes 
 live in separate files (`XQuery.cs` + `XQueryHandler.cs`), grouped by feature folder with a
 matching namespace (`Application/Renaming/{Plugins,Previews,Plans,Runs,Rollback,Recovery,Metadata}`).
 Renaming handlers are thin pass-throughs to `IRenameService`; the real
-logic lives in `Namerre.Infrastructure/Renaming/RenameService.cs` (a singleton). All DTOs and the
-`IRenameService`/`ITmdbMetadata` contracts are in `Application/Renaming/Contracts.cs`;
-`RenameException(code, message, status, fileId)` carries API error codes.
+logic lives in `Namerre.Infrastructure/Renaming/RenameService.cs` (a singleton). DTOs are one
+type per file: feature-specific ones (e.g. `RunView`, `PlanView`, `TmdbMatch`) sit in their
+feature folder; shared ones (`PipelineRequest`, `PluginInstance`, `RenameIssue`, `JobAccepted`, …),
+the `IRenameService`/`ITmdbMetadata` contracts and `RenameException(code, message, status, fileId)`
+(which carries API error codes) stay directly in `Application/Renaming`.
 
 **Renaming pipeline.** `PipelineEngine` (Application) owns the plugin `Catalog`
 (`literal`, `regex`, `case`, `tmdb`, each versioned) and applies enabled plugin instances in the

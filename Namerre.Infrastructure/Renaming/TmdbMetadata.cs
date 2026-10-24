@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Namerre.Infrastructure.Configuration;
 using Namerre.Application.Renaming;
+using Namerre.Application.Renaming.Metadata;
 using Namerre.Domain.Renaming;
 
 namespace Namerre.Infrastructure.Renaming;

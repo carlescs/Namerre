@@ -3,6 +3,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Namerre.Application.Renaming.Metadata;
+using Namerre.Application.Renaming.Plugins;
+using Namerre.Application.Renaming.Previews;
 using Namerre.Domain.Renaming;
 
 namespace Namerre.Application.Renaming;
