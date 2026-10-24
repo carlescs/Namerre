@@ -118,7 +118,13 @@ public sealed class TmdbMetadata(HttpClient client, IOptions<NamerreOptions> opt
             await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: timeout.Token);
             var result = document.RootElement.Clone();
-            if (cache.Count >= 256) cache.Clear();
+            if (cache.Count >= 256)
+            {
+                var now = DateTimeOffset.UtcNow;
+                foreach (var (key, cached) in cache)
+                    if (cached.Expires <= now) cache.TryRemove(key, out _);
+                if (cache.Count >= 256) cache.Clear();
+            }
             cache[path] = (DateTimeOffset.UtcNow.AddMinutes(10), result);
             return result;
         }
