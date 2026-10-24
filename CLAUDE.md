@@ -111,7 +111,9 @@ cleared on rebuild) — put static assets in `Namerre.Front/public`.
   Pass the request `CancellationToken` through `ISender.Send`.
 - Don't make handlers public for tests; `InternalsVisibleTo` exposes them to
   `Namerre.Application.UnitTests`. Unit tests use xUnit + NSubstitute (substitute collaborators,
-  not the class under test). `Namerre.Api.Tests` holds HTTP integration tests (`AuthWebApplicationFactory`).
+  not the class under test). `Namerre.Infrastructure.UnitTests` covers `TmdbMetadata` (stub
+  `HttpMessageHandler`) and `BoundedFileSystem` against temp directories. `Namerre.Api.Tests` holds
+  HTTP integration tests (`AuthWebApplicationFactory`).
 - Frontend formatting: Prettier, 2 spaces, single quotes, 100 columns. Keep the strict TypeScript
   and Angular compiler flags enabled.
 - Workload limits enforced server-side: ≤200 files and ≤32 plugin instances per run, ≤32 queued

@@ -127,6 +127,84 @@ describe('PluginEditorComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Season {seasonNumber}');
   });
 
+  it('limits the recipe to 32 plugins', async () => {
+    for (let i = 0; i < 32; i++) await add('case');
+    const addButton = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    expect(plugins).toHaveLength(32);
+    expect(fixture.nativeElement.textContent).toContain('Ordered plugins (32/32)');
+    expect(addButton.disabled).toBe(true);
+    addButton.disabled = false;
+    addButton.click();
+    await fixture.whenStable();
+    expect(plugins).toHaveLength(32);
+  });
+
+  it('does not add a plugin before a type is chosen', async () => {
+    const addButton = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    expect(addButton.disabled).toBe(true);
+    addButton.disabled = false;
+    addButton.click();
+    await fixture.whenStable();
+    expect(plugins).toEqual([]);
+    expect(fixture.nativeElement.textContent).toContain('No plugins selected');
+  });
+
+  it('moves plugins down and disables moves past either end', async () => {
+    await add('literal');
+    await add('case');
+    expect(button('Move plugin 1 up').disabled).toBe(true);
+    expect(button('Move plugin 2 down').disabled).toBe(true);
+    button('Move plugin 1 down').click();
+    await fixture.whenStable();
+    expect(plugins.map((plugin) => plugin.typeId)).toEqual(['case', 'literal']);
+    expect(document.activeElement?.textContent).toContain('Literal replacement');
+  });
+
+  it('returns focus to the add button after removing the last plugin', async () => {
+    await add('case');
+    button('Remove plugin 1').click();
+    await fixture.whenStable();
+    expect(plugins).toEqual([]);
+    expect(document.activeElement).toBe(fixture.nativeElement.querySelector('button'));
+  });
+
+  it('edits choice options and defaults missing option values', async () => {
+    fixture.componentRef.setInput('catalog', [
+      ...testCatalog,
+      { typeId: 'regex', version: 1, name: 'Regular expression', defaultOptions: {} },
+    ]);
+    await fixture.whenStable();
+    await add('case');
+    const mode = fixture.nativeElement.querySelector('article select') as HTMLSelectElement;
+    expect([...mode.options].map((option) => option.value)).toEqual(['upper', 'lower', 'title']);
+    mode.value = 'title';
+    mode.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    expect(plugins[0].options.mode).toBe('title');
+    await add('regex');
+    const regex = fixture.nativeElement.querySelectorAll('article')[1] as HTMLElement;
+    const texts = [...regex.querySelectorAll('input[type="text"]')] as HTMLInputElement[];
+    expect(texts.map((input) => input.value)).toEqual(['', '']);
+    const checkboxes = regex.querySelectorAll('input[type="checkbox"]');
+    expect((checkboxes[checkboxes.length - 1] as HTMLInputElement).checked).toBe(false);
+    texts[0].value = '(\\d+)';
+    texts[0].dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(plugins[1].options).toEqual({ pattern: '(\\d+)', replacement: '', ignoreCase: false });
+  });
+
+  it('accepts catalog types without editable options', async () => {
+    fixture.componentRef.setInput('catalog', [
+      { typeId: 'future', version: 2, name: 'Future plugin', defaultOptions: { mode: 'x' } },
+    ]);
+    await fixture.whenStable();
+    await add('future');
+    expect(plugins).toEqual([
+      expect.objectContaining({ typeId: 'future', version: 2, options: { mode: 'x' } }),
+    ]);
+    expect(fixture.nativeElement.querySelector('article').textContent).toContain('Future plugin');
+  });
+
   async function add(type: string): Promise<void> {
     const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
     select.value = type;

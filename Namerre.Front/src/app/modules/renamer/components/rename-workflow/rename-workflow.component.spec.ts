@@ -818,6 +818,87 @@ describe('RenameWorkflowComponent', () => {
     await fixture.whenStable();
   }
 
+  it('reports a catalog failure and retries on request', async () => {
+    fixture.destroy();
+    fixture = TestBed.createComponent(RenameWorkflowComponent);
+    fixture.componentRef.setInput('files', files);
+    await fixture.whenStable();
+    button('Next: configure plugins').click();
+    await fixture.whenStable();
+    http
+      .expectOne('/api/rename-plugins')
+      .flush({ title: 'Catalog unavailable.' }, { status: 503, statusText: 'Unavailable' });
+    await fixture.whenStable();
+    expect(text()).toContain('Catalog unavailable.');
+    expect(button('Next: review filenames').disabled).toBe(true);
+    button('Retry plugin catalog').click();
+    http.expectOne('/api/rename-plugins').flush([]);
+    await fixture.whenStable();
+    expect(text()).not.toContain('Catalog unavailable.');
+    expect(button('Next: review filenames').disabled).toBe(false);
+  });
+
+  it('reports preview failures and keeps preparation blocked', async () => {
+    button('Next: review filenames').click();
+    http
+      .expectOne('/api/rename-previews')
+      .flush({ title: 'Supply 1–200 files.' }, { status: 400, statusText: 'Bad Request' });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain(
+      'Supply 1–200 files.',
+    );
+    expect(button('Prepare immutable').disabled).toBe(true);
+    button('Preview').click();
+    http.expectOne('/api/rename-previews').flush(preview);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
+    expect(button('Prepare immutable').disabled).toBe(false);
+  });
+
+  it('reports a refused preparation and lets the user go back', async () => {
+    await showPreview();
+    button('Prepare immutable').click();
+    http
+      .expectOne('/api/rename-plans')
+      .flush({ title: 'Too many queued jobs.' }, { status: 429, statusText: 'Too Many' });
+    await fixture.whenStable();
+    expect(text()).toContain('Too many queued jobs.');
+    expect(heading().textContent).toBe('Confirm renaming');
+    expect(button('Back').disabled).toBe(false);
+    expect(() => button('Retry preparation status')).toThrow();
+    http.expectNone('/api/rename-plans/plan-1');
+  });
+
+  it('retries polling the preparation status after a failure', async () => {
+    await showPreview();
+    button('Prepare immutable').click();
+    http.expectOne('/api/rename-plans').flush({ id: 'plan-1', status: 'Preparing', location: '' });
+    await waitForPoll();
+    http.expectOne('/api/rename-plans/plan-1').error(new ProgressEvent('error'));
+    await fixture.whenStable();
+    expect(text()).toContain('Cannot reach the server');
+    expect(() => button('Confirm and execute')).toThrow();
+    button('Retry preparation status').click();
+    await waitForPoll();
+    http.expectOne('/api/rename-plans/plan-1').flush(ready);
+    await fixture.whenStable();
+    expect(text()).not.toContain('Cannot reach the server');
+    expect(button('Confirm and execute').disabled).toBe(false);
+  });
+
+  it('returns from matching to plugin configuration when the TMDB step is removed', async () => {
+    changePlugins([tmdb]);
+    await fixture.whenStable();
+    button('Next: match metadata').click();
+    http.expectOne('/api/rename-previews').flush(tmdbPreview);
+    await fixture.whenStable();
+    expect(heading().textContent).toBe('Match TMDB metadata');
+    changePlugins([]);
+    await fixture.whenStable();
+    expect(heading().textContent).toBe('Configure plugins');
+    expect(fixture.nativeElement.querySelector('app-tmdb-matching')).toBeNull();
+  });
+
   function changePlugins(plugins: PluginInstance[]): void {
     const editor = fixture.debugElement.query(By.directive(PluginEditorComponent))
       .componentInstance as PluginEditorComponent;
