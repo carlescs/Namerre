@@ -10,6 +10,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FaIconComponent } from '@fortawesome/angular-fontawesome';
+import { faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { exhaustMap, Subscription, timer } from 'rxjs';
 import {
@@ -26,7 +28,7 @@ import {
 } from '../../rename-api';
 
 @Component({
-  imports: [RouterLink, DatePipe, JsonPipe, LowerCasePipe, NgTemplateOutlet],
+  imports: [RouterLink, DatePipe, FaIconComponent, JsonPipe, LowerCasePipe, NgTemplateOutlet],
   selector: 'app-run-history',
   styleUrl: './run-history.component.scss',
   templateUrl: './run-history.component.html',
@@ -56,6 +58,7 @@ export class RunHistoryComponent {
   protected readonly deleting = signal(false);
   protected readonly deleteError = signal('');
   protected readonly isSettledRun = isSettledRun;
+  protected readonly trashIcon = faTrashCan;
   private polling?: Subscription;
   private action?: Subscription;
   private revision = 0;

@@ -198,13 +198,13 @@ describe('RunHistoryComponent', () => {
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     http.expectOne('/api/rename-runs/run-1').flush(run);
     await fixture.whenStable();
-    button('Delete saved run').click();
+    deleteButton().click();
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('Files on disk are not touched');
     button('Cancel').click();
     await fixture.whenStable();
     http.expectNone({ method: 'DELETE' });
-    button('Delete saved run').click();
+    deleteButton().click();
     await fixture.whenStable();
     button('Confirm deletion').click();
     const request = http.expectOne('/api/rename-runs/run-1');
@@ -213,10 +213,11 @@ describe('RunHistoryComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/runs']);
   });
 
-  it('hides deletion for runs awaiting recovery', async () => {
+  it('disables deletion for runs awaiting recovery', async () => {
     http.expectOne('/api/rename-runs/run-1').flush({ ...run, status: 'RecoveryRequired' });
     await fixture.whenStable();
-    expect(() => button('Delete saved run')).toThrow();
+    expect(deleteButton().disabled).toBe(true);
+    expect(deleteButton().title).toBe('Only completed or recovered runs can be deleted');
   });
 
   it('reports a refused deletion from the history list and refreshes after success', async () => {
@@ -225,7 +226,7 @@ describe('RunHistoryComponent', () => {
     const page = { items: [run], page: 1, pageSize: 20, hasMore: false };
     http.expectOne('/api/rename-runs?page=1&pageSize=20').flush(page);
     await fixture.whenStable();
-    button('Delete saved run').click();
+    deleteButton().click();
     await fixture.whenStable();
     button('Confirm deletion').click();
     http
@@ -244,6 +245,14 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('No saved runs yet.');
   });
+
+  function deleteButton(): HTMLButtonElement {
+    const result = fixture.nativeElement.querySelector(
+      'button[aria-label="Delete saved run run-1"]',
+    ) as HTMLButtonElement | null;
+    if (!result) throw new Error('Delete button not found');
+    return result;
+  }
 
   function button(prefix: string): HTMLButtonElement {
     const result = Array.from(
