@@ -50,8 +50,10 @@ implement in Infrastructure, register in `Namerre.Api/Program.cs`.
 
 **Request flow.** Controllers (`Namerre.Api/Controllers`, namespace `Namerre.Controllers`,
 routes always start with `api/` — `RenamingController` uses per-action routes like
-`api/rename-plans/{id}`) send CMediator requests via `ISender`. Renaming handlers in
-`Namerre.Application/Renaming/Requests.cs` are thin pass-throughs to `IRenameService`; the real
+`api/rename-plans/{id}`) send CMediator requests via `ISender`. Each request and its handler
+live in separate files (`XQuery.cs` + `XQueryHandler.cs`), grouped by feature folder with a
+matching namespace (`Application/Renaming/{Plugins,Previews,Plans,Runs,Rollback,Recovery,Metadata}`).
+Renaming handlers are thin pass-throughs to `IRenameService`; the real
 logic lives in `Namerre.Infrastructure/Renaming/RenameService.cs` (a singleton). All DTOs and the
 `IRenameService`/`ITmdbMetadata` contracts are in `Application/Renaming/Contracts.cs`;
 `RenameException(code, message, status, fileId)` carries API error codes.
