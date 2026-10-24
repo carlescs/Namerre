@@ -9,6 +9,7 @@ public sealed record GetRenamePlanQuery(string Id) : IRequest<PlanView>;
 public sealed record ExecuteRenameCommand(string Id, ExecuteRequest Request) : IRequest<JobAccepted>;
 public sealed record GetRenameRunsQuery(int Page, int PageSize) : IRequest<RunPage>;
 public sealed record GetRenameRunQuery(string Id) : IRequest<RunView>;
+public sealed record DeleteRenameRunCommand(string Id) : IRequest<IReadOnlyList<string>>;
 public sealed record PreviewRollbackQuery(string Id, SelectionRequest Selection) : IRequest<SelectionPreview>;
 public sealed record RollbackRenameCommand(string Id, SelectionRequest Selection) : IRequest<JobAccepted>;
 public sealed record PreviewRecoveryQuery(string Id) : IRequest<RecoveryPreview>;
@@ -49,6 +50,11 @@ internal sealed class GetRenameRunQueryHandler(IRenameService service) : IReques
 {
     public Task<RunView> Handle(GetRenameRunQuery request, CancellationToken cancellationToken)
         => service.GetRun(request.Id, cancellationToken);
+}
+internal sealed class DeleteRenameRunCommandHandler(IRenameService service) : IRequestHandler<DeleteRenameRunCommand, IReadOnlyList<string>>
+{
+    public Task<IReadOnlyList<string>> Handle(DeleteRenameRunCommand request, CancellationToken cancellationToken)
+        => service.DeleteRun(request.Id, cancellationToken);
 }
 internal sealed class PreviewRollbackQueryHandler(IRenameService service) : IRequestHandler<PreviewRollbackQuery, SelectionPreview>
 {

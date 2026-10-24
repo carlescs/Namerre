@@ -218,6 +218,9 @@ export class RenameApi {
   run(id: string) {
     return this.http.get<RunView>(`/api/rename-runs/${encodeURIComponent(id)}`);
   }
+  deleteRun(id: string) {
+    return this.http.delete<void>(`/api/rename-runs/${encodeURIComponent(id)}`);
+  }
   rollbackPreview(id: string, request: SelectionRequest) {
     return this.http.post<SelectionPreview>(
       `/api/rename-runs/${encodeURIComponent(id)}/rollback-preview`,
@@ -253,6 +256,10 @@ export function isMatchingIssue(code: string): boolean {
 
 export function awaitingMetadata(file: PreviewFile): boolean {
   return file.issues.some((issue) => isMatchingIssue(issue.code));
+}
+
+export function isSettledRun(run: RunView): boolean {
+  return run.status === 'Completed' || run.status === 'Recovered';
 }
 
 export function renameError(error: unknown): string {

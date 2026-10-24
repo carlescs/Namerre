@@ -12,4 +12,7 @@ public static class RunTransitions
         ("Recovering", "Recovered") => true,
         _ => false
     };
+
+    /// <summary>Settled runs have no pending mutation or recovery, so their records may be deleted.</summary>
+    public static bool IsSettled(string status) => status is "Completed" or "Recovered";
 }

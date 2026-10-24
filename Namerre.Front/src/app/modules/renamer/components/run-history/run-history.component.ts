@@ -1,4 +1,4 @@
-import { DatePipe, JsonPipe } from '@angular/common';
+import { DatePipe, JsonPipe, LowerCasePipe, NgTemplateOutlet } from '@angular/common';
 import {
   afterNextRender,
   Component,
@@ -20,12 +20,13 @@ import {
   RunView,
   SelectionPreview,
   SelectionRequest,
+  isSettledRun,
   operationId,
   renameError,
 } from '../../rename-api';
 
 @Component({
-  imports: [RouterLink, DatePipe, JsonPipe],
+  imports: [RouterLink, DatePipe, JsonPipe, LowerCasePipe, NgTemplateOutlet],
   selector: 'app-run-history',
   styleUrl: './run-history.component.scss',
   templateUrl: './run-history.component.html',
@@ -51,6 +52,10 @@ export class RunHistoryComponent {
   protected readonly savedPlan = signal<PlanView | null>(null);
   protected readonly planError = signal('');
   protected readonly loadingPlan = signal(false);
+  protected readonly pendingDelete = signal('');
+  protected readonly deleting = signal(false);
+  protected readonly deleteError = signal('');
+  protected readonly isSettledRun = isSettledRun;
   private polling?: Subscription;
   private action?: Subscription;
   private revision = 0;
@@ -59,6 +64,7 @@ export class RunHistoryComponent {
   private runSignature = '';
   private planRequest?: Subscription;
   private loadRevision = 0;
+  private deleteRequest?: Subscription;
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
@@ -70,6 +76,7 @@ export class RunHistoryComponent {
       this.savedPlan.set(null);
       this.planError.set('');
       this.loadingPlan.set(false);
+      this.cancelDelete();
       this.invalidateApproval();
       this.refresh();
       afterNextRender(() => this.heading()?.nativeElement.focus(), { injector: this.injector });
@@ -78,6 +85,7 @@ export class RunHistoryComponent {
       this.polling?.unsubscribe();
       this.action?.unsubscribe();
       this.planRequest?.unsubscribe();
+      this.deleteRequest?.unsubscribe();
     });
   }
 
@@ -253,6 +261,46 @@ export class RunHistoryComponent {
           else void this.router.navigate(['/runs', accepted.id]);
         },
         error: (error: unknown) => this.failAction(error, revision),
+      });
+  }
+
+  protected requestDelete(id: string): void {
+    if (this.deleting()) return;
+    this.pendingDelete.set(id);
+    this.deleteError.set('');
+  }
+
+  protected cancelDelete(): void {
+    this.deleteRequest?.unsubscribe();
+    this.pendingDelete.set('');
+    this.deleting.set(false);
+    this.deleteError.set('');
+  }
+
+  protected confirmDelete(): void {
+    const id = this.pendingDelete();
+    if (!id || this.deleting()) return;
+    this.deleting.set(true);
+    this.deleteError.set('');
+    this.deleteRequest = this.api
+      .deleteRun(id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.pendingDelete.set('');
+          this.deleting.set(false);
+          if (this.runId()) {
+            void this.router.navigate(['/runs']);
+          } else {
+            if (this.history()?.items.length === 1 && this.page() > 1)
+              this.page.update((p) => p - 1);
+            this.refresh();
+          }
+        },
+        error: (error: unknown) => {
+          this.deleting.set(false);
+          this.deleteError.set(renameError(error));
+        },
       });
   }
 

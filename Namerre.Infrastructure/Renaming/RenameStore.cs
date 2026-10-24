@@ -174,6 +174,41 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         }
     }
 
+    /// <summary>
+    /// Deletes a settled run record together with its rollback descendants, their jobs and idempotency keys,
+    /// and any plan no remaining run references. The filesystem is never touched.
+    /// </summary>
+    public IReadOnlyList<string> DeleteRun(string id)
+    {
+        Initialize();
+        lock (gate)
+        {
+            using var db = Open();
+            using var transaction = db.Database.BeginTransaction();
+            var root = Read<RunView>(db, id, "Run");
+            var runs = db.Documents.AsNoTracking().Where(d => d.Kind == "Run").Select(d => d.Json).ToList()
+                .Select(json => JsonSerializer.Deserialize<RunView>(json, Json)!).ToArray();
+            var deleted = new List<RunView> { root };
+            for (var i = 0; i < deleted.Count; i++)
+                deleted.AddRange(runs.Where(r => r.ParentRunId == deleted[i].Id));
+            if (deleted.Any(r => !RunTransitions.IsSettled(r.Status)))
+                throw new RenameException("RunNotSettled",
+                    "Only completed or recovered runs without pending rollbacks or recovery can be deleted.", 409);
+            var runIds = deleted.Select(r => r.Id).ToHashSet();
+            var planIds = deleted.Select(r => r.PlanId)
+                .Where(plan => !runs.Any(r => !runIds.Contains(r.Id) && r.PlanId == plan)).ToHashSet();
+            var ids = runIds.Concat(planIds).ToArray();
+            db.Operations.RemoveRange(db.Operations.Where(o => ids.Contains(o.Target)));
+            db.Jobs.RemoveRange(db.Jobs.Where(j => ids.Contains(j.Target)));
+            db.Documents.RemoveRange(db.Documents.Where(d => ids.Contains(d.Id)));
+            boundary?.Invoke("Delete:Before");
+            db.SaveChanges();
+            transaction.Commit();
+            boundary?.Invoke("Delete:After");
+            return deleted.Select(r => r.Id).ToArray();
+        }
+    }
+
     public string? Operation(string key)
     {
         Initialize();

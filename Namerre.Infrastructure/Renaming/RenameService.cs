@@ -73,6 +73,17 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     public Task<RunView> GetRun(string id, CancellationToken cancellationToken)
         => Task.FromResult(store.Get<RunView>(id, "Run"));
 
+    public async Task<IReadOnlyList<string>> DeleteRun(string id, CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            EnsureOperational();
+            return store.DeleteRun(id);
+        }
+        finally { gate.Release(); }
+    }
+
     public async Task<SelectionPreview> RollbackPreview(string id, SelectionRequest request, CancellationToken cancellationToken)
     {
         ValidateSelection(request);

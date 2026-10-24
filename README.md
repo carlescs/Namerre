@@ -239,6 +239,13 @@ original path, and reports unsafe selections. A swap may require selecting all
 participating files. A hash proves content equivalence, not unique physical identity
 when different files contain identical bytes.
 
+Settled runs (completed or recovered) can be deleted from history, either from the
+list or the run details, after an inline confirmation (`DELETE /api/rename-runs/{id}`).
+Deleting a rename run also deletes its rollback runs and its prepared plan; deleting a
+rollback run keeps the original run. Files on disk are never touched, but deleted
+history can no longer be used for rollback. Runs awaiting recovery, or with a queued or
+unrecovered rollback, cannot be deleted.
+
 Runs are journaled, not whole-batch atomic: a failure can leave some files renamed
 or in recorded temporary staging paths. Inspect the run and use explicit recovery.
 Interrupted mutations are not blindly resumed after a restart. Do not delete staging

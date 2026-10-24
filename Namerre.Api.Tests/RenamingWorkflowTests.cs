@@ -134,7 +134,86 @@ public sealed class RenamingWorkflowTests : IDisposable
             Assert.Equal("original", Read("alpha.txt"));
             var parent = await client.GetFromJsonAsync<RunView>("/api/rename-runs/" + runId);
             Assert.Equal("RolledBack", Assert.Single(parent!.Files).Status);
+            using var deleted = await client.DeleteAsync("/api/rename-runs/" + runId);
+            Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+            using var missing = await client.GetAsync("/api/rename-runs/" + job.Id);
+            Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+            Assert.Empty((await client.GetFromJsonAsync<RunPage>("/api/rename-runs"))!.Items);
+            Assert.Equal("original", Read("alpha.txt"));
         }
+    }
+
+    [Fact]
+    public async Task DeletingSettledRunRemovesRecordsRollbacksAndPlanButNeverFiles()
+    {
+        Write("alpha.txt", "A");
+        Write("bravo.txt", "B");
+        using var harness = Harness();
+        var plan = await Prepare(harness, UpperRequest(["alpha.txt", "bravo.txt"]));
+        var rename = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        var rollback = await harness.Service.Rollback(rename.Id, new(["0"], Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        var other = await Prepare(harness, Request(["alpha.txt"], [Plugin("r", "literal", new { search = "alpha", replacement = "zulu" })]));
+
+        Assert.Equal([rename.Id, rollback.Id], await harness.Service.DeleteRun(rename.Id, default));
+
+        foreach (var id in new[] { rename.Id, rollback.Id })
+            Assert.Equal("NotFound", (await Assert.ThrowsAsync<RenameException>(() => harness.Service.GetRun(id, default))).Code);
+        Assert.Equal("NotFound", (await Assert.ThrowsAsync<RenameException>(() => harness.Service.GetPlan(plan.Id, default))).Code);
+        Assert.Equal("Ready", (await harness.Service.GetPlan(other.Id, default)).Status);
+        Assert.Empty((await harness.Service.GetRuns(1, 20, default)).Items);
+        Assert.Equal("A", Read("alpha.txt"));
+        Assert.Equal("B", Read("BRAVO.txt"));
+        Assert.Equal("NotFound", (await Assert.ThrowsAsync<RenameException>(() => harness.Service.DeleteRun(rename.Id, default))).Code);
+    }
+
+    [Fact]
+    public async Task DeletingRollbackKeepsOriginalRunAndSharedPlan()
+    {
+        Write("alpha.txt", "A");
+        using var harness = Harness();
+        var plan = await Prepare(harness, UpperRequest(["alpha.txt"]));
+        var rename = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        var rollback = await harness.Service.Rollback(rename.Id, new(["0"], Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+
+        Assert.Equal([rollback.Id], await harness.Service.DeleteRun(rollback.Id, default));
+
+        Assert.Equal("RolledBack", Assert.Single((await harness.Service.GetRun(rename.Id, default)).Files).Status);
+        Assert.Equal("Ready", (await harness.Service.GetPlan(plan.Id, default)).Status);
+    }
+
+    [Fact]
+    public async Task RunsAwaitingRecoveryOrWithPendingRollbacksCannotBeDeleted()
+    {
+        Write("alpha.txt", "before");
+        using var harness = Harness();
+        var plan = await Prepare(harness, UpperRequest(["alpha.txt"]));
+        Write("alpha.txt", "after!");
+        var failed = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        Assert.Equal("RecoveryRequired", (await harness.Service.GetRun(failed.Id, default)).Status);
+        var blocked = await Assert.ThrowsAsync<RenameException>(() => harness.Service.DeleteRun(failed.Id, default));
+        Assert.Equal(("RunNotSettled", 409), (blocked.Code, blocked.Status));
+        Assert.Equal("RecoveryRequired", (await harness.Service.GetRun(failed.Id, default)).Status);
+    }
+
+    [Fact]
+    public async Task RunWithQueuedRollbackCannotBeDeleted()
+    {
+        Write("alpha.txt", "A");
+        using var harness = Harness();
+        var plan = await Prepare(harness, UpperRequest(["alpha.txt"]));
+        var rename = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        var rollback = await harness.Service.Rollback(rename.Id, new(["0"], Guid.NewGuid().ToString()), default);
+        foreach (var id in new[] { rename.Id, rollback.Id })
+            Assert.Equal("RunNotSettled", (await Assert.ThrowsAsync<RenameException>(() => harness.Service.DeleteRun(id, default))).Code);
+        await harness.Service.ProcessNext(default);
+        Assert.Equal("Completed", (await harness.Service.GetRun(rollback.Id, default)).Status);
+        Assert.Equal("A", Read("alpha.txt"));
     }
 
     [Fact]

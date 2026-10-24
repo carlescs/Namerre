@@ -194,6 +194,57 @@ describe('RunHistoryComponent', () => {
     expect(button('Next page').disabled).toBe(true);
   });
 
+  it('deletes a settled run only after an explicit inline confirmation', async () => {
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    http.expectOne('/api/rename-runs/run-1').flush(run);
+    await fixture.whenStable();
+    button('Delete saved run').click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Files on disk are not touched');
+    button('Cancel').click();
+    await fixture.whenStable();
+    http.expectNone({ method: 'DELETE' });
+    button('Delete saved run').click();
+    await fixture.whenStable();
+    button('Confirm deletion').click();
+    const request = http.expectOne('/api/rename-runs/run-1');
+    expect(request.request.method).toBe('DELETE');
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    expect(navigate).toHaveBeenCalledWith(['/runs']);
+  });
+
+  it('hides deletion for runs awaiting recovery', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush({ ...run, status: 'RecoveryRequired' });
+    await fixture.whenStable();
+    expect(() => button('Delete saved run')).toThrow();
+  });
+
+  it('reports a refused deletion from the history list and refreshes after success', async () => {
+    params.next(convertToParamMap({}));
+    http.expectOne('/api/rename-runs/run-1');
+    const page = { items: [run], page: 1, pageSize: 20, hasMore: false };
+    http.expectOne('/api/rename-runs?page=1&pageSize=20').flush(page);
+    await fixture.whenStable();
+    button('Delete saved run').click();
+    await fixture.whenStable();
+    button('Confirm deletion').click();
+    http
+      .expectOne({ method: 'DELETE', url: '/api/rename-runs/run-1' })
+      .flush(
+        { title: 'Only completed or recovered runs can be deleted.', code: 'RunNotSettled' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Only completed or recovered runs');
+    button('Confirm deletion').click();
+    http
+      .expectOne({ method: 'DELETE', url: '/api/rename-runs/run-1' })
+      .flush(null, { status: 204, statusText: 'No Content' });
+    http.expectOne('/api/rename-runs?page=1&pageSize=20').flush({ ...page, items: [] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('No saved runs yet.');
+  });
+
   function button(prefix: string): HTMLButtonElement {
     const result = Array.from(
       fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,

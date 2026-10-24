@@ -58,6 +58,7 @@ public interface IRenameService
     Task<JobAccepted> Execute(string id, ExecuteRequest request, CancellationToken cancellationToken);
     Task<RunPage> GetRuns(int page, int pageSize, CancellationToken cancellationToken);
     Task<RunView> GetRun(string id, CancellationToken cancellationToken);
+    Task<IReadOnlyList<string>> DeleteRun(string id, CancellationToken cancellationToken);
     Task<SelectionPreview> RollbackPreview(string id, SelectionRequest request, CancellationToken cancellationToken);
     Task<JobAccepted> Rollback(string id, SelectionRequest request, CancellationToken cancellationToken);
     Task<RecoveryPreview> PreviewRecovery(string id, CancellationToken cancellationToken);
