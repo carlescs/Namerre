@@ -12,14 +12,17 @@
       <h3 id="preview-heading">Preview — no files have been changed</h3>
       <span
         class="badge"
-        [class.bg-emerald-50]="preview.canPrepare"
-        [class.text-emerald-800]="preview.canPrepare"
+        [class]="
+          preview.canPrepare
+            ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300'
+            : ''
+        "
         >{{ preview.canPrepare ? 'Ready for review' : 'Needs attention' }}</span
       >
     </div>
     @if (!preview.canPrepare) {
       @if (metadataPending()) {
-        <p class="text-xs text-slate-500">
+        <p class="text-xs text-slate-500 dark:text-slate-400">
           Go back to complete TMDB matching, then resolve any remaining errors before preparing.
         </p>
       } @else {
@@ -40,18 +43,21 @@
             <code>{{ folder(file.targetPath) }}</code>
           </p>
           <div class="mt-4 grid gap-3 sm:grid-cols-2">
-            <div class="rounded-lg bg-slate-50 p-4">
-              <p class="eyebrow mt-0 text-slate-500">Original path</p>
+            <div class="rounded-lg bg-slate-50 dark:bg-slate-950/60 p-4">
+              <p class="eyebrow mt-0 text-slate-500 dark:text-slate-400">Original path</p>
               <code class="bg-transparent p-0">{{ file.sourcePath }}</code>
             </div>
-            <div class="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
+            <div
+              class="rounded-lg border border-indigo-100 dark:border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-500/10 p-4"
+            >
               <p class="eyebrow mt-0">Proposed path</p>
               <p class="m-0">
                 Final target: <code class="bg-transparent p-0">{{ file.targetPath }}</code>
               </p>
-              <span class="mt-2 inline-block text-xs font-medium text-indigo-700">{{
-                file.unchanged ? 'Unchanged' : 'Will move / rename'
-              }}</span>
+              <span
+                class="mt-2 inline-block text-xs font-medium text-indigo-700 dark:text-indigo-300"
+                >{{ file.unchanged ? 'Unchanged' : 'Will move / rename' }}</span
+              >
             </div>
           </div>
         }

@@ -3,9 +3,10 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { Auth } from './auth/auth';
 import { Login } from './auth/login/login';
 import { Setup } from './auth/setup/setup';
+import { ThemePicker } from './theme/theme-picker';
 
 @Component({
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, Login, Setup],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, Login, Setup, ThemePicker],
   selector: 'app-root',
   styleUrl: './app.scss',
   templateUrl: './app.html',

@@ -31,10 +31,12 @@
   </ol>
 </nav>
 <div class="surface">
-  <header class="stage-header border-b border-slate-200 px-5 py-6 sm:px-8">
+  <header class="stage-header border-b border-slate-200 dark:border-slate-800 px-5 py-6 sm:px-8">
     <p class="eyebrow mt-0">Step {{ stageIndex() + 1 }} of {{ stages().length }}</p>
     <h2 #stageHeading tabindex="-1">{{ stages()[stageIndex()].title }}</h2>
-    <p class="mb-0 max-w-2xl text-slate-500">{{ stages()[stageIndex()].description }}</p>
+    <p class="mb-0 max-w-2xl text-slate-500 dark:text-slate-400">
+      {{ stages()[stageIndex()].description }}
+    </p>
   </header>
   <div class="wizard-screens workflow-content p-5 sm:p-8" [class.backwards]="backwards()">
     <div class="wizard-screen" [hidden]="stage() !== 'files'">
@@ -86,7 +88,7 @@
       />
       <span>
         Quick check: skip content hashing and only compare file size and modification time.
-        <span class="block text-xs text-slate-500"
+        <span class="block text-xs text-slate-500 dark:text-slate-400"
           >Much faster for large files, but a change that keeps both unchanged goes
           undetected.</span
         >
@@ -103,7 +105,7 @@
       />
       <span>
         Delete folders left empty after their files are moved out.
-        <span class="block text-xs text-slate-500"
+        <span class="block text-xs text-slate-500 dark:text-slate-400"
           >Only folders that are empty once the run finishes are removed; a rollback of the run does
           the same for the folders it empties.</span
         >
@@ -127,7 +129,7 @@
     <p class="error mx-5 sm:mx-8" role="alert">{{ error() }}</p>
   }
   <nav
-    class="actions wizard-navigation sticky bottom-0 z-10 justify-between rounded-b-2xl border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur-sm sm:px-8"
+    class="actions wizard-navigation sticky bottom-0 z-10 justify-between rounded-b-2xl border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 px-5 py-4 backdrop-blur-sm sm:px-8"
     aria-label="Wizard navigation"
   >
     <button
@@ -137,7 +139,7 @@
     >
       Back
     </button>
-    <span class="hidden text-xs text-slate-500 sm:block" role="status"
+    <span class="hidden text-xs text-slate-500 dark:text-slate-400 sm:block" role="status"
       >{{ files().length }} / 200 files selected</span
     >
     @switch (stage()) {
@@ -169,7 +171,9 @@
     }
   </nav>
 </div>
-<footer class="mt-5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+<footer
+  class="mt-5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400"
+>
   <p class="m-0">Preview first. Your files stay unchanged until final confirmation.</p>
   <a routerLink="/runs">Saved runs and recovery <span aria-hidden="true">&rarr;</span></a>
 </footer>

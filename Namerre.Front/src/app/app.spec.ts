@@ -77,12 +77,24 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('button').textContent).toBe('Retry');
   });
 
+  it('offers the theme picker before and after signing in', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('app-theme-picker')).not.toBeNull();
+    username.set('admin');
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('header app-theme-picker')).not.toBeNull();
+  });
+
   it('removes protected content after signing out', async () => {
     username.set('admin');
     const fixture = TestBed.createComponent(App);
     await TestBed.inject(Router).navigateByUrl('/');
     await fixture.whenStable();
-    (fixture.nativeElement.querySelector('header button') as HTMLButtonElement).click();
+    const signOut = [...fixture.nativeElement.querySelectorAll('header button')].find(
+      (button: HTMLButtonElement) => button.textContent?.trim() === 'Sign out',
+    ) as HTMLButtonElement;
+    signOut.click();
     await fixture.whenStable();
     expect(logout).toHaveBeenCalledOnce();
     expect(fixture.nativeElement.querySelector('app-renamer')).toBeNull();

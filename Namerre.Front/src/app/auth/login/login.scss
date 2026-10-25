@@ -2,9 +2,9 @@ main {
   max-width: 28rem;
   margin: 8vh auto;
   padding: 2rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--app-border);
   border-radius: 1.25rem;
-  background: white;
+  background: var(--app-surface);
   box-shadow: 0 12px 40px -20px rgb(15 23 42 / 20%);
 }
 

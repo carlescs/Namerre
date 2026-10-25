@@ -7,7 +7,9 @@
   </div>
   <p class="eyebrow">Welcome back</p>
   <h1>Sign in to Namerre</h1>
-  <p class="mb-6 text-slate-500">Your self-hosted workspace for a more organized library.</p>
+  <p class="mb-6 text-slate-500 dark:text-slate-400">
+    Your self-hosted workspace for a more organized library.
+  </p>
   <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="busy()">
     <label for="username">Username</label>
     <input
@@ -33,5 +35,7 @@
       {{ busy() ? 'Signing in...' : 'Sign in' }}
     </button>
   </form>
-  <p class="mb-0 mt-6 text-center text-xs text-slate-500">Your files stay on your server.</p>
+  <p class="mb-0 mt-6 text-center text-xs text-slate-500 dark:text-slate-400">
+    Your files stay on your server.
+  </p>
 </main>
