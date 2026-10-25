@@ -276,6 +276,9 @@ describe('RenameWorkflowComponent', () => {
   it('shows hash progress, confirms only a ready immutable version, and navigates to a durable run', async () => {
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     await showPreview();
+    (fixture.nativeElement.querySelector('#quick-check') as HTMLInputElement).click();
+    await fixture.whenStable();
+    expect(button('Prepare immutable').textContent).toContain('hash files');
     button('Prepare immutable').click();
     http
       .expectOne('/api/rename-plans')
@@ -302,11 +305,10 @@ describe('RenameWorkflowComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/runs', 'run-1']);
   });
 
-  it('prepares a quick-check plan without content hashing when requested', async () => {
+  it('prepares a quick-check plan without content hashing by default', async () => {
     await showPreview();
     const quick = fixture.nativeElement.querySelector('#quick-check') as HTMLInputElement;
-    quick.click();
-    await fixture.whenStable();
+    expect(quick.checked).toBe(true);
     expect(button('Prepare immutable').textContent).not.toContain('hash files');
     button('Prepare immutable').click();
     const prepare = http.expectOne('/api/rename-plans');
