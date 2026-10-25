@@ -61,6 +61,10 @@ public sealed class RenamingController(ISender sender) : ControllerBase
     public async Task<IActionResult> RollbackPreview(string id, SelectionRequest request, CancellationToken cancellationToken)
         => Ok(await sender.Send(new PreviewRollbackQuery(id, request), cancellationToken));
 
+    [HttpGet("api/rename-runs/{id}/rollback-preview/{operationId}")]
+    public async Task<IActionResult> GetRollbackCheckProgress(string id, string operationId, CancellationToken cancellationToken)
+        => Ok(await sender.Send(new GetRollbackCheckProgressQuery(id, operationId), cancellationToken));
+
     [HttpPost("api/rename-runs/{id}/rollback")]
     public async Task<IActionResult> Rollback(string id, SelectionRequest request, CancellationToken cancellationToken)
     {

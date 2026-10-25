@@ -133,6 +133,18 @@ public sealed class RenamingControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task RollbackCheckProgressSendsOperation()
+    {
+        var progress = new RollbackCheckProgress(1, 2);
+        sender.Send(Arg.Is<GetRollbackCheckProgressQuery>(q => q.Id == "run" && q.OperationId == "op"), Token)
+            .Returns(progress);
+
+        var result = await controller.GetRollbackCheckProgress("run", "op", Token);
+
+        Assert.Same(progress, Assert.IsType<OkObjectResult>(result).Value);
+    }
+
+    [Fact]
     public async Task RollbackReturnsAcceptedWithJobLocation()
     {
         var selection = new SelectionRequest(["f1"], "op");
