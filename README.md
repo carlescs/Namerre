@@ -538,6 +538,9 @@ The pipeline is split by purpose:
   to `ghcr.io` and creates the matching GitHub release. Stable tags are published as
   `latest`; pre-release tags as `prerelease`. Both also get the version tag and the
   commit SHA as image tags. Dispatching it on anything other than a version tag fails.
+  Release notes list every commit since the previous stable version (so a stable
+  release also covers what was first shipped in its pre-releases), followed by
+  GitHub's generated pull-request notes for the same range and the image tags and digest.
 - **Create version tag** (`.github/workflows/version-tag.yml`) is started manually
   from the Actions tab. Choose the `major`/`minor`/`patch` increment relative to the
   latest stable tag; tick **prerelease** to create the next `vX.Y.Z-pre.N` tag for
