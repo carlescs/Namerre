@@ -78,6 +78,37 @@
       }
     </div>
     @if (card.plugin.typeId === 'tmdb') {
+      <section
+        class="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-4"
+        [attr.aria-labelledby]="'preview-' + card.plugin.instanceId"
+      >
+        <h5 class="m-0 font-semibold text-slate-900" [id]="'preview-' + card.plugin.instanceId">
+          Template preview
+        </h5>
+        <p class="mt-1 text-slate-500">Rendered with sample metadata, not a real TMDB match.</p>
+        <dl class="m-0 grid gap-2" aria-live="polite">
+          @for (sample of samples; track sample.label) {
+            @let result = preview(card.plugin.options, sample.match);
+            <div>
+              <dt class="text-slate-500">
+                {{ sample.label }}: {{ sample.match.title }} ({{ sample.match.year }})
+                @if (sample.match.season !== null) {
+                  S{{ sample.match.season }}E{{ sample.match.episode }} &ldquo;{{
+                    sample.match.episodeTitle
+                  }}&rdquo;
+                }
+              </dt>
+              <dd class="m-0">
+                @if (result.path !== undefined) {
+                  <code>{{ result.path }}</code>
+                } @else {
+                  <span class="text-red-700">{{ result.error }}</span>
+                }
+              </dd>
+            </div>
+          }
+        </dl>
+      </section>
       <p>
         Use the TMDB matching stage to explicitly match each file for this instance. Leave the
         filename template empty to use the media-specific default. Movie default:
