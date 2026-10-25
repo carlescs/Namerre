@@ -127,6 +127,32 @@ describe('PluginEditorComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Season {seasonNumber}');
   });
 
+  it('previews TMDB templates with sample metadata as options change', async () => {
+    await add('tmdb');
+    const card = fixture.nativeElement.querySelector('article') as HTMLElement;
+    const preview = () => card.querySelector('section')!.textContent!;
+    expect(preview()).toContain('Sample Movie (2024).mkv');
+    expect(preview()).toContain('Sample Show (2019).mkv');
+    const input = (label: string) =>
+      [...card.querySelectorAll('label')]
+        .find((element) => element.textContent?.includes(label))!
+        .querySelector('input')!;
+    const template = input('Filename stem template');
+    template.value = '';
+    template.dispatchEvent(new Event('input'));
+    input('Allow folder change').click();
+    input('Add season folder').click();
+    await fixture.whenStable();
+    expect(preview()).toContain('Sample Movie (2024)/Sample Movie (2024).mkv');
+    expect(preview()).toContain(
+      'Sample Show (2019)/Season 02/Sample Show - S02E05 - The Example Episode.mkv',
+    );
+    template.value = '{title} {episode}';
+    template.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(preview()).toContain('Episode is unavailable.');
+  });
+
   it('limits the recipe to 32 plugins', async () => {
     for (let i = 0; i < 32; i++) await add('case');
     const addButton = fixture.nativeElement.querySelector('button') as HTMLButtonElement;

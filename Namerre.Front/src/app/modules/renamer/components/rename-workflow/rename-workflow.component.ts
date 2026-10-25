@@ -114,7 +114,7 @@ export class RenameWorkflowComponent {
   private catalogLoading = false;
   protected readonly plugins = signal<PluginInstance[]>([]);
   protected readonly selections = signal<MetadataSelection[]>([]);
-  protected readonly verifyContent = signal(true);
+  protected readonly verifyContent = signal(false);
   protected readonly deleteEmptyFolders = signal(false);
   protected readonly preview = signal<PreviewResult | null>(null);
   protected readonly plan = signal<PlanView | null>(null);

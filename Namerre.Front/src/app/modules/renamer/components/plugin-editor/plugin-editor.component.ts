@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { PluginDescriptor, PluginInstance, PluginOptions, operationId } from '../../rename-api';
+import { sampleEpisode, sampleMovie, tmdbTemplatePreview } from '../../tmdb-template-preview';
 
 interface OptionField {
   key: keyof PluginOptions;
@@ -60,6 +61,11 @@ export class PluginEditorComponent {
   readonly pluginsChanged = output<PluginInstance[]>();
   protected readonly type = new FormControl('', { nonNullable: true });
   protected readonly cards = signal<Card[]>([]);
+  protected readonly samples = [
+    { label: 'Movie', match: sampleMovie },
+    { label: 'Episode', match: sampleEpisode },
+  ];
+  protected readonly preview = tmdbTemplatePreview;
   private readonly injector = inject(Injector);
   private readonly headings = viewChildren<ElementRef<HTMLElement>>('cardHeading');
   private readonly addButton = viewChild.required<ElementRef<HTMLButtonElement>>('addButton');
