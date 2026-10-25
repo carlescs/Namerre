@@ -212,6 +212,161 @@ describe('TmdbPickerComponent', () => {
     expect(button('Verify chosen').disabled).toBe(false);
   });
 
+  it('reports search failures and empty results', async () => {
+    button('Search TMDB').click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Looking up TMDB metadata…');
+    http
+      .expectOne('/api/metadata/tmdb/search')
+      .flush({ title: 'TMDB rate limit reached.' }, { status: 429, statusText: 'Too Many' });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain(
+      'TMDB rate limit reached.',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain('No matches.');
+    button('Search TMDB').click();
+    http.expectOne('/api/metadata/tmdb/search').flush({ matches: [] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('No matches.');
+  });
+
+  it('does not search without query text', async () => {
+    field('query', '');
+    await fixture.whenStable();
+    expect(button('Search TMDB').disabled).toBe(true);
+    fixture.nativeElement
+      .querySelector('form')
+      .dispatchEvent(new Event('submit', { cancelable: true }));
+    http.expectNone('/api/metadata/tmdb/search');
+  });
+
+  it('verifies movies without episode numbers and shows unknown years', async () => {
+    const movie = { ...show, id: 7, mediaType: 'movie', title: 'A Movie', year: null };
+    button('Search TMDB').click();
+    const search = http.expectOne('/api/metadata/tmdb/search');
+    expect(search.request.body).toEqual({
+      mediaType: 'movie',
+      query: 'candidate',
+      language: 'en-US',
+    });
+    search.flush({ matches: [movie] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('A Movie (Year unknown) — TMDB 7');
+    (fixture.nativeElement.querySelector('input[type="radio"]') as HTMLInputElement).click();
+    await fixture.whenStable();
+    button('Verify chosen').click();
+    const verify = http.expectOne('/api/metadata/tmdb/search');
+    expect(verify.request.body.id).toBe(7);
+    expect(verify.request.body.season).toBeUndefined();
+    expect(verify.request.body.episode).toBeUndefined();
+    verify.flush({ matches: [{ ...movie, year: '1999', confirmationToken: 'token' }] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('A Movie (1999)');
+    expect(fixture.nativeElement.textContent).not.toContain('Season');
+  });
+
+  it('refuses matches the server did not validate', async () => {
+    const confirmed = vi.fn();
+    fixture.componentInstance.confirmed.subscribe(confirmed);
+    await searchAndChoose();
+    button('Verify chosen').click();
+    http
+      .expectOne('/api/metadata/tmdb/search')
+      .flush({ matches: [{ ...show, id: 99, confirmationToken: 'other' }, show] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('TMDB did not validate this match.');
+    expect(fixture.nativeElement.textContent).not.toContain('Confirm this match');
+    expect(confirmed).not.toHaveBeenCalled();
+  });
+
+  it('reports verification failures and allows retrying', async () => {
+    await searchAndChoose();
+    button('Verify chosen').click();
+    http
+      .expectOne('/api/metadata/tmdb/search')
+      .flush(
+        { title: 'That TMDB movie does not exist.' },
+        { status: 404, statusText: 'Not Found' },
+      );
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('That TMDB movie does not exist.');
+    expect(button('Verify chosen').disabled).toBe(false);
+  });
+
+  it('ignores a verification that completes after the picker was dismissed', async () => {
+    const dismissed = vi.fn();
+    fixture.componentInstance.dismissed.subscribe(dismissed);
+    await searchAndChoose();
+    button('Verify chosen').click();
+    const verify = http.expectOne('/api/metadata/tmdb/search');
+    const dialog = fixture.nativeElement.querySelector('dialog') as HTMLDialogElement;
+    dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
+    expect(dismissed).toHaveBeenCalledTimes(1);
+    expect(HTMLDialogElement.prototype.close).toHaveBeenCalled();
+    expect(verify.cancelled).toBe(true);
+  });
+
+  it('remembers a verified match as the selected candidate', async () => {
+    const remembered = vi.fn<(state: TmdbPickerState) => void>();
+    fixture.componentInstance.stateChanged.subscribe(remembered);
+    await searchAndChoose();
+    button('Verify chosen').click();
+    const verified = { ...show, confirmationToken: 'token' };
+    http.expectOne('/api/metadata/tmdb/search').flush({ matches: [verified] });
+    await fixture.whenStable();
+    button('Confirm this match').click();
+    expect(remembered).toHaveBeenCalledWith(
+      expect.objectContaining({ matches: [show], selected: verified }),
+    );
+  });
+
+  it('shows a reused show hint and infers episode numbers from the file name', async () => {
+    fixture.destroy();
+    fixture = TestBed.createComponent(TmdbPickerComponent);
+    fixture.componentRef.setInput('context', {
+      fileId: 'file-3',
+      plugin: { ...plugin, options: {} },
+      inputPath: 'TV/A.Show.S03E09.mkv',
+      reusedShow: true,
+      state: {
+        query: 'A Show',
+        mediaType: 'tv',
+        language: 'en-US',
+        season: 3,
+        episode: 9,
+        matches: [],
+        selected: null,
+      },
+    });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Reusing your previous show choice.');
+    expect(control('season').value).toBe('3');
+    expect(control('episode').value).toBe('9');
+    expect(fixture.nativeElement.textContent).not.toContain('No matches.');
+  });
+
+  it('defaults the language when the plugin does not set one', async () => {
+    fixture.destroy();
+    fixture = TestBed.createComponent(TmdbPickerComponent);
+    fixture.componentRef.setInput('context', {
+      fileId: 'file-4',
+      plugin: { ...plugin, options: {} },
+      inputPath: 'Movies/Alien.1979.mkv',
+    });
+    await fixture.whenStable();
+    expect(control('language').value).toBe('en-US');
+    expect(control('query').value).toBe('Alien');
+  });
+
+  async function searchAndChoose(): Promise<void> {
+    button('Search TMDB').click();
+    http.expectOne('/api/metadata/tmdb/search').flush({ matches: [show] });
+    await fixture.whenStable();
+    (fixture.nativeElement.querySelector('input[type="radio"]') as HTMLInputElement).click();
+    await fixture.whenStable();
+  }
+
   function control(name: string): HTMLInputElement {
     return fixture.nativeElement.querySelector(`[formControlName="${name}"]`);
   }
