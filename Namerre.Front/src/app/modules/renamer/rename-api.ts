@@ -127,6 +127,10 @@ export interface SelectionRequest {
   fileIds: string[];
   operationId: string;
 }
+export interface RollbackCheckProgress {
+  completedFiles: number;
+  totalFiles: number;
+}
 export interface SelectionPreview {
   files: {
     id: string;
@@ -235,6 +239,11 @@ export class RenameApi {
     return this.http.post<SelectionPreview>(
       `/api/rename-runs/${encodeURIComponent(id)}/rollback-preview`,
       request,
+    );
+  }
+  rollbackCheckProgress(id: string, operationId: string) {
+    return this.http.get<RollbackCheckProgress>(
+      `/api/rename-runs/${encodeURIComponent(id)}/rollback-preview/${encodeURIComponent(operationId)}`,
     );
   }
   rollback(id: string, request: SelectionRequest) {
