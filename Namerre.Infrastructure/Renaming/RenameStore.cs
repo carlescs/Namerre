@@ -127,12 +127,9 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         lock (gate)
         {
             using var db = Open();
-            // The parent link lives only in the JSON payload: pre-filter in SQL, then confirm after deserializing.
-            var marker = "\"parentRunId\":" + JsonSerializer.Serialize(parentId, Json);
-            return db.Documents.AsNoTracking().Where(d => d.Kind == "Run" && d.Json.Contains(marker))
+            return db.Documents.AsNoTracking().Where(d => d.Kind == "Run" && d.ParentId == parentId)
                 .OrderBy(d => d.Order).ThenBy(d => d.Id).Select(d => d.Json).AsEnumerable()
                 .Select(json => JsonSerializer.Deserialize<RunLink>(json, Json)!)
-                .Where(r => r.ParentRunId == parentId)
                 .Select(r => new RunReference(r.Id, r.Kind, r.Status, r.CreatedAt)).ToArray();
         }
     }
@@ -345,7 +342,10 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         }
         if (document is null)
         {
-            document = new RenameDocument { Id = id, Kind = kind, Order = DateTime.UtcNow.Ticks };
+            document = new RenameDocument
+            {
+                Id = id, Kind = kind, ParentId = (value as RunView)?.ParentRunId, Order = DateTime.UtcNow.Ticks
+            };
             db.Documents.Add(document);
         }
         else if (document.Kind != kind) throw new RenameException("StorageConflict", "The resource kind does not match.", 409);

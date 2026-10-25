@@ -19,8 +19,10 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
             entity.Property(e => e.Id).HasMaxLength(100);
             entity.Property(e => e.Kind).HasMaxLength(40);
             entity.Property(e => e.Status).HasMaxLength(40);
+            entity.Property(e => e.ParentId).HasMaxLength(100);
             entity.Property(e => e.Revision).IsConcurrencyToken();
             entity.HasIndex(e => new { e.Kind, e.Order });
+            entity.HasIndex(e => e.ParentId);
         });
         modelBuilder.Entity<DurableRenameJob>(entity =>
         {
@@ -63,6 +65,8 @@ public sealed class RenameDocument
     public string Kind { get; set; } = "";
     public string Status { get; set; } = "";
     public string Json { get; set; } = "";
+    /// <summary>The run this run was created from (rollbacks); saved so links survive without parsing JSON.</summary>
+    public string? ParentId { get; set; }
     public long Order { get; set; }
     public long Revision { get; set; }
 }

@@ -92,6 +92,10 @@ namespace Namerre.Infrastructure.Renaming.Migrations
                     b.Property<long>("Order")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ParentId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<long>("Revision")
                         .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
@@ -102,6 +106,8 @@ namespace Namerre.Infrastructure.Renaming.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ParentId");
 
                     b.HasIndex("Kind", "Order");
 
