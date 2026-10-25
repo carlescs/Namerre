@@ -368,6 +368,31 @@ describe('RunHistoryComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('No saved runs yet.');
   });
 
+  it('links an original run to the rollback runs created from it', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush({
+      ...run,
+      rollbackRuns: [
+        { id: 'rollback-1', kind: 'Rollback', status: 'Completed', createdAt: run.createdAt },
+        { id: 'rollback-2', kind: 'Rollback', status: 'Queued', createdAt: run.createdAt },
+      ],
+    });
+    await fixture.whenStable();
+    const section = fixture.nativeElement.querySelector(
+      'section[aria-labelledby="rollback-runs-heading"]',
+    ) as HTMLElement;
+    expect(section.querySelector('a[href="/runs/rollback-1"]')?.textContent).toContain(
+      'Rollback rollback-1',
+    );
+    expect(section.querySelector('a[href="/runs/rollback-2"]')).not.toBeNull();
+    expect(section.textContent).toContain('Queued');
+  });
+
+  it('omits the rollback runs section when none exist', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush({ ...run, rollbackRuns: [] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('Rollback runs');
+  });
+
   it('loads the saved plan once when the snapshot is opened and retries after a failure', async () => {
     http.expectOne('/api/rename-runs/run-1').flush({ ...run, parentRunId: 'parent-1' });
     await fixture.whenStable();

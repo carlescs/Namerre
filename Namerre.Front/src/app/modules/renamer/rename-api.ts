@@ -106,6 +106,14 @@ export interface RunView {
   }[];
   createdAt: string;
   error: string | null;
+  /** Rollback runs created from this run; only present on single-run reads. */
+  rollbackRuns?: RunReference[];
+}
+export interface RunReference {
+  id: string;
+  kind: string;
+  status: string;
+  createdAt: string;
 }
 export interface RunPage {
   items: RunView[];

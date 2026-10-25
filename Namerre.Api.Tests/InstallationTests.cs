@@ -140,11 +140,15 @@ public sealed class InstallationTests : IDisposable
         using (var database = OpenDatabase())
         {
             database.GetService<IMigrator>().Migrate("20261018110609_InitialRenaming");
-            database.Documents.Add(new RenameDocument
-            {
-                Id = "existing-history", Kind = "Run", Status = "Completed", Json = "{}"
-            });
-            database.SaveChanges();
+            // Seed with SQL: the current model has columns this older schema does not.
+            database.Database.OpenConnection();
+            using var seed = database.Database.GetDbConnection().CreateCommand();
+            seed.CommandText = """
+                INSERT INTO "Documents" ("Id", "Kind", "Status", "Json", "Order", "Revision") VALUES
+                ('existing-history', 'Run', 'Completed', '{"parentRunId":null}', 1, 1),
+                ('existing-rollback', 'Run', 'Completed', '{"parentRunId":"existing-history"}', 2, 1);
+                """;
+            seed.ExecuteNonQuery();
         }
 
         using var factory = Factory();
@@ -156,7 +160,10 @@ public sealed class InstallationTests : IDisposable
         var store = factory.Services.GetRequiredService<Namerre.Application.Authentication.IAdministratorStore>();
         Assert.False(store.TryCreate(new("replacement", AdminAccount.HashPassword(Password))));
         using var upgraded = OpenDatabase();
-        Assert.Equal("existing-history", Assert.Single(upgraded.Documents).Id);
+        var documents = upgraded.Documents.OrderBy(d => d.Order).ToArray();
+        Assert.Equal(["existing-history", "existing-rollback"], documents.Select(d => d.Id));
+        Assert.Null(documents[0].ParentId);
+        Assert.Equal("existing-history", documents[1].ParentId);
         Assert.Equal(Username, Assert.Single(upgraded.Administrators).Username);
         Assert.Empty(upgraded.Database.GetPendingMigrations());
         upgraded.Administrators.Add(new AdministratorAccount
