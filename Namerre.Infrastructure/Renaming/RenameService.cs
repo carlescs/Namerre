@@ -96,18 +96,20 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     {
         ValidateSelection(request);
         var key = RollbackCheckKey(id, request.OperationId);
-        rollbackChecks[key] = new(0, request.FileIds.Count);
+        // Only the first in-flight check for an operation reports progress, so a repeated request cannot reset or remove it.
+        var owner = rollbackChecks.TryAdd(key, new(0, request.FileIds.Count));
+        Action<int>? progress = null;
+        if (owner) progress = completed => rollbackChecks[key] = new(completed, request.FileIds.Count);
         try
         {
             await gate.WaitAsync(cancellationToken);
             try
             {
-                return await BuildRollback(store.Get<RunView>(id, "Run"), request.FileIds, cancellationToken,
-                    completed => rollbackChecks[key] = new(completed, request.FileIds.Count));
+                return await BuildRollback(store.Get<RunView>(id, "Run"), request.FileIds, cancellationToken, progress);
             }
             finally { gate.Release(); }
         }
-        finally { rollbackChecks.TryRemove(key, out _); }
+        finally { if (owner) rollbackChecks.TryRemove(key, out _); }
     }
 
     public Task<RollbackCheckProgress> GetRollbackCheckProgress(string id, string operationId, CancellationToken cancellationToken)
