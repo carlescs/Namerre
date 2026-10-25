@@ -2,6 +2,7 @@ import { DatePipe, JsonPipe, LowerCasePipe, NgTemplateOutlet } from '@angular/co
 import {
   afterNextRender,
   Component,
+  computed,
   DestroyRef,
   ElementRef,
   inject,
@@ -45,6 +46,19 @@ export class RunHistoryComponent {
   protected readonly page = signal(1);
   protected readonly runId = signal('');
   protected readonly selected = signal<Set<string>>(new Set());
+  protected readonly selectableIds = computed(() => {
+    const run = this.run();
+    if (run?.status !== 'Completed' || run.kind !== 'Rename') return [];
+    return run.files.filter((file) => file.status === 'Completed').map((file) => file.id);
+  });
+  protected readonly someSelected = computed(() =>
+    this.selectableIds().some((id) => this.selected().has(id)),
+  );
+  protected readonly allSelected = computed(() => {
+    const ids = this.selectableIds();
+    const selection = this.selected();
+    return ids.length > 0 && ids.every((id) => selection.has(id));
+  });
   protected readonly rollback = signal<SelectionPreview | null>(null);
   protected readonly recovery = signal<RecoveryPreview | null>(null);
   protected readonly loading = signal(false);
@@ -113,6 +127,12 @@ export class RunHistoryComponent {
               this.invalidateApproval();
             }
             this.run.set(run);
+            const selectable = new Set(this.selectableIds());
+            this.selected.update((selection) =>
+              [...selection].every((id) => selectable.has(id))
+                ? selection
+                : new Set([...selection].filter((id) => selectable.has(id))),
+            );
             this.loading.set(false);
             if (!['Queued', 'Running', 'RecoveryQueued', 'Recovering'].includes(run.status)) {
               this.polling?.unsubscribe();
@@ -178,6 +198,12 @@ export class RunHistoryComponent {
       else next.add(id);
       return next;
     });
+    this.invalidateApproval();
+  }
+
+  protected toggleAll(): void {
+    if (this.busy()) return;
+    this.selected.set(this.allSelected() ? new Set() : new Set(this.selectableIds()));
     this.invalidateApproval();
   }
 

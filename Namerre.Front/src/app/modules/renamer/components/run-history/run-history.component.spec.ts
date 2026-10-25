@@ -72,7 +72,7 @@ describe('RunHistoryComponent', () => {
     http.expectOne('/api/rename-runs/run-1').flush(run);
     await fixture.whenStable();
     const checkboxes = fixture.nativeElement.querySelectorAll(
-      'input[type="checkbox"]',
+      'input.file-select',
     ) as NodeListOf<HTMLInputElement>;
     checkboxes[0].click();
     checkboxes[1].click();
@@ -103,12 +103,85 @@ describe('RunHistoryComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/runs', 'rollback-1']);
   });
 
+  it('selects and clears every completed file from the header checkbox', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush({
+      ...run,
+      files: [...run.files, { ...run.files[0], id: 'c', sourcePath: 'c.txt', status: 'Failed' }],
+    });
+    await fixture.whenStable();
+    const all = fixture.nativeElement.querySelector(
+      'thead input[type="checkbox"]',
+    ) as HTMLInputElement;
+    const rows = () =>
+      Array.from(
+        fixture.nativeElement.querySelectorAll('input.file-select') as NodeListOf<HTMLInputElement>,
+      ).map((checkbox) => checkbox.checked);
+    (fixture.nativeElement.querySelector('input.file-select') as HTMLInputElement).click();
+    await fixture.whenStable();
+    expect(all.indeterminate).toBe(true);
+    all.click();
+    await fixture.whenStable();
+    expect(rows()).toEqual([true, true, false]);
+    expect(all.checked).toBe(true);
+    expect(all.indeterminate).toBe(false);
+    button('Check selected-file').click();
+    const preview = http.expectOne('/api/rename-runs/run-1/rollback-preview');
+    expect(preview.request.body.fileIds).toEqual(['a', 'b']);
+    preview.flush({
+      files: ['a', 'b'].map((id) => ({
+        id,
+        safe: true,
+        currentPath: `${id.toUpperCase()}.txt`,
+        destinationPath: `${id}.txt`,
+        issues: [],
+      })),
+    });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Rollback review');
+    all.click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('Rollback review');
+    expect(rows()).toEqual([false, false, false]);
+    expect(all.checked).toBe(false);
+  });
+
+  it('drops selected files that are no longer eligible after a refresh', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush(run);
+    await fixture.whenStable();
+    (fixture.nativeElement.querySelector('input.file-select') as HTMLInputElement).click();
+    await fixture.whenStable();
+    button('Refresh').click();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    http.expectOne('/api/rename-runs/run-1').flush({
+      ...run,
+      files: [{ ...run.files[0], status: 'RolledBack' }, run.files[1]],
+    });
+    await fixture.whenStable();
+    const all = fixture.nativeElement.querySelector(
+      'thead input[type="checkbox"]',
+    ) as HTMLInputElement;
+    expect(all.indeterminate).toBe(false);
+    expect(all.checked).toBe(false);
+    expect(fixture.nativeElement.textContent).toContain('0 files explicitly selected');
+    expect(button('Check selected-file').disabled).toBe(true);
+  });
+
+  it('does not offer rollback selection for files of a rollback run', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush({ ...run, kind: 'Rollback' });
+    await fixture.whenStable();
+    const checkboxes = Array.from(
+      fixture.nativeElement.querySelectorAll(
+        'input[type="checkbox"]',
+      ) as NodeListOf<HTMLInputElement>,
+    );
+    expect(checkboxes.length).toBe(3);
+    expect(checkboxes.every((checkbox) => checkbox.disabled)).toBe(true);
+  });
+
   it('invalidates an approved rollback when the selection changes', async () => {
     http.expectOne('/api/rename-runs/run-1').flush(run);
     await fixture.whenStable();
-    const checkbox = fixture.nativeElement.querySelector(
-      'input[type="checkbox"]',
-    ) as HTMLInputElement;
+    const checkbox = fixture.nativeElement.querySelector('input.file-select') as HTMLInputElement;
     checkbox.click();
     await fixture.whenStable();
     button('Check selected-file').click();

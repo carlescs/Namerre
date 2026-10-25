@@ -134,7 +134,17 @@
         </caption>
         <thead>
           <tr>
-            <th scope="col">Select</th>
+            <th scope="col">
+              <span class="sr-only">Select</span>
+              <input
+                type="checkbox"
+                aria-label="Select all completed files for rollback"
+                [checked]="allSelected()"
+                [indeterminate]="someSelected() && !allSelected()"
+                (change)="toggleAll()"
+                [disabled]="busy() || !selectableIds().length"
+              />
+            </th>
             <th scope="col">Original</th>
             <th scope="col">Target</th>
             <th scope="col">Staging location</th>
@@ -147,12 +157,11 @@
               <td>
                 <input
                   type="checkbox"
+                  class="file-select"
                   [attr.aria-label]="'Select ' + file.sourcePath + ' for rollback'"
                   [checked]="selected().has(file.id)"
                   (change)="toggle(file.id)"
-                  [disabled]="
-                    busy() || current.status !== 'Completed' || file.status !== 'Completed'
-                  "
+                  [disabled]="busy() || !selectableIds().includes(file.id)"
                 />
               </td>
               <td>
