@@ -1,18 +1,32 @@
 name: Build and publish Docker image
 
+# Images are built and published only for version tags (vX.Y.Z or vX.Y.Z-pre.N).
+# Tags pushed by the "Create version tag" workflow dispatch this workflow on the tag ref,
+# because pushes made with GITHUB_TOKEN do not trigger other workflows.
 on:
   push:
-    branches: [main]
     tags: ["v*"]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a version tag
+        env:
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$REF" != refs/tags/* || ! "$REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-pre\.[1-9][0-9]*)?$ ]]; then
+            echo "::error::Docker images are published only for version tags (vX.Y.Z or vX.Y.Z-pre.N); got $REF. Use the 'Create version tag' workflow to cut a release or pre-release."
+            exit 1
+          fi
+
   tests:
+    needs: version
     uses: ./.github/workflows/backend.yml
     secrets:
       CMEDIATOR_PACKAGES_TOKEN: ${{ secrets.CMEDIATOR_PACKAGES_TOKEN }}
@@ -34,7 +48,6 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
@@ -48,10 +61,9 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           flavor: latest=false
           tags: |
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
-            type=raw,value=prerelease,enable=${{ github.ref == 'refs/heads/main' || (startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-')) }}
-            type=ref,event=tag
-            type=ref,event=pr
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+            type=raw,value=prerelease,enable=${{ contains(github.ref_name, '-') }}
+            type=raw,value=${{ github.ref_name }}
             type=sha
 
       - name: Build and publish image
@@ -60,7 +72,7 @@ jobs:
         with:
           context: .
           file: ./Namerre.Api/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
           secrets: |
@@ -70,7 +82,6 @@ jobs:
 
   release:
     needs: docker
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     concurrency:
       group: publish-release
       cancel-in-progress: false
@@ -88,48 +99,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
           IMAGE_TAGS: ${{ needs.docker.outputs.tags }}
           IMAGE_DIGEST: ${{ needs.docker.outputs.digest }}
         run: |
-          if [[ "$REF_TYPE" == "tag" ]]; then
-            release_tag="$REF_NAME"
-            release_title="$REF_NAME"
-            release_options=(--verify-tag)
-            if [[ "$REF_NAME" == *-* ]]; then
-              release_options+=(--prerelease --latest=false)
-            fi
-            tag_patterns=('v*')
-          else
-            version_tags=$(git tag --list 'v*' --sort=-version:refname)
-            stable_tag=""
-            while IFS= read -r tag; do
-              if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                stable_tag="$tag"
-                break
-              fi
-            done <<< "$version_tags"
-            version="0.1.0"
-            if [[ -n "$stable_tag" ]]; then
-              IFS=. read -r major minor patch <<< "${stable_tag#v}"
-              version="${major}.${minor}.$((10#$patch + 1))"
-            fi
-            prerelease_number=1
-            while IFS= read -r tag; do
-              if [[ "$tag" == "v${version}-pre."* && "${tag##*.}" =~ ^[1-9][0-9]*$ ]]; then
-                prerelease_number=$((${tag##*.} + 1))
-                break
-              fi
-            done <<< "$version_tags"
-            release_tag="v${version}-pre.${prerelease_number}"
-            release_title="$release_tag"
-            release_options=(--prerelease --latest=false)
-            tag_patterns=('main-*' 'v*')
+          release_tag="$REF_NAME"
+          release_title="$REF_NAME"
+          release_options=(--verify-tag)
+          if [[ "$REF_NAME" == *-* ]]; then
+            release_options+=(--prerelease --latest=false)
           fi
 
-          previous_tags=$(git tag --merged "$COMMIT_SHA" --sort=-creatordate --list "${tag_patterns[@]}")
+          previous_tags=$(git tag --merged "$COMMIT_SHA" --sort=-creatordate --list 'v*')
           log_range="$COMMIT_SHA"
           while IFS= read -r previous_tag; do
             if [[ -n "$previous_tag" && "$previous_tag" != "$release_tag" ]]; then
