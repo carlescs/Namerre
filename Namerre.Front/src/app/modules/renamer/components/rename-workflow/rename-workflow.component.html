@@ -75,11 +75,29 @@
       [disabled]="!validCollection() || suggesting() || preparing() || executing()"
       (previewRequested)="refreshPreview()"
     />
+    <label class="mx-5 flex items-start gap-2 text-sm sm:mx-8" [hidden]="stage() !== 'preview'">
+      <input
+        #quickCheck
+        id="quick-check"
+        type="checkbox"
+        [checked]="!verifyContent()"
+        (change)="verifyContent.set(!quickCheck.checked)"
+        [disabled]="preparing() || executing()"
+      />
+      <span>
+        Quick check: skip content hashing and only compare file size and modification time.
+        <span class="block text-xs text-slate-500"
+          >Much faster for large files, but a change that keeps both unchanged goes
+          undetected.</span
+        >
+      </span>
+    </label>
     <app-rename-confirmation
       class="wizard-screen"
       [hidden]="stage() !== 'confirmation'"
       [plan]="plan()"
       [fileCount]="files().length"
+      [verifyContent]="verifyContent()"
       [preparing]="preparing()"
       [executing]="executing()"
       [canConfirm]="canConfirm()"
@@ -128,7 +146,7 @@
       }
       @case ('preview') {
         <button class="btn-primary" type="button" (click)="prepare()" [disabled]="!canPrepare()">
-          Prepare immutable plan and hash files
+          {{ verifyContent() ? 'Prepare immutable plan and hash files' : 'Prepare immutable plan' }}
         </button>
       }
     }

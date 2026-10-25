@@ -18,6 +18,8 @@ public interface IRenameFileSystem
     string ActualPath(string path);
     bool SamePath(string first, string second);
     Task<(string Hash, long Size)> Hash(string path, CancellationToken cancellationToken);
+    /// <summary>Cheap size and modification-time fingerprint, prefixed with <c>stat:</c>; reads no file content.</summary>
+    (string Hash, long Size) Stamp(string path);
     void CheckSameDevice(string source, string target);
     void Move(string source, string destination);
     IReadOnlyList<string> MissingDirectories(string path);

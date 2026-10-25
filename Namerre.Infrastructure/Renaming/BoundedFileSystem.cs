@@ -90,6 +90,16 @@ public sealed class BoundedFileSystem(string? configuredRoot, string basePath) :
         return (Convert.ToHexStringLower(hash), size);
     }
 
+    public const string StampPrefix = "stat:";
+
+    public (string Hash, long Size) Stamp(string path)
+    {
+        var info = new FileInfo(Resolve(path, IsInternal(path)));
+        if (!info.Exists)
+            throw new RenameException("SourceMissing", "A required file is missing.");
+        return ($"{StampPrefix}{info.Length}:{info.LastWriteTimeUtc.Ticks}", info.Length);
+    }
+
     public void CheckSameDevice(string source, string target)
     {
         var sourcePath = Resolve(source, IsInternal(source));

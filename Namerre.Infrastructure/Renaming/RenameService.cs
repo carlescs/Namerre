@@ -224,7 +224,9 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         foreach (var file in preview.Files)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var snapshot = await fileSystem.Hash(file.SourcePath, cancellationToken);
+            // Quick-check plans record size and modification time instead of reading every file.
+            var snapshot = plan.Pipeline.VerifyContent
+                ? await fileSystem.Hash(file.SourcePath, cancellationToken) : fileSystem.Stamp(file.SourcePath);
             files.Add(new(file.Id, file.SourcePath, file.TargetPath, snapshot.Hash, snapshot.Size));
             plan = plan with { Files = files.ToArray(), CompletedFiles = files.Count };
             store.Save(id, "Plan", plan.Status, plan);
@@ -356,8 +358,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
                 try
                 {
                     if (!fileSystem.Exists(path)) continue;
-                    var snapshot = await fileSystem.Hash(path, cancellationToken);
-                    if (snapshot.Hash == file.Hash)
+                    if (await Fingerprint(path, file.Hash, cancellationToken) == file.Hash)
                     {
                         var actual = fileSystem.ActualPath(path);
                         if (!candidates.Contains(actual, StringComparer.Ordinal)) candidates.Add(actual);
@@ -475,9 +476,10 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     {
         try
         {
-            var snapshot = await fileSystem.Hash(path, cancellationToken);
-            if (snapshot.Hash != expectedHash)
-                throw new RenameException("HashMismatch", "File content changed since preparation. It was not moved.", fileId: fileId);
+            if (await Fingerprint(path, expectedHash, cancellationToken) != expectedHash)
+                throw new RenameException("HashMismatch", IsStamp(expectedHash)
+                    ? "File size or modification time changed since preparation. It was not moved."
+                    : "File content changed since preparation. It was not moved.", fileId: fileId);
         }
         catch (Exception exception)
         {
@@ -485,6 +487,12 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             throw;
         }
     }
+
+    /// <summary>Recomputes the fingerprint kind recorded at preparation: a content hash or a size/time stamp.</summary>
+    private async Task<string> Fingerprint(string path, string expected, CancellationToken cancellationToken)
+        => IsStamp(expected) ? fileSystem.Stamp(path).Hash : (await fileSystem.Hash(path, cancellationToken)).Hash;
+
+    private static bool IsStamp(string fingerprint) => fingerprint.StartsWith(BoundedFileSystem.StampPrefix, StringComparison.Ordinal);
 
     private static RunFile FailureFile(RunView run, RunFile file, Exception exception)
     {
