@@ -28,6 +28,18 @@ describe('Auth', () => {
     http.expectOne('/api/auth/session').flush({ username: 'admin', requiresSetup: false });
     await loading;
     expect(auth.username()).toBe('admin');
+    expect(auth.singleSignOn()).toBeNull();
+  });
+
+  it('reports the configured single sign-on provider', async () => {
+    const loading = auth.refresh();
+    http.expectOne('/api/auth/session').flush({
+      username: null,
+      requiresSetup: false,
+      oidc: { displayName: 'Keycloak' },
+    });
+    await loading;
+    expect(auth.singleSignOn()).toEqual({ displayName: 'Keycloak' });
   });
 
   it('refreshes CSRF before login and reloads the authenticated session afterwards', async () => {

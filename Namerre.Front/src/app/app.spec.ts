@@ -24,7 +24,10 @@ describe('App', () => {
         provideRouter(routes),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: Auth, useValue: { username, requiresSetup, refresh, logout } },
+        {
+          provide: Auth,
+          useValue: { username, requiresSetup, singleSignOn: signal(null), refresh, logout },
+        },
       ],
     }).compileComponents();
   });

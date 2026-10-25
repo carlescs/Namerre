@@ -16,6 +16,27 @@ public sealed class AuthenticationOptions
 {
     public string? Username { get; set; }
     public string? PasswordHash { get; set; }
+    public OidcOptions Oidc { get; set; } = new();
+}
+
+/// <summary>Optional OpenID Connect sign-in (for example Keycloak). Disabled while <see cref="Authority"/> is empty.</summary>
+public sealed class OidcOptions
+{
+    /// <summary>Issuer URL, for Keycloak <c>https://keycloak.example.com/realms/&lt;realm&gt;</c>.</summary>
+    public string? Authority { get; set; }
+    public string? ClientId { get; set; }
+    /// <summary>Client secret of a confidential client. Treat as a secret.</summary>
+    public string? ClientSecret { get; set; }
+    /// <summary>Label of the sign-in button.</summary>
+    public string? DisplayName { get; set; } = "Single sign-on";
+    /// <summary>Role (or group) a user must hold to sign in.</summary>
+    public string? RequiredRole { get; set; }
+    /// <summary>ID token claim holding the roles; dots address nested JSON (Keycloak's default is <c>realm_access.roles</c>).</summary>
+    public string? RoleClaim { get; set; } = "realm_access.roles";
+    public string? UsernameClaim { get; set; } = "preferred_username";
+    /// <summary>Scopes requested in addition to <c>openid</c> and <c>profile</c>.</summary>
+    public string[] Scopes { get; set; } = [];
+    public bool RequireHttpsMetadata { get; set; } = true;
 }
 
 public sealed class TmdbOptions

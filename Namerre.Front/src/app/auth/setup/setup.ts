@@ -2,9 +2,10 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Auth } from '../auth';
+import { SingleSignOn } from '../single-sign-on/single-sign-on';
 
 @Component({
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, SingleSignOn],
   selector: 'app-setup',
   styleUrl: '../login/login.scss',
   templateUrl: './setup.html',

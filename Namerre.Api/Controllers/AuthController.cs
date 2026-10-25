@@ -3,9 +3,11 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using Namerre.Authentication;
 using Namerre.Application.Authentication;
 using Namerre.Application.Renaming;
@@ -14,8 +16,8 @@ namespace Namerre.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public sealed class AuthController(AdminAccount account, IAntiforgery antiforgery,
-    ILogger<AuthController> logger) : ControllerBase
+public sealed class AuthController(AdminAccount account, OidcLogin oidc,
+    IOptionsMonitor<OpenIdConnectOptions> oidcOptions, IAntiforgery antiforgery, ILogger<AuthController> logger) : ControllerBase
 {
     [AllowAnonymous]
     [HttpGet("session")]
@@ -32,8 +34,31 @@ public sealed class AuthController(AdminAccount account, IAntiforgery antiforger
         return Ok(new
         {
             username = User.Identity?.IsAuthenticated == true ? User.Identity.Name : null,
-            requiresSetup = account.RequiresSetup
+            requiresSetup = account.RequiresSetup,
+            oidc = oidc.Enabled ? new { displayName = oidc.DisplayName } : null
         });
+    }
+
+    [AllowAnonymous]
+    [HttpGet("oidc/login")]
+    public async Task<IActionResult> OidcLogin(CancellationToken cancellationToken)
+    {
+        if (!oidc.Enabled)
+            return NotFound();
+        try
+        {
+            // Load the provider metadata first so an unreachable identity provider is not a bare server error.
+            await oidcOptions.Get(Authentication.OidcLogin.Scheme).ConfigurationManager!
+                .GetConfigurationAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or
+            HttpRequestException)
+        {
+            logger.LogWarning(exception, "The identity provider is unavailable.");
+            return Redirect("/?signInError=unavailable");
+        }
+        // A fixed return address avoids open redirects.
+        return Challenge(new AuthenticationProperties { RedirectUri = "/" }, Authentication.OidcLogin.Scheme);
     }
 
     [AllowAnonymous]
@@ -74,7 +99,7 @@ public sealed class AuthController(AdminAccount account, IAntiforgery antiforger
         [
             new Claim(ClaimTypes.NameIdentifier, account.Username),
             new Claim(ClaimTypes.Name, account.Username),
-            new Claim("credential-stamp", account.Stamp)
+            new Claim(Authentication.OidcLogin.CredentialStampClaim, account.Stamp)
         ], CookieAuthenticationDefaults.AuthenticationScheme));
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal,
             new AuthenticationProperties { IsPersistent = false });

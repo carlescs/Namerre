@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { Auth } from '../auth';
@@ -10,7 +11,7 @@ describe('Setup', () => {
     setup.mockReset().mockResolvedValue();
     await TestBed.configureTestingModule({
       imports: [Setup],
-      providers: [{ provide: Auth, useValue: { setup } }],
+      providers: [{ provide: Auth, useValue: { setup, singleSignOn: signal(null) } }],
     }).compileComponents();
   });
 
