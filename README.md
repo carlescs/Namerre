@@ -224,8 +224,9 @@ No files or directories are changed by previews.
 
 Prepare the approved configuration to hash the source files and store an immutable
 plan. Hashing reads the full contents of each file and can take substantial disk I/O
-for large media collections. For low-risk renames, tick **Quick check** on the preview
-step (`verifyContent: false` on `POST /api/rename-plans`): preparation then records
+for large media collections. The web UI therefore defaults to **Quick check** on the
+preview step (`verifyContent: false` on `POST /api/rename-plans`; the API itself still
+defaults to hashing); untick it to hash contents. With Quick check, preparation records
 each file's size and last-modified time instead of a content hash, and execution,
 rollback and recovery compare those values rather than re-reading the files. This is
 much faster but will not notice a content change that keeps both size and timestamp,
