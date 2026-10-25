@@ -346,20 +346,25 @@ public sealed class RenamingWorkflowTests : IDisposable
         Assert.Equal("A", Read("alpha.txt"));
     }
 
-    [Fact]
-    public async Task QuickCheckPlansStillStopWhenSizeOrTimeChanges()
+    [Theory]
+    [InlineData("after, and longer", false)]
+    [InlineData("BEFORE", true)]
+    public async Task QuickCheckPlansStopWhenEitherSizeOrTimeChanges(string replacement, bool timeChanges)
     {
+        // Each case changes exactly one stamp component so both are proven to be checked.
         Write("alpha.txt", "before");
+        var prepared = File.GetLastWriteTimeUtc(Full("alpha.txt"));
         using var harness = Harness();
         var plan = await Prepare(harness, UpperRequest(["alpha.txt"]) with { VerifyContent = false });
-        Write("alpha.txt", "after, and longer");
+        Write("alpha.txt", replacement);
+        Touch("alpha.txt", timeChanges ? prepared.AddMinutes(1) : prepared);
         var job = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
         await harness.Service.ProcessNext(default);
         var run = await harness.Service.GetRun(job.Id, default);
         Assert.Equal("RecoveryRequired", run.Status);
         Assert.Equal("HashMismatch", Assert.Single(run.Files).ErrorCode);
         Assert.Empty(run.Journal);
-        Assert.Equal("after, and longer", Read("alpha.txt"));
+        Assert.Equal(replacement, Read("alpha.txt"));
     }
 
     [Theory]
@@ -371,10 +376,24 @@ public sealed class RenamingWorkflowTests : IDisposable
     [InlineData(3, true)]
     [InlineData(4, false)]
     [InlineData(4, true)]
-    public async Task EverySwapMoveFailureBoundarySurvivesRestartAndExplicitRecovery(int failedMove, bool after)
+    public Task EverySwapMoveFailureBoundarySurvivesRestartAndExplicitRecovery(int failedMove, bool after)
+        => SwapFailureSurvivesRestartAndRecovers(failedMove, after, verifyContent: true);
+
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(2, true)]
+    [InlineData(3, false)]
+    [InlineData(4, true)]
+    public Task QuickCheckSwapFailureRecoversFromPersistedStampsAfterRestart(int failedMove, bool after)
+        => SwapFailureSurvivesRestartAndRecovers(failedMove, after, verifyContent: false);
+
+    private async Task SwapFailureSurvivesRestartAndRecovers(int failedMove, bool after, bool verifyContent)
     {
         Write("a.txt", "A");
         Write("b.txt", "B");
+        // Equal sizes; distinct times keep the quick-check stamps of the two files unique.
+        Touch("a.txt", new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        Touch("b.txt", new DateTime(2026, 1, 1, 0, 1, 0, DateTimeKind.Utc));
         string id;
         using (var harness = Harness(moveFailure: failedMove, failAfter: after))
         {
@@ -383,7 +402,8 @@ public sealed class RenamingWorkflowTests : IDisposable
                 Plugin("1", "literal", new { search = "a", replacement = "temp" }),
                 Plugin("2", "literal", new { search = "b", replacement = "a" }),
                 Plugin("3", "literal", new { search = "temp", replacement = "b" })
-            ]));
+            ]) with { VerifyContent = verifyContent });
+            Assert.All(plan.Files, f => Assert.Equal(!verifyContent, f.Hash.StartsWith(BoundedFileSystem.StampPrefix, StringComparison.Ordinal)));
             id = (await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default)).Id;
             await harness.Service.ProcessNext(default);
             Assert.Equal("RecoveryRequired", (await harness.Service.GetRun(id, default)).Status);
@@ -537,6 +557,31 @@ public sealed class RenamingWorkflowTests : IDisposable
         Assert.Equal("Completed", Assert.Single((await harness.Service.GetRun(rename.Id, default)).Files).Status);
         var preview = await harness.Service.RollbackPreview(rename.Id, new(["0"], ""), default);
         Assert.True(Assert.Single(preview.Files).Safe);
+    }
+
+    [Fact]
+    public async Task QuickCheckTreatsDifferentContentWithEqualStampsAsAmbiguous()
+    {
+        var stamp = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        Write("a.txt", "aaaa");
+        Write("b.txt", "bbbb");
+        Touch("a.txt", stamp);
+        Touch("b.txt", stamp);
+        using var harness = Harness(moveFailure: 2, failAfter: true);
+        var plan = await Prepare(harness, UpperRequest(["a.txt", "b.txt"]) with { VerifyContent = false });
+        var id = (await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default)).Id;
+        await harness.Service.ProcessNext(default);
+        var run = await harness.Service.GetRun(id, default);
+        Write(run.Files[0].SourcePath, "cccc");
+        Touch(run.Files[0].SourcePath, stamp);
+        var evidence = await harness.Service.PreviewRecovery(id, default);
+        Assert.False(evidence.CanRecover);
+        Assert.Contains(evidence.Files[0].Issues, issue => issue.Code == "AmbiguousContent");
+        await Assert.ThrowsAsync<RenameException>(() => harness.Service.Recover(id,
+            new("RestoreOriginal", Guid.NewGuid().ToString()), default));
+        Assert.Equal("cccc", Read(run.Files[0].SourcePath));
+        Assert.Single(Directory.GetFiles(Root), p => Path.GetFileName(p).StartsWith(".namerre-stage-", StringComparison.Ordinal)
+            && File.ReadAllText(p) == "aaaa");
     }
 
     [Fact]
@@ -722,9 +767,11 @@ public sealed class RenamingWorkflowTests : IDisposable
                 && service.ImplementationType == typeof(RenameWorker));
             services.Remove(worker);
         }));
+    private string Full(string path) => Path.Combine(Root, path.Replace('/', Path.DirectorySeparatorChar));
+    private void Touch(string path, DateTime lastWriteUtc) => File.SetLastWriteTimeUtc(Full(path), lastWriteUtc);
     private void Write(string path, string content)
     {
-        var full = Path.Combine(Root, path.Replace('/', Path.DirectorySeparatorChar));
+        var full = Full(path);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
         File.WriteAllText(full, content);
     }
