@@ -132,6 +132,26 @@ describe('RunHistoryComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Rollback review — 1 safe files');
   });
 
+  it('clears the rollback check indicator when navigating away mid-check', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush(run);
+    await fixture.whenStable();
+    (fixture.nativeElement.querySelector('input.file-select') as HTMLInputElement).click();
+    await fixture.whenStable();
+    button('Check selected-file').click();
+    await fixture.whenStable();
+    const preview = http.expectOne('/api/rename-runs/run-1/rollback-preview');
+    expect(fixture.nativeElement.querySelector('progress')).not.toBeNull();
+    params.next(convertToParamMap({ id: 'run-2' }));
+    await fixture.whenStable();
+    expect(preview.cancelled).toBe(true);
+    expect(fixture.nativeElement.querySelector('progress')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Checking 1 selected file');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    http.expectOne('/api/rename-runs/run-2').flush({ ...run, id: 'run-2' });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('progress')).toBeNull();
+  });
+
   it('selects and clears every completed file from the header checkbox', async () => {
     http.expectOne('/api/rename-runs/run-1').flush({
       ...run,
