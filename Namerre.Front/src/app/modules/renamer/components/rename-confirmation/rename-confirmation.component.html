@@ -38,6 +38,9 @@
         </li>
       }
     </ul>
+    @if (prepared.pipeline.deleteEmptyFolders) {
+      <p>Folders left empty after their files move are deleted once the run finishes.</p>
+    }
     <p>
       Confirm only the paths above. Any collection, configuration, or match change invalidates this
       approval.

@@ -153,9 +153,13 @@ public sealed class BoundedFileSystemTests : IDisposable
     {
         Directory.CreateDirectory(Path.Combine(root, "Empty"));
 
-        fileSystem.DeleteEmptyDirectory("Empty");
-        fileSystem.DeleteEmptyDirectory("Movies");
-        fileSystem.DeleteEmptyDirectory("Missing");
+        Assert.True(fileSystem.IsEmptyDirectory("Empty"));
+        Assert.False(fileSystem.IsEmptyDirectory("Movies"));
+        Assert.False(fileSystem.IsEmptyDirectory("Movies/film.mkv"));
+        Assert.False(fileSystem.IsEmptyDirectory("Missing"));
+        Assert.True(fileSystem.DeleteEmptyDirectory("Empty"));
+        Assert.False(fileSystem.DeleteEmptyDirectory("Movies"));
+        Assert.False(fileSystem.DeleteEmptyDirectory("Missing"));
 
         Assert.False(Directory.Exists(Path.Combine(root, "Empty")));
         Assert.True(File.Exists(Path.Combine(root, "Movies", "film.mkv")));

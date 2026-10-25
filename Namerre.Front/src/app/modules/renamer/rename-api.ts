@@ -42,6 +42,8 @@ export interface PipelineRequest {
   selections: MetadataSelection[];
   /** False records size and modification time instead of hashing file contents (faster, weaker). */
   verifyContent?: boolean;
+  /** True removes source folders that the run leaves empty once every file is placed. */
+  deleteEmptyFolders?: boolean;
 }
 export interface RenameIssue {
   code: string;
@@ -108,6 +110,8 @@ export interface RunView {
   }[];
   createdAt: string;
   error: string | null;
+  /** Snapshot of the plan option; rollbacks of this run inherit it. */
+  deleteEmptyFolders?: boolean;
   /** Rollback runs created from this run; only present on single-run reads. */
   rollbackRuns?: RunReference[];
 }

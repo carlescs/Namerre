@@ -909,7 +909,8 @@ public sealed class RenamingWorkflowTests : IDisposable
         public void CheckSameDevice(string source, string target) => inner.CheckSameDevice(source, target);
         public IReadOnlyList<string> MissingDirectories(string path) => inner.MissingDirectories(path);
         public void CreateDirectory(string path) => inner.CreateDirectory(path);
-        public void DeleteEmptyDirectory(string path) => inner.DeleteEmptyDirectory(path);
+        public bool IsEmptyDirectory(string path) => inner.IsEmptyDirectory(path);
+        public bool DeleteEmptyDirectory(string path) => inner.DeleteEmptyDirectory(path);
         public void Move(string source, string destination)
         {
             var fail = ++moves == FailureAt;

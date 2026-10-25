@@ -247,6 +247,16 @@ Missing destination folders may be created. There is no overwrite, cross-filesys
 copy-and-delete fallback, directory renaming, or automatic companion-file discovery.
 Folders created for a run are retained after rollback and recovery: a path journal
 cannot prove that a directory at that path is still the one the app created.
+To tidy up, tick **Delete folders left empty** on the preview step
+(`deleteEmptyFolders: true` on `POST /api/rename-plans`). Once every file of the run is
+placed, each folder a moved file came from is removed if it is now empty, deepest first,
+so parents emptied in turn go too. The configured root is never removed, and a folder
+that still holds anything, even an empty subfolder, stays.
+Each removal is journaled as `DeleteDirectory`. Cleanup is best effort: a folder that
+cannot be removed is journaled as `Failed` and the run still completes. Rollbacks of
+such a run inherit the option, so folders the rename created are removed again when
+rolling back empties them; missing original folders are recreated on rollback and
+recovery.
 
 Select individual files in a saved run to preview rollback. Rollback checks the
 expected current path and original content hash, never overwrites an occupied

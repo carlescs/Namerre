@@ -92,6 +92,23 @@
         >
       </span>
     </label>
+    <label class="mx-5 flex items-start gap-2 text-sm sm:mx-8" [hidden]="stage() !== 'preview'">
+      <input
+        #emptyFolders
+        id="delete-empty-folders"
+        type="checkbox"
+        [checked]="deleteEmptyFolders()"
+        (change)="deleteEmptyFolders.set(emptyFolders.checked)"
+        [disabled]="preparing() || executing()"
+      />
+      <span>
+        Delete folders left empty after their files are moved out.
+        <span class="block text-xs text-slate-500"
+          >Only folders that are empty once the run finishes are removed; a rollback of the run does
+          the same for the folders it empties.</span
+        >
+      </span>
+    </label>
     <app-rename-confirmation
       class="wizard-screen"
       [hidden]="stage() !== 'confirmation'"

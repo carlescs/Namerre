@@ -24,7 +24,9 @@ public interface IRenameFileSystem
     void Move(string source, string destination);
     IReadOnlyList<string> MissingDirectories(string path);
     void CreateDirectory(string path);
-    void DeleteEmptyDirectory(string path);
+    bool IsEmptyDirectory(string path);
+    /// <summary>Deletes the directory only when it exists and is empty; returns whether it was deleted.</summary>
+    bool DeleteEmptyDirectory(string path);
 }
 
 public sealed class PipelineEngine(ITmdbMetadata metadata, IRenameFileSystem fileSystem)
