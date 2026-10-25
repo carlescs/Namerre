@@ -14,7 +14,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { catchError, EMPTY, exhaustMap, Subscription, timer } from 'rxjs';
+import { BehaviorSubject, catchError, EMPTY, exhaustMap, Subscription, timer } from 'rxjs';
 import {
   RecoveryPreview,
   PlanView,
@@ -119,7 +119,10 @@ export class RunHistoryComponent {
     const id = this.runId();
     const revision = ++this.loadRevision;
     if (id) {
-      this.polling = refreshOn(this.events.watch('Run', id), () => this.api.run(id))
+      // Settled runs keep listening: a rollback or recovery (possibly from another tab) can still
+      // change their files. Only the fallback poll stops once the run is no longer active.
+      const active = new BehaviorSubject(true);
+      this.polling = refreshOn(this.events.watch('Run', id, active), () => this.api.run(id))
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
           next: (run) => {
@@ -137,9 +140,7 @@ export class RunHistoryComponent {
                 : new Set([...selection].filter((id) => selectable.has(id))),
             );
             this.loading.set(false);
-            if (!['Queued', 'Running', 'RecoveryQueued', 'Recovering'].includes(run.status)) {
-              this.polling?.unsubscribe();
-            }
+            active.next(['Queued', 'Running', 'RecoveryQueued', 'Recovering'].includes(run.status));
           },
           error: (error: unknown) => {
             if (revision !== this.loadRevision) return;

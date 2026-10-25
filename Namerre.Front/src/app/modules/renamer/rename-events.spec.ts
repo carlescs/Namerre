@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { HubConnection } from '@microsoft/signalr';
-import { Observable, Subject } from 'rxjs';
+import { BehaviorSubject, Observable, Subject } from 'rxjs';
 import { RENAME_HUB, RenameChange, RenameEvents, refreshOn } from './rename-events';
 
 class FakeHub {
@@ -116,9 +116,30 @@ describe('RenameEvents', () => {
     const events = TestBed.inject(RenameEvents);
     const watcher = record(events.watch('Run', undefined, false));
     await vi.advanceTimersByTimeAsync(60000);
-    expect(watcher.count).toBe(2);
+    expect(watcher.count).toBe(1);
     hub.push({ kind: 'Run', id: 'any', status: 'Deleted' });
+    expect(watcher.count).toBe(2);
+    watcher.stop();
+  });
+
+  it('starts and stops the fallback poll as the view asks, without an extra refresh', async () => {
+    const events = TestBed.inject(RenameEvents);
+    const poll = new BehaviorSubject(true);
+    const watcher = record(events.watch('Run', 'run-1', poll));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(watcher.count).toBe(1);
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(watcher.count).toBe(2);
+
+    poll.next(false);
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(watcher.count).toBe(2);
+    hub.push({ kind: 'Run', id: 'run-1', status: 'Completed' });
     expect(watcher.count).toBe(3);
+
+    poll.next(true);
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(watcher.count).toBe(4);
     watcher.stop();
   });
 

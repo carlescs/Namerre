@@ -535,10 +535,11 @@ describe('RunHistoryComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Cannot reach the server.');
   });
 
-  it('re-reads active runs on pushed changes until they settle', async () => {
+  it('re-reads runs on pushed changes and polls only while they are active', async () => {
     http.expectOne('/api/rename-runs/run-1').flush({ ...run, status: 'Running' });
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('Status: Running.');
+    expect(events.polling).toBe(true);
     events.push('Run', 'run-2');
     events.push('Plan', 'run-1');
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -549,9 +550,17 @@ describe('RunHistoryComponent', () => {
     http.expectOne('/api/rename-runs/run-1').flush(run);
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('Status: Completed.');
-    events.push('Run', 'run-1');
+    expect(events.polling).toBe(false);
+    // A settled run still follows pushes: completing a rollback rewrites its file statuses.
     await new Promise((resolve) => setTimeout(resolve, 300));
-    http.expectNone('/api/rename-runs/run-1');
+    events.push('Run', 'run-1');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    http.expectOne('/api/rename-runs/run-1').flush({
+      ...run,
+      files: run.files.map((file) => (file.id === 'a' ? { ...file, status: 'RolledBack' } : file)),
+    });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('RolledBack');
   });
 
   it('refreshes the history page when any run changes', async () => {

@@ -2,7 +2,9 @@ import { inject, Injectable, InjectionToken } from '@angular/core';
 import { HubConnection, HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import {
   BehaviorSubject,
+  combineLatest,
   distinctUntilChanged,
+  EMPTY,
   filter,
   map,
   merge,
@@ -84,17 +86,30 @@ export class RenameEvents {
 
   /**
    * Emits whenever a record of `kind` (optionally only `id`) should be re-read: immediately, on each
-   * pushed change and after every connection change. With `poll`, it also refreshes on a fallback timer
-   * that is fast while disconnected, for views that must not stall when the hub is unreachable.
+   * pushed change and after every connection change. While `poll` is (or last emitted) true, it also
+   * refreshes on a fallback timer that is fast while disconnected, for views that must not stall when
+   * the hub is unreachable; pushed changes keep arriving either way.
    */
-  watch(kind: RenameChange['kind'], id?: string, poll = true): Observable<void> {
+  watch(
+    kind: RenameChange['kind'],
+    id?: string,
+    poll: boolean | Observable<boolean> = true,
+  ): Observable<void> {
     return merge(
       this.changes.pipe(filter((change) => change.kind === kind && (!id || change.id === id))),
+      // Initial load and resync after every connection change; quick flaps collapse into one.
       this.connected.pipe(
         distinctUntilChanged(),
-        switchMap((connected) =>
-          poll ? timer(0, connected ? connectedRefreshMs : disconnectedRefreshMs) : of(0),
-        ),
+        switchMap(() => timer(0)),
+      ),
+      combineLatest([
+        this.connected.pipe(distinctUntilChanged()),
+        (typeof poll === 'boolean' ? of(poll) : poll).pipe(distinctUntilChanged()),
+      ]).pipe(
+        switchMap(([connected, polling]) => {
+          const interval = connected ? connectedRefreshMs : disconnectedRefreshMs;
+          return polling ? timer(interval, interval) : EMPTY;
+        }),
       ),
     ).pipe(map(() => undefined));
   }
