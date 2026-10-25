@@ -27,5 +27,6 @@
       <Property Name="VWDPort" Value="&quot;59211&quot;" />
     </Properties>
   </Project>
+  <Project Path="Namerre.Infrastructure.UnitTests/Namerre.Infrastructure.UnitTests.csproj" />
   <Project Path="Namerre.Infrastructure/Namerre.Infrastructure.csproj" />
 </Solution>

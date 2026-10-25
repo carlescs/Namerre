@@ -53,4 +53,56 @@ describe('TMDB filename inference', () => {
     );
     expect(preferredTmdbMatch([], { query: 'Missing' })).toBeUndefined();
   });
+
+  it('only parses episode numbers for TV searches', () => {
+    expect(tmdbFilename('Shows/A.Show.S01E02.mkv', 'movie')).toEqual({ query: 'A Show S01E02' });
+  });
+
+  it('falls back to the nearest non-season folder for bare episode names', () => {
+    expect(tmdbFilename('Library/A_Show (2010)/S1/1x05.mkv', 'tv')).toEqual({
+      query: 'A Show',
+      year: '2010',
+      season: 1,
+      episode: 5,
+    });
+    expect(tmdbFilename('S01E01.mkv', 'tv')).toEqual({ query: '', season: 1, episode: 1 });
+    expect(tmdbFilename('Season 1/s01e01.mkv', 'tv')).toEqual({
+      query: '',
+      season: 1,
+      episode: 1,
+    });
+  });
+
+  it('keeps names without extensions and trims separators', () => {
+    expect(tmdbFilename('Movies/- The_Movie [2019] -', 'movie')).toEqual({
+      query: 'The Movie',
+      year: '2019',
+    });
+    expect(tmdbFilename('', 'movie')).toEqual({ query: '' });
+  });
+
+  it('uses the last plausible year so titles containing years are preserved', () => {
+    expect(tmdbFilename('Blade.Runner.2049.2017.2160p.mkv', 'movie')).toEqual({
+      query: 'Blade Runner 2049',
+      year: '2017',
+    });
+  });
+
+  it('ranks title matches above year matches and ignores punctuation and case', () => {
+    const base: TmdbMatch = {
+      id: 1,
+      mediaType: 'movie',
+      title: 'Other',
+      year: '2024',
+      season: null,
+      episode: null,
+      episodeTitle: null,
+      confirmationToken: null,
+    };
+    const titled = { ...base, id: 2, title: 'MISSION: Impossible!', year: '1996' };
+    expect(preferredTmdbMatch([base, titled], { query: 'Mission Impossible', year: '2024' })).toBe(
+      titled,
+    );
+    expect(preferredTmdbMatch([base, titled], { query: 'Unrelated' })).toBe(base);
+  });
 });
