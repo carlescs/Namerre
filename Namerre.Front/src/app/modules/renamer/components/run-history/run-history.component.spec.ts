@@ -166,6 +166,18 @@ describe('RunHistoryComponent', () => {
     expect(button('Check selected-file').disabled).toBe(true);
   });
 
+  it('does not offer rollback selection for files of a rollback run', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush({ ...run, kind: 'Rollback' });
+    await fixture.whenStable();
+    const checkboxes = Array.from(
+      fixture.nativeElement.querySelectorAll(
+        'input[type="checkbox"]',
+      ) as NodeListOf<HTMLInputElement>,
+    );
+    expect(checkboxes.length).toBe(3);
+    expect(checkboxes.every((checkbox) => checkbox.disabled)).toBe(true);
+  });
+
   it('invalidates an approved rollback when the selection changes', async () => {
     http.expectOne('/api/rename-runs/run-1').flush(run);
     await fixture.whenStable();

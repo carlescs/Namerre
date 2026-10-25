@@ -161,9 +161,7 @@
                   [attr.aria-label]="'Select ' + file.sourcePath + ' for rollback'"
                   [checked]="selected().has(file.id)"
                   (change)="toggle(file.id)"
-                  [disabled]="
-                    busy() || current.status !== 'Completed' || file.status !== 'Completed'
-                  "
+                  [disabled]="busy() || !selectableIds().includes(file.id)"
                 />
               </td>
               <td>

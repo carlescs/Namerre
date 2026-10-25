@@ -48,7 +48,7 @@ export class RunHistoryComponent {
   protected readonly selected = signal<Set<string>>(new Set());
   protected readonly selectableIds = computed(() => {
     const run = this.run();
-    if (run?.status !== 'Completed') return [];
+    if (run?.status !== 'Completed' || run.kind !== 'Rename') return [];
     return run.files.filter((file) => file.status === 'Completed').map((file) => file.id);
   });
   protected readonly someSelected = computed(() =>
