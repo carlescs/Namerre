@@ -9,7 +9,7 @@
   </nav>
   <p class="eyebrow">A record of every change</p>
   <h1 #pageHeading tabindex="-1">{{ runId() ? 'Saved run details' : 'Rename history' }}</h1>
-  <p class="mb-6 text-slate-500">
+  <p class="mb-6 text-slate-500 dark:text-slate-400">
     Inspect past operations, review file outcomes, and recover with confidence.
   </p>
   <button class="mb-5" type="button" (click)="refresh()" [disabled]="loading() || busy()">
@@ -25,7 +25,7 @@
     @if (!list.items.length) {
       <div class="surface my-6 p-10 text-center">
         <h2 class="text-lg">A fresh start</h2>
-        <p class="text-slate-500">No saved runs yet.</p>
+        <p class="text-slate-500 dark:text-slate-400">No saved runs yet.</p>
         <a routerLink="/" class="font-medium"
           >Start in the workspace <span aria-hidden="true">&rarr;</span></a
         >
@@ -38,7 +38,7 @@
             <div class="min-w-0">
               <a [routerLink]="['/runs', item.id]">{{ item.kind }} {{ item.id }}</a> —
               <span class="badge">{{ item.status }}</span>
-              <p class="mb-0 text-xs text-slate-500">
+              <p class="mb-0 text-xs text-slate-500 dark:text-slate-400">
                 {{ item.createdAt | date: 'medium' }} — {{ item.files.length }} files
               </p>
             </div>
@@ -119,7 +119,9 @@
             <li>
               <a [routerLink]="['/runs', child.id]">{{ child.kind }} {{ child.id }}</a> —
               <span class="badge">{{ child.status }}</span>
-              <span class="text-xs text-slate-500">{{ child.createdAt | date: 'medium' }}</span>
+              <span class="text-xs text-slate-500 dark:text-slate-400">{{
+                child.createdAt | date: 'medium'
+              }}</span>
             </li>
           }
         </ul>
@@ -303,7 +305,7 @@
   <ng-template #deleteButton let-target>
     <button
       type="button"
-      class="shrink-0 text-slate-500 hover:text-rose-700 disabled:hover:text-slate-500"
+      class="shrink-0 text-slate-500 dark:text-slate-400 hover:text-rose-700 dark:hover:text-rose-400 disabled:hover:text-slate-500 dark:disabled:hover:text-slate-400"
       [attr.aria-label]="'Delete saved run ' + target.id"
       [title]="
         isSettledRun(target)

@@ -5,14 +5,14 @@
 .nav-link {
   padding: 0.5rem 0.75rem;
   border-radius: 0.5rem;
-  color: #475569;
+  color: var(--app-muted);
   font-weight: 500;
   text-decoration: none;
 
   &:hover,
   &.nav-active {
-    background: #eef2ff;
-    color: #4338ca;
+    background: var(--app-accent-soft);
+    color: var(--app-accent);
   }
 }
 
@@ -23,7 +23,7 @@
   z-index: 50;
   padding: 0.75rem 1rem;
   border-radius: 0.5rem;
-  background: white;
+  background: var(--app-surface);
   transform: translateY(-200%);
 
   &:focus {

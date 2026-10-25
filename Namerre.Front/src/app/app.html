@@ -8,11 +8,11 @@
   }
   @if (auth.username(); as username) {
     <a class="skip-link" href="#main-content">Skip to content</a>
-    <header class="border-b border-slate-200 bg-white">
+    <header class="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
       <div class="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-4 sm:px-8">
         <a
           routerLink="/"
-          class="flex items-center gap-3 text-slate-950 no-underline hover:no-underline"
+          class="flex items-center gap-3 text-slate-950 dark:text-slate-50 no-underline hover:no-underline"
         >
           <span
             class="grid size-10 place-items-center rounded-xl bg-indigo-600 text-xl font-bold text-white"
@@ -20,7 +20,7 @@
             >N</span
           >
           <span class="text-xl font-bold tracking-tight"
-            >namerre<span class="text-indigo-600">.</span></span
+            >namerre<span class="text-indigo-600 dark:text-indigo-400">.</span></span
           >
         </a>
         <nav
@@ -44,9 +44,13 @@
           >
         </nav>
         <div class="ml-auto flex min-w-0 items-center gap-3">
-          <span class="hidden max-w-48 truncate text-xs text-slate-500 sm:block" [title]="username"
-            >Signed in as <strong class="text-slate-700">{{ username }}</strong></span
+          <span
+            class="hidden max-w-48 truncate text-xs text-slate-500 dark:text-slate-400 sm:block"
+            [title]="username"
+            >Signed in as
+            <strong class="text-slate-700 dark:text-slate-300">{{ username }}</strong></span
           >
+          <app-theme-picker />
           <button type="button" (click)="logout()" [disabled]="signingOut()">Sign out</button>
         </div>
       </div>
@@ -54,9 +58,12 @@
     <router-outlet />
   } @else if (error()) {
     <div class="text-center"><button type="button" (click)="initialize()">Retry</button></div>
-  } @else if (auth.requiresSetup()) {
-    <app-setup />
   } @else {
-    <app-login />
+    <div class="flex justify-end px-4 pt-4 sm:px-8"><app-theme-picker /></div>
+    @if (auth.requiresSetup()) {
+      <app-setup />
+    } @else {
+      <app-login />
+    }
   }
 }

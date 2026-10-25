@@ -1,9 +1,11 @@
 <h3>Ordered plugins ({{ cards().length }}/32)</h3>
-<p class="text-slate-500">
+<p class="text-slate-500 dark:text-slate-400">
   Add up to 32 plugins, including repeated types, and arrange them in order. Text transformations
   preserve the extension.
 </p>
-<div class="actions rounded-xl border border-slate-200 bg-slate-50 p-4">
+<div
+  class="actions rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-4"
+>
   <label
     >Plugin type
     <select [formControl]="type">
@@ -24,9 +26,13 @@
   </button>
 </div>
 @if (!cards().length) {
-  <div class="mt-5 rounded-xl border border-dashed border-slate-300 p-8 text-center">
-    <p class="mt-0 font-semibold text-slate-900">Build your renaming recipe</p>
-    <p class="mb-0 text-slate-500">No plugins selected. Preview will leave every path unchanged.</p>
+  <div
+    class="mt-5 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-8 text-center"
+  >
+    <p class="mt-0 font-semibold text-slate-900 dark:text-slate-100">Build your renaming recipe</p>
+    <p class="mb-0 text-slate-500 dark:text-slate-400">
+      No plugins selected. Preview will leave every path unchanged.
+    </p>
   </div>
 }
 @for (card of cards(); track card.plugin.instanceId; let i = $index) {
@@ -79,18 +85,23 @@
     </div>
     @if (card.plugin.typeId === 'tmdb') {
       <section
-        class="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-4"
+        class="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-4"
         [attr.aria-labelledby]="'preview-' + card.plugin.instanceId"
       >
-        <h5 class="m-0 font-semibold text-slate-900" [id]="'preview-' + card.plugin.instanceId">
+        <h5
+          class="m-0 font-semibold text-slate-900 dark:text-slate-100"
+          [id]="'preview-' + card.plugin.instanceId"
+        >
           Template preview
         </h5>
-        <p class="mt-1 text-slate-500">Rendered with sample metadata, not a real TMDB match.</p>
+        <p class="mt-1 text-slate-500 dark:text-slate-400">
+          Rendered with sample metadata, not a real TMDB match.
+        </p>
         <dl class="m-0 grid gap-2" aria-live="polite">
           @for (sample of samples; track sample.label) {
             @let result = preview(card.plugin.options, sample.match);
             <div>
-              <dt class="text-slate-500">
+              <dt class="text-slate-500 dark:text-slate-400">
                 {{ sample.label }}: {{ sample.match.title }} ({{ sample.match.year }})
                 @if (sample.match.season !== null) {
                   S{{ sample.match.season }}E{{ sample.match.episode }} &ldquo;{{
@@ -102,7 +113,7 @@
                 @if (result.path !== undefined) {
                   <code>{{ result.path }}</code>
                 } @else {
-                  <span class="text-red-700">{{ result.error }}</span>
+                  <span class="text-red-700 dark:text-rose-400">{{ result.error }}</span>
                 }
               </dd>
             </div>

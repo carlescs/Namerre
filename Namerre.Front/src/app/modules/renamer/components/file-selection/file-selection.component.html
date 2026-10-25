@@ -2,7 +2,9 @@
   <div class="flex flex-wrap items-center justify-between gap-4">
     <div>
       <h3 id="files-heading">Files for renaming ({{ files().length }})</h3>
-      <p class="mb-0 mt-1 text-slate-500">Choose the server files you want to rename.</p>
+      <p class="mb-0 mt-1 text-slate-500 dark:text-slate-400">
+        Choose the server files you want to rename.
+      </p>
     </div>
     <div class="collection-actions">
       <button #chooseFolder class="btn-primary" type="button" (click)="folderPicker.open()">
@@ -34,7 +36,7 @@
         (input)="search.set($event.target.value)"
         aria-controls="collection-table"
       />
-      <p class="m-0 text-xs text-slate-500" role="status">
+      <p class="m-0 text-xs text-slate-500 dark:text-slate-400" role="status">
         Showing {{ filteredFiles().length }} of {{ files().length }} files. Filtering does not
         change your collection.
       </p>
@@ -56,14 +58,18 @@
         <tbody>
           @for (file of filteredFiles(); track file.path) {
             <tr>
-              <td class="font-medium text-slate-900">{{ file.name }}</td>
-              <td class="text-slate-500">{{ file.folderPath || 'Server root' }}</td>
+              <td class="font-medium text-slate-900 dark:text-slate-100">{{ file.name }}</td>
+              <td class="text-slate-500 dark:text-slate-400">
+                {{ file.folderPath || 'Server root' }}
+              </td>
               <td class="tabular-nums">{{ file.length | number }}</td>
-              <td class="text-xs text-slate-500">{{ file.lastModifiedUtc | date: 'medium' }}</td>
+              <td class="text-xs text-slate-500 dark:text-slate-400">
+                {{ file.lastModifiedUtc | date: 'medium' }}
+              </td>
               <td>
                 <button
                   type="button"
-                  class="text-slate-500 hover:text-rose-700"
+                  class="text-slate-500 dark:text-slate-400 hover:text-rose-700 dark:hover:text-rose-400"
                   aria-label="Remove {{ file.path }} from collection"
                   (click)="removeFile(file.path); chooseFolder.focus()"
                 >
@@ -75,28 +81,28 @@
         </tbody>
       </table>
     </div>
-    <p class="mb-0 mt-2 text-xs text-slate-500 sm:hidden">
+    <p class="mb-0 mt-2 text-xs text-slate-500 dark:text-slate-400 sm:hidden">
       Scroll the table horizontally for details and file actions.
     </p>
     @if (!filteredFiles().length) {
       <div class="py-8 text-center">
-        <p class="font-medium text-slate-900">No files match your filter.</p>
+        <p class="font-medium text-slate-900 dark:text-slate-100">No files match your filter.</p>
         <button type="button" (click)="search.set('')">Clear filter</button>
       </div>
     }
   } @else {
     <div
-      class="mt-6 grid justify-items-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/60 px-6 py-14 text-center"
+      class="mt-6 grid justify-items-center rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 px-6 py-14 text-center"
     >
       <span
-        class="mb-4 grid size-14 place-items-center rounded-2xl border border-indigo-100 bg-indigo-50 text-2xl text-indigo-600"
+        class="mb-4 grid size-14 place-items-center rounded-2xl border border-indigo-100 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 text-2xl text-indigo-600 dark:text-indigo-400"
         ><fa-icon [icon]="folderIcon" aria-hidden="true"
       /></span>
       <h4>Your next tidy collection starts here</h4>
-      <p class="mb-0 max-w-sm text-slate-500">
+      <p class="mb-0 max-w-sm text-slate-500 dark:text-slate-400">
         No files added yet. Choose a folder to add its files.
       </p>
-      <p class="mb-0 text-xs text-slate-500">
+      <p class="mb-0 text-xs text-slate-500 dark:text-slate-400">
         Add from multiple folders. Duplicate paths are skipped automatically.
       </p>
     </div>

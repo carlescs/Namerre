@@ -20,7 +20,7 @@
       #currentPath
       tabindex="-1"
       role="status"
-      class="current-path rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs"
+      class="current-path rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 px-3 py-2 font-mono text-xs"
     >
       @if (selecting()) {
         Loading files{{ includeSubfolders() ? ' from subfolders' : '' }}...
@@ -65,7 +65,7 @@
                     [disabled]="loading()"
                   >
                     <svg
-                      class="size-5 shrink-0 text-indigo-500"
+                      class="size-5 shrink-0 text-indigo-500 dark:text-indigo-400"
                       aria-hidden="true"
                       viewBox="0 0 24 24"
                       fill="none"
@@ -76,7 +76,7 @@
                     </svg>
                     <span class="flex-1">{{ directory.name }}</span>
                     <svg
-                      class="size-4 shrink-0 text-slate-400"
+                      class="size-4 shrink-0 text-slate-400 dark:text-slate-500"
                       aria-hidden="true"
                       viewBox="0 0 24 24"
                       fill="none"
