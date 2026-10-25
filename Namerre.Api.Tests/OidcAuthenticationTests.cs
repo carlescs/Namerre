@@ -108,6 +108,20 @@ public sealed class OidcAuthenticationTests
     }
 
     [Fact]
+    public async Task AFailingPushedAuthorizationRequestReturnsToTheSignInPage()
+    {
+        using var provider = new FakeProvider([Role]) { PushedAuthorizationFails = true };
+        using var factory = provider.Factory();
+        using var client = Client(factory);
+
+        using var login = await client.GetAsync("/api/auth/oidc/login");
+
+        Assert.Equal(HttpStatusCode.Redirect, login.StatusCode);
+        Assert.Equal("/?signInError=unavailable", login.Headers.Location!.OriginalString);
+        Assert.StartsWith("client_id=", provider.TokenRequest);
+    }
+
+    [Fact]
     public async Task SingleSignOnSessionsEndWhenAccessSettingsChange()
     {
         using var provider = new FakeProvider([Role]);
@@ -147,6 +161,7 @@ public sealed class OidcAuthenticationTests
         private string? nonce;
 
         public string? TokenRequest { get; private set; }
+        public bool PushedAuthorizationFails { get; init; }
 
         public WebApplicationFactory<Program> Factory() => new AuthWebApplicationFactory().WithWebHostBuilder(builder =>
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
@@ -167,6 +182,8 @@ public sealed class OidcAuthenticationTests
                             AuthorizationEndpoint = Issuer + "/protocol/openid-connect/auth",
                             TokenEndpoint = Issuer + "/protocol/openid-connect/token"
                         };
+                        if (PushedAuthorizationFails)
+                            configuration.PushedAuthorizationRequestEndpoint = Issuer + "/protocol/openid-connect/ext/par/request";
                         configuration.SigningKeys.Add(key);
                         options.Configuration = configuration;
                         options.ConfigurationManager =
@@ -193,6 +210,8 @@ public sealed class OidcAuthenticationTests
             CancellationToken cancellationToken)
         {
             TokenRequest = await request.Content!.ReadAsStringAsync(cancellationToken);
+            if (PushedAuthorizationFails)
+                throw new HttpRequestException("Connection refused.");
             var idToken = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
             {
                 Issuer = Issuer,

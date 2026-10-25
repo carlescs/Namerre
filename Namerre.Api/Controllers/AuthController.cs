@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Namerre.Authentication;
 using Namerre.Application.Authentication;
 using Namerre.Application.Renaming;
@@ -50,15 +51,20 @@ public sealed class AuthController(AdminAccount account, OidcLogin oidc,
             // Load the provider metadata first so an unreachable identity provider is not a bare server error.
             await oidcOptions.Get(Authentication.OidcLogin.Scheme).ConfigurationManager!
                 .GetConfigurationAsync(cancellationToken);
+            // The challenge itself may call the provider (pushed authorization requests), so it is guarded too.
+            // A fixed return address avoids open redirects.
+            await HttpContext.ChallengeAsync(Authentication.OidcLogin.Scheme,
+                new AuthenticationProperties { RedirectUri = "/" });
+            return new EmptyResult();
         }
         catch (Exception exception) when (exception is InvalidOperationException or IOException or
-            HttpRequestException)
+            HttpRequestException or OpenIdConnectProtocolException)
         {
             logger.LogWarning(exception, "The identity provider is unavailable.");
+            if (!Response.HasStarted)
+                Response.Clear();
             return Redirect("/?signInError=unavailable");
         }
-        // A fixed return address avoids open redirects.
-        return Challenge(new AuthenticationProperties { RedirectUri = "/" }, Authentication.OidcLogin.Scheme);
     }
 
     [AllowAnonymous]

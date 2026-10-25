@@ -182,11 +182,24 @@ public sealed class AuthControllerTests
     [Fact]
     public async Task SingleSignOnChallengesTheIdentityProviderWithAFixedReturnAddress()
     {
-        var result = Assert.IsType<ChallengeResult>(
-            await Controller(Configured(), Oidc()).OidcLogin(CancellationToken.None));
+        var controller = Controller(Configured(), Oidc());
 
-        Assert.Equal([OidcLogin.Scheme], result.AuthenticationSchemes);
-        Assert.Equal("/", result.Properties!.RedirectUri);
+        Assert.IsType<EmptyResult>(await controller.OidcLogin(CancellationToken.None));
+
+        await authentication.Received(1).ChallengeAsync(controller.HttpContext, OidcLogin.Scheme,
+            Arg.Is<AuthenticationProperties>(p => p.RedirectUri == "/"));
+    }
+
+    [Fact]
+    public async Task AFailingChallengeReturnsToTheSignInPage()
+    {
+        var controller = Controller(Configured(), Oidc());
+        authentication.ChallengeAsync(controller.HttpContext, OidcLogin.Scheme, Arg.Any<AuthenticationProperties>())
+            .ThrowsAsync(new HttpRequestException("pushed authorization failed"));
+
+        var result = Assert.IsType<RedirectResult>(await controller.OidcLogin(CancellationToken.None));
+
+        Assert.Equal("/?signInError=unavailable", result.Url);
     }
 
     [Fact]
