@@ -10,6 +10,7 @@ import { Auth } from './auth/auth';
 describe('App', () => {
   const username = signal<string | null>(null);
   const requiresSetup = signal(false);
+  const canChangePassword = signal(true);
   const refresh = vi.fn<() => Promise<void>>();
   const logout = vi.fn<() => Promise<void>>();
 
@@ -24,7 +25,10 @@ describe('App', () => {
         provideRouter(routes),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: Auth, useValue: { username, requiresSetup, refresh, logout } },
+        {
+          provide: Auth,
+          useValue: { username, requiresSetup, canChangePassword, refresh, logout },
+        },
       ],
     }).compileComponents();
   });
@@ -84,6 +88,18 @@ describe('App', () => {
     username.set('admin');
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('header app-theme-picker')).not.toBeNull();
+  });
+
+  it('links to the account page from the header', async () => {
+    username.set('admin');
+    const fixture = TestBed.createComponent(App);
+    await TestBed.inject(Router).navigateByUrl('/account');
+    await fixture.whenStable();
+    const link = fixture.nativeElement.querySelector('header a[href="/account"]');
+    expect(link?.getAttribute('aria-current')).toBe('page');
+    expect(fixture.nativeElement.querySelector('app-account h2')?.textContent).toBe(
+      'Change password',
+    );
   });
 
   it('removes protected content after signing out', async () => {

@@ -15,12 +15,21 @@ public enum SetupResult
     InvalidToken
 }
 
+public enum PasswordChangeResult
+{
+    Changed,
+    InvalidPassword,
+    ManagedByConfiguration,
+    Conflict
+}
+
 public sealed class AdminAccount
 {
     private static readonly PasswordHasher<string> Hasher = new(
         Options.Create(new PasswordHasherOptions { IterationCount = 210_000 }));
     private readonly object gate = new();
     private readonly IAdministratorStore store;
+    private readonly bool configured;
     private AdminCredentials? credentials;
 
     public AdminAccount(IOptions<NamerreOptions> options, IAdministratorStore store)
@@ -28,7 +37,8 @@ public sealed class AdminAccount
         this.store = store;
         var username = options.Value.Authentication.Username;
         var passwordHash = options.Value.Authentication.PasswordHash;
-        credentials = !string.IsNullOrEmpty(username) || !string.IsNullOrEmpty(passwordHash)
+        configured = !string.IsNullOrEmpty(username) || !string.IsNullOrEmpty(passwordHash);
+        credentials = configured
             ? new AdminCredentials(username ?? "", passwordHash ?? "")
             : store.Load();
         if (credentials is not null)
@@ -41,6 +51,8 @@ public sealed class AdminAccount
         Console.Error.WriteLine($"Namerre installation: open the app over HTTPS and enter this one-time setup token: {SetupToken}");
     }
 
+    // Server-configured credentials can only be changed in configuration.
+    public bool CanChangePassword => !configured && !RequiresSetup;
     public bool RequiresSetup => Volatile.Read(ref credentials) is null;
     public string Username => Volatile.Read(ref credentials)?.Username ?? "";
     public string Stamp
@@ -70,6 +82,24 @@ public sealed class AdminAccount
             Volatile.Write(ref credentials, account);
             SetupToken = null;
             return SetupResult.Completed;
+        }
+    }
+
+    public PasswordChangeResult ChangePassword(string currentPassword, string newPassword)
+    {
+        lock (gate)
+        {
+            if (configured || credentials is null)
+                return PasswordChangeResult.ManagedByConfiguration;
+            var account = credentials;
+            if (Hasher.VerifyHashedPassword(account.Username, account.PasswordHash, currentPassword) ==
+                PasswordVerificationResult.Failed)
+                return PasswordChangeResult.InvalidPassword;
+            var updated = account with { PasswordHash = HashPassword(newPassword) };
+            if (!store.TryUpdate(account, updated.PasswordHash))
+                return PasswordChangeResult.Conflict;
+            Volatile.Write(ref credentials, updated);
+            return PasswordChangeResult.Changed;
         }
     }
 

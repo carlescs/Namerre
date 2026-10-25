@@ -7,13 +7,19 @@ export class Auth {
   private readonly http = inject(HttpClient);
   readonly username = signal<string | null>(null);
   readonly requiresSetup = signal(false);
+  readonly canChangePassword = signal(false);
 
   async refresh(): Promise<void> {
     const session = await firstValueFrom(
-      this.http.get<{ username: string | null; requiresSetup: boolean }>('/api/auth/session'),
+      this.http.get<{
+        username: string | null;
+        requiresSetup: boolean;
+        canChangePassword?: boolean;
+      }>('/api/auth/session'),
     );
     this.username.set(session.username);
     this.requiresSetup.set(session.requiresSetup);
+    this.canChangePassword.set(session.canChangePassword ?? false);
   }
 
   async setup(token: string, username: string, password: string): Promise<void> {
@@ -27,6 +33,11 @@ export class Auth {
     await this.refresh();
     await firstValueFrom(this.http.post('/api/auth/login', { username, password }));
     await this.refresh();
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await this.refresh();
+    await firstValueFrom(this.http.post('/api/auth/password', { currentPassword, newPassword }));
   }
 
   async logout(): Promise<void> {

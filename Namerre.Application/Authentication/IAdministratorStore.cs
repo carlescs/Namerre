@@ -6,6 +6,7 @@ public interface IAdministratorStore
 {
     AdminCredentials? Load();
     bool TryCreate(AdminCredentials credentials);
+    bool TryUpdate(AdminCredentials current, string passwordHash);
 }
 
 public sealed class AdministratorStorageException(string message, Exception innerException)

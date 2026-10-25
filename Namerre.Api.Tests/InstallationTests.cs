@@ -212,6 +212,80 @@ public sealed class InstallationTests : IDisposable
     }
 
     [Fact]
+    public async Task InstalledAdministratorCanChangeThePasswordAndOtherSessionsAreSignedOut()
+    {
+        const string newPassword = "a-different-installed-password";
+        using (var factory = Factory())
+        {
+            using var client = AuthWebApplicationFactory.AnonymousClient(factory);
+            using var other = AuthWebApplicationFactory.AnonymousClient(factory);
+            await AuthWebApplicationFactory.RefreshCsrf(client);
+            using var setup = await client.PostAsJsonAsync("/api/auth/setup",
+                new { token = Token(factory), Username, Password });
+            Assert.Equal(HttpStatusCode.NoContent, setup.StatusCode);
+            foreach (var session in new[] { client, other })
+            {
+                await AuthWebApplicationFactory.RefreshCsrf(session);
+                using var login = await session.PostAsJsonAsync("/api/auth/login", new { Username, Password });
+                Assert.Equal(HttpStatusCode.NoContent, login.StatusCode);
+                await AuthWebApplicationFactory.RefreshCsrf(session);
+            }
+            var status = await client.GetFromJsonAsync<Session>("/api/auth/session");
+            Assert.True(status!.CanChangePassword);
+
+            using var wrong = await client.PostAsJsonAsync("/api/auth/password",
+                new { currentPassword = "incorrect", newPassword });
+            Assert.Equal(HttpStatusCode.Forbidden, wrong.StatusCode);
+            using var changed = await client.PostAsJsonAsync("/api/auth/password",
+                new { currentPassword = Password, newPassword });
+            Assert.Equal(HttpStatusCode.NoContent, changed.StatusCode);
+
+            using var current = await client.GetAsync("/api/folders");
+            Assert.Equal(HttpStatusCode.OK, current.StatusCode);
+            using var signedOut = await other.GetAsync("/api/folders");
+            Assert.Equal(HttpStatusCode.Unauthorized, signedOut.StatusCode);
+        }
+
+        using (var factory = Factory())
+        {
+            Assert.True(factory.Services.GetRequiredService<AdminAccount>().Verify(Username, newPassword));
+            Assert.False(factory.Services.GetRequiredService<AdminAccount>().Verify(Username, Password));
+        }
+    }
+
+    [Fact]
+    public async Task ConfiguredCredentialsCannotBeChangedThroughTheApi()
+    {
+        using var factory = new AuthWebApplicationFactory();
+        using var client = await AuthWebApplicationFactory.AuthenticatedClient(factory);
+        var session = await client.GetFromJsonAsync<Session>("/api/auth/session");
+        Assert.False(session!.CanChangePassword);
+        using var change = await client.PostAsJsonAsync("/api/auth/password", new
+        {
+            currentPassword = AuthWebApplicationFactory.Password,
+            newPassword = "another-password"
+        });
+        Assert.Equal(HttpStatusCode.Conflict, change.StatusCode);
+    }
+
+    [Fact]
+    public async Task PasswordChangeRequiresAuthenticationAndCsrf()
+    {
+        using var factory = new AuthWebApplicationFactory();
+        using var anonymous = AuthWebApplicationFactory.AnonymousClient(factory);
+        await AuthWebApplicationFactory.RefreshCsrf(anonymous);
+        using var unauthorized = await anonymous.PostAsJsonAsync("/api/auth/password",
+            new { currentPassword = AuthWebApplicationFactory.Password, newPassword = "another-password" });
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+
+        using var client = await AuthWebApplicationFactory.AuthenticatedClient(factory);
+        client.DefaultRequestHeaders.Remove("X-XSRF-TOKEN");
+        using var missingCsrf = await client.PostAsJsonAsync("/api/auth/password",
+            new { currentPassword = AuthWebApplicationFactory.Password, newPassword = "another-password" });
+        Assert.Equal(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
+    }
+
+    [Fact]
     public async Task FailedDatabaseWriteDoesNotCompleteInstallationOrConsumeTheToken()
     {
         using var factory = Factory().WithWebHostBuilder(builder =>
@@ -247,12 +321,15 @@ public sealed class InstallationTests : IDisposable
 
     public void Dispose() => Directory.Delete(workspace, recursive: true);
 
-    private sealed record Session(string? Username, bool RequiresSetup);
+    private sealed record Session(string? Username, bool RequiresSetup, bool CanChangePassword);
 
     private sealed class FailingStore : Namerre.Application.Authentication.IAdministratorStore
     {
         public Namerre.Application.Authentication.AdminCredentials? Load() => null;
         public bool TryCreate(Namerre.Application.Authentication.AdminCredentials credentials)
+            => throw new Namerre.Application.Authentication.AdministratorStorageException(
+                "Database is read-only.", new IOException("read-only"));
+        public bool TryUpdate(Namerre.Application.Authentication.AdminCredentials current, string passwordHash)
             => throw new Namerre.Application.Authentication.AdministratorStorageException(
                 "Database is read-only.", new IOException("read-only"));
     }

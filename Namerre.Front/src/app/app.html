@@ -50,6 +50,13 @@
             >Signed in as
             <strong class="text-slate-700 dark:text-slate-300">{{ username }}</strong></span
           >
+          <a
+            routerLink="/account"
+            routerLinkActive="nav-active"
+            ariaCurrentWhenActive="page"
+            class="nav-link"
+            >Account</a
+          >
           <app-theme-picker />
           <button type="button" (click)="logout()" [disabled]="signingOut()">Sign out</button>
         </div>
