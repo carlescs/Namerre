@@ -200,6 +200,13 @@
     >
       Check selected-file rollback
     </button>
+    @if (checkingRollback(); as count) {
+      <p role="status">
+        Checking {{ count }} selected {{ count === 1 ? 'file' : 'files' }} for rollback — verifying
+        content hashes and original locations…
+      </p>
+      <progress aria-label="Checking selected files for rollback"></progress>
+    }
     @if (rollback(); as checked) {
       <section aria-labelledby="rollback-heading">
         <h3 id="rollback-heading">Rollback review — {{ safeCount() }} safe files</h3>
@@ -257,7 +264,7 @@
         </button>
       </section>
     }
-    @if (busy()) {
+    @if (busy() && !checkingRollback()) {
       <p role="status">Processing the requested check / durable operation…</p>
     }
     @if (actionError()) {
