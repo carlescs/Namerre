@@ -44,9 +44,8 @@
           >
         </nav>
         <div class="ml-auto flex min-w-0 items-center gap-3">
-          <app-user-menu [username]="username" />
           <app-theme-picker />
-          <button type="button" (click)="logout()" [disabled]="signingOut()">Sign out</button>
+          <app-user-menu [username]="username" [signingOut]="signingOut()" (signOut)="logout()" />
         </div>
       </div>
     </header>

@@ -19,5 +19,9 @@
     <a #firstItem routerLink="/account" role="menuitem" (click)="close()">
       <fa-icon [icon]="keyIcon" aria-hidden="true" /> Change password
     </a>
+    <button type="button" role="menuitem" [disabled]="signingOut()" (click)="requestSignOut()">
+      <fa-icon [icon]="signOutIcon" aria-hidden="true" />
+      {{ signingOut() ? 'Signing out...' : 'Sign out' }}
+    </button>
   </div>
 }

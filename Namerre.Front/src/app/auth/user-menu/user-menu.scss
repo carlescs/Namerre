@@ -44,6 +44,15 @@
 
 [role='menuitem'] {
   display: flex;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  font-weight: 400;
+  justify-content: flex-start;
+  text-align: left;
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.625rem;
@@ -51,9 +60,14 @@
   color: inherit;
   text-decoration: none;
 
-  &:hover,
+  &:not(:disabled):hover,
   &:focus-visible {
     background: var(--app-subtle);
     text-decoration: none;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--app-accent);
+    outline-offset: -2px;
   }
 }

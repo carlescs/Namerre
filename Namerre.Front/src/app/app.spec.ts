@@ -112,8 +112,12 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await TestBed.inject(Router).navigateByUrl('/');
     await fixture.whenStable();
-    const signOut = [...fixture.nativeElement.querySelectorAll('header button')].find(
-      (button: HTMLButtonElement) => button.textContent?.trim() === 'Sign out',
+    (
+      fixture.nativeElement.querySelector('header app-user-menu button') as HTMLButtonElement
+    ).click();
+    await fixture.whenStable();
+    const signOut = [...fixture.nativeElement.querySelectorAll('[role="menuitem"]')].find(
+      (item: HTMLElement) => item.textContent?.trim() === 'Sign out',
     ) as HTMLButtonElement;
     signOut.click();
     await fixture.whenStable();

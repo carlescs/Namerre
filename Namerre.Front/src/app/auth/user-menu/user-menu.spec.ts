@@ -61,4 +61,36 @@ describe('UserMenu', () => {
     await fixture.whenStable();
     expect(element.querySelector('[role="menu"]')).toBeNull();
   });
+
+  it('signs out from the menu and moves between items with the arrow keys', async () => {
+    const { fixture, element, trigger } = await render();
+    document.body.appendChild(element);
+    const signOut = vi.fn();
+    fixture.componentInstance.signOut.subscribe(signOut);
+    trigger.click();
+    await fixture.whenStable();
+    const items = [...element.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    expect(items.map((item) => item.textContent?.trim())).toEqual(['Change password', 'Sign out']);
+    await vi.waitFor(() => expect(document.activeElement).toBe(items[0]));
+    items[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(items[1]);
+    items[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(items[0]);
+
+    items[1].click();
+    await fixture.whenStable();
+    expect(signOut).toHaveBeenCalledOnce();
+    expect(element.querySelector('[role="menu"]')).toBeNull();
+    element.remove();
+  });
+
+  it('disables sign out while signing out', async () => {
+    const { fixture, element, trigger } = await render();
+    fixture.componentRef.setInput('signingOut', true);
+    trigger.click();
+    await fixture.whenStable();
+    const item = element.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')[1];
+    expect(item.disabled).toBe(true);
+    expect(item.textContent).toContain('Signing out...');
+  });
 });
