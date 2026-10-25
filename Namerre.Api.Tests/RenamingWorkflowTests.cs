@@ -176,6 +176,29 @@ public sealed class RenamingWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task RunDetailsLinkOriginalAndRollbackRuns()
+    {
+        Write("alpha.txt", "A");
+        Write("bravo.txt", "B");
+        using var harness = Harness();
+        var plan = await Prepare(harness, UpperRequest(["alpha.txt", "bravo.txt"]));
+        var rename = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        Assert.Empty((await harness.Service.GetRun(rename.Id, default)).RollbackRuns!);
+        var first = await harness.Service.Rollback(rename.Id, new(["0"], Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        var second = await harness.Service.Rollback(rename.Id, new(["1"], Guid.NewGuid().ToString()), default);
+
+        var original = await harness.Service.GetRun(rename.Id, default);
+        Assert.Equal([(first.Id, "Rollback", "Completed"), (second.Id, "Rollback", "Queued")],
+            original.RollbackRuns!.Select(r => (r.Id, r.Kind, r.Status)));
+        var rollback = await harness.Service.GetRun(first.Id, default);
+        Assert.Equal(rename.Id, rollback.ParentRunId);
+        Assert.Empty(rollback.RollbackRuns!);
+        Assert.All((await harness.Service.GetRuns(1, 10, default)).Items, r => Assert.Null(r.RollbackRuns));
+    }
+
+    [Fact]
     public async Task DeletingRollbackKeepsOriginalRunAndSharedPlan()
     {
         Write("alpha.txt", "A");

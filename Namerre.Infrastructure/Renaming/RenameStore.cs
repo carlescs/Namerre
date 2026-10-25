@@ -120,6 +120,23 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         }
     }
 
+    /// <summary>Lists the runs created from <paramref name="parentId"/> (rollbacks), oldest first.</summary>
+    public IReadOnlyList<RunReference> ChildRuns(string parentId)
+    {
+        Initialize();
+        lock (gate)
+        {
+            using var db = Open();
+            // The parent link lives only in the JSON payload: pre-filter in SQL, then confirm after deserializing.
+            var marker = "\"parentRunId\":" + JsonSerializer.Serialize(parentId, Json);
+            return db.Documents.AsNoTracking().Where(d => d.Kind == "Run" && d.Json.Contains(marker))
+                .OrderBy(d => d.Order).ThenBy(d => d.Id).Select(d => d.Json).AsEnumerable()
+                .Select(json => JsonSerializer.Deserialize<RunLink>(json, Json)!)
+                .Where(r => r.ParentRunId == parentId)
+                .Select(r => new RunReference(r.Id, r.Kind, r.Status, r.CreatedAt)).ToArray();
+        }
+    }
+
     public void Save<T>(string id, string kind, string status, T value)
     {
         Initialize();
@@ -349,7 +366,8 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
             || r.Journal.Any(j => j.Kind != "CreateDirectory" && (j.FromPath == path || j.ToPath == path)));
     }
 
-    private sealed record RunLink(string Id, string PlanId, string? ParentRunId, string Status);
+    private sealed record RunLink(string Id, string PlanId, string? ParentRunId, string Kind, string Status,
+        DateTimeOffset CreatedAt);
 
     public void Dispose()
     {

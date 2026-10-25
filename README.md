@@ -237,7 +237,9 @@ Select individual files in a saved run to preview rollback. Rollback checks the
 expected current path and original content hash, never overwrites an occupied
 original path, and reports unsafe selections. A swap may require selecting all
 participating files. A hash proves content equivalence, not unique physical identity
-when different files contain identical bytes.
+when different files contain identical bytes. Each rollback is saved as its own run:
+its details link back to the original run, and the original run's details list every
+rollback run created from it (`rollbackRuns` on `GET /api/rename-runs/{id}`).
 
 Settled runs (completed or recovered) can be deleted from history, either from the
 list or the run details, after an inline confirmation (`DELETE /api/rename-runs/{id}`).

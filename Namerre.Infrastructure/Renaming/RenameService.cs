@@ -76,7 +76,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     }
 
     public Task<RunView> GetRun(string id, CancellationToken cancellationToken)
-        => Task.FromResult(store.Get<RunView>(id, "Run"));
+        => Task.FromResult(store.Get<RunView>(id, "Run") with { RollbackRuns = store.ChildRuns(id) });
 
     public async Task<IReadOnlyList<string>> DeleteRun(string id, CancellationToken cancellationToken)
     {

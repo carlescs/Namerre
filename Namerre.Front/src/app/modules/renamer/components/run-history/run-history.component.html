@@ -111,6 +111,20 @@
         Original run: <a [routerLink]="['/runs', current.parentRunId]">{{ current.parentRunId }}</a>
       </p>
     }
+    @if (current.rollbackRuns?.length) {
+      <section aria-labelledby="rollback-runs-heading">
+        <h3 id="rollback-runs-heading">Rollback runs</h3>
+        <ul>
+          @for (child of current.rollbackRuns; track child.id) {
+            <li>
+              <a [routerLink]="['/runs', child.id]">{{ child.kind }} {{ child.id }}</a> —
+              <span class="badge">{{ child.status }}</span>
+              <span class="text-xs text-slate-500">{{ child.createdAt | date: 'medium' }}</span>
+            </li>
+          }
+        </ul>
+      </section>
+    }
     @if (current.error) {
       <p class="error" role="alert">{{ current.error }}</p>
     }
