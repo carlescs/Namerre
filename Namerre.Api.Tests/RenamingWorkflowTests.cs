@@ -327,6 +327,41 @@ public sealed class RenamingWorkflowTests : IDisposable
         Assert.Equal("after!", Read("alpha.txt"));
     }
 
+    [Fact]
+    public async Task QuickCheckPlansSkipHashingButStillRenameAndRollBack()
+    {
+        Write("alpha.txt", "A");
+        using var harness = Harness();
+        var plan = await Prepare(harness, UpperRequest(["alpha.txt"]) with { VerifyContent = false });
+        var file = Assert.Single(plan.Files);
+        Assert.StartsWith(BoundedFileSystem.StampPrefix, file.Hash);
+        Assert.Equal(1, file.Size);
+        var rename = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        Assert.Equal("Completed", (await harness.Service.GetRun(rename.Id, default)).Status);
+        Assert.Equal("A", Read("ALPHA.txt"));
+        var rollback = await harness.Service.Rollback(rename.Id, new(["0"], Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        Assert.Equal("Completed", (await harness.Service.GetRun(rollback.Id, default)).Status);
+        Assert.Equal("A", Read("alpha.txt"));
+    }
+
+    [Fact]
+    public async Task QuickCheckPlansStillStopWhenSizeOrTimeChanges()
+    {
+        Write("alpha.txt", "before");
+        using var harness = Harness();
+        var plan = await Prepare(harness, UpperRequest(["alpha.txt"]) with { VerifyContent = false });
+        Write("alpha.txt", "after, and longer");
+        var job = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        var run = await harness.Service.GetRun(job.Id, default);
+        Assert.Equal("RecoveryRequired", run.Status);
+        Assert.Equal("HashMismatch", Assert.Single(run.Files).ErrorCode);
+        Assert.Empty(run.Journal);
+        Assert.Equal("after, and longer", Read("alpha.txt"));
+    }
+
     [Theory]
     [InlineData(1, false)]
     [InlineData(1, true)]
@@ -763,6 +798,7 @@ public sealed class RenamingWorkflowTests : IDisposable
         public string ActualPath(string path) => inner.ActualPath(path);
         public bool SamePath(string first, string second) => inner.SamePath(first, second);
         public Task<(string Hash, long Size)> Hash(string path, CancellationToken cancellationToken) => inner.Hash(path, cancellationToken);
+        public (string Hash, long Size) Stamp(string path) => inner.Stamp(path);
         public void CheckSameDevice(string source, string target) => inner.CheckSameDevice(source, target);
         public IReadOnlyList<string> MissingDirectories(string path) => inner.MissingDirectories(path);
         public void CreateDirectory(string path) => inner.CreateDirectory(path);

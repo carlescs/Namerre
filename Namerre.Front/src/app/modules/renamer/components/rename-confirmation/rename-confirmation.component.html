@@ -3,13 +3,13 @@
 </p>
 @if (preparing()) {
   <p role="status">
-    Preparing immutable snapshot and hashing {{ plan()?.completedFiles ?? 0 }} /
-    {{ fileCount() }} files…
+    Preparing immutable snapshot and {{ verifyContent() ? 'hashing' : 'checking' }}
+    {{ plan()?.completedFiles ?? 0 }} / {{ fileCount() }} files…
   </p>
   <progress
     [value]="plan()?.completedFiles ?? 0"
     [max]="fileCount()"
-    aria-label="Files hashed"
+    [attr.aria-label]="verifyContent() ? 'Files hashed' : 'Files checked'"
   ></progress>
 }
 @if (plan(); as prepared) {
@@ -26,7 +26,13 @@
         <li>
           <code>{{ file.sourcePath }}</code> → <code>{{ file.targetPath }}</code>
           <details>
-            <summary>Prepared content hash</summary>
+            <summary>
+              {{
+                file.hash.startsWith('stat:')
+                  ? 'Prepared size/time fingerprint'
+                  : 'Prepared content hash'
+              }}
+            </summary>
             <code>{{ file.hash }}</code>
           </details>
         </li>

@@ -292,6 +292,24 @@ describe('RenameWorkflowComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/runs', 'run-1']);
   });
 
+  it('prepares a quick-check plan without content hashing when requested', async () => {
+    await showPreview();
+    const quick = fixture.nativeElement.querySelector('#quick-check') as HTMLInputElement;
+    quick.click();
+    await fixture.whenStable();
+    expect(button('Prepare immutable').textContent).not.toContain('hash files');
+    button('Prepare immutable').click();
+    const prepare = http.expectOne('/api/rename-plans');
+    expect(prepare.request.body.verifyContent).toBe(false);
+    prepare.flush({ id: 'plan-1', status: 'Preparing', location: '/api/rename-plans/plan-1' });
+    await waitForPoll();
+    http
+      .expectOne('/api/rename-plans/plan-1')
+      .flush({ ...ready, status: 'Preparing', completedFiles: 0, files: [] });
+    await fixture.whenStable();
+    expect(text()).toContain('checking 0 / 1');
+  });
+
   it('invalidates ready approval immediately when collection changes and ignores canceled plan polling', async () => {
     await showPreview();
     button('Prepare immutable').click();

@@ -10,6 +10,7 @@ import { PlanView } from '../../rename-api';
 export class RenameConfirmationComponent {
   readonly plan = input<PlanView | null>(null);
   readonly fileCount = input(0);
+  readonly verifyContent = input(true);
   readonly preparing = input(false);
   readonly executing = input(false);
   readonly canConfirm = input(false);

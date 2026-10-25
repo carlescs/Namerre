@@ -122,6 +122,7 @@ export class RenameWorkflowComponent {
   private catalogLoading = false;
   protected readonly plugins = signal<PluginInstance[]>([]);
   protected readonly selections = signal<MetadataSelection[]>([]);
+  protected readonly verifyContent = signal(true);
   protected readonly preview = signal<PreviewResult | null>(null);
   protected readonly plan = signal<PlanView | null>(null);
   protected readonly matching = signal<MatchContext | null>(null);
@@ -653,6 +654,7 @@ export class RenameWorkflowComponent {
       files: this.files().map((file) => ({ id: file.path, path: file.path })),
       plugins: this.plugins(),
       selections: this.selections(),
+      verifyContent: this.verifyContent(),
     };
   }
 

@@ -40,6 +40,8 @@ export interface PipelineRequest {
   files: { id: string; path: string }[];
   plugins: PluginInstance[];
   selections: MetadataSelection[];
+  /** False records size and modification time instead of hashing file contents (faster, weaker). */
+  verifyContent?: boolean;
 }
 export interface RenameIssue {
   code: string;
