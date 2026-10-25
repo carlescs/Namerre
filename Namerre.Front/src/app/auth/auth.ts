@@ -9,6 +9,7 @@ export interface SingleSignOnProvider {
 interface Session {
   username: string | null;
   requiresSetup: boolean;
+  canChangePassword?: boolean;
   oidc?: SingleSignOnProvider | null;
 }
 
@@ -18,12 +19,14 @@ export class Auth {
   private readonly document = inject(DOCUMENT);
   readonly username = signal<string | null>(null);
   readonly requiresSetup = signal(false);
+  readonly canChangePassword = signal(false);
   readonly singleSignOn = signal<SingleSignOnProvider | null>(null);
 
   async refresh(): Promise<void> {
     const session = await firstValueFrom(this.http.get<Session>('/api/auth/session'));
     this.username.set(session.username);
     this.requiresSetup.set(session.requiresSetup);
+    this.canChangePassword.set(session.canChangePassword ?? false);
     this.singleSignOn.set(session.oidc ?? null);
   }
 
@@ -43,6 +46,11 @@ export class Auth {
     await this.refresh();
     await firstValueFrom(this.http.post('/api/auth/login', { username, password }));
     await this.refresh();
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await this.refresh();
+    await firstValueFrom(this.http.post('/api/auth/password', { currentPassword, newPassword }));
   }
 
   async logout(): Promise<void> {

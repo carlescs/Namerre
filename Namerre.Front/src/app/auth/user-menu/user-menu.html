@@ -1,0 +1,27 @@
+<button
+  #trigger
+  type="button"
+  class="trigger"
+  aria-haspopup="menu"
+  aria-controls="user-menu"
+  [attr.aria-expanded]="open()"
+  [title]="'Signed in as ' + username()"
+  (click)="toggle()"
+>
+  <span class="truncate">{{ username() }}</span>
+  <fa-icon [icon]="chevronIcon" aria-hidden="true" />
+</button>
+@if (open()) {
+  <div id="user-menu" class="menu" role="menu" aria-label="Account">
+    <p class="signed-in">
+      Signed in as <strong>{{ username() }}</strong>
+    </p>
+    <a #firstItem routerLink="/account" role="menuitem" (click)="close()">
+      <fa-icon [icon]="keyIcon" aria-hidden="true" /> Change password
+    </a>
+    <button type="button" role="menuitem" [disabled]="signingOut()" (click)="requestSignOut()">
+      <fa-icon [icon]="signOutIcon" aria-hidden="true" />
+      {{ signingOut() ? 'Signing out...' : 'Sign out' }}
+    </button>
+  </div>
+}

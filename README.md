@@ -148,6 +148,12 @@ login attempt limit. Protect console/log access: the token authorizes first-time
 installation. It changes on each restart until setup succeeds, is never returned
 by the API, and becomes unusable after the account is created.
 
+To change the password of an installed administrator, sign in and open **Account**.
+Enter the current password and the new password twice, then select **Change password**.
+The new hash replaces the stored one; your current browser session stays signed in and
+every other session is signed out. Password changes require the current password, CSRF
+protection, and share the login attempt limit.
+
 Keep `Namerre:DataPath` persistent across restarts and container replacement; changing
 or deleting this database also loses the administrator account and renaming history.
 Corrupt or inaccessible stored credentials fail startup rather than reopening setup.
@@ -178,7 +184,8 @@ through the server's secret/configuration mechanism if you want to bypass browse
 installation. These settings take precedence over a saved administrator. Never commit
 credentials or include them in Angular assets or Docker build arguments. Changing either setting
 and restarting the app invalidates existing sessions. To recover access, generate a
-new hash, update the server configuration, and restart.
+new hash, update the server configuration, and restart. Server-configured passwords cannot be
+changed from the **Account** page.
 
 **Browser-facing HTTPS is required**, but Traefik can terminate TLS and forward
 requests to Namerre over **HTTP on port 8080**. No backend certificate is needed.
@@ -266,7 +273,8 @@ the role are rejected. Changing `Authority`, `ClientId`, `RequiredRole`, `RoleCl
 `UsernameClaim` invalidates existing single sign-on sessions after a restart; removing
 the role in Keycloak takes effect at the next sign-in. **Sign out** ends the Namerre
 session only, not the Keycloak session, so the button may sign straight back in while
-Keycloak still remembers the user. Behind a reverse proxy, configure trusted proxies
+Keycloak still remembers the user. **Change password** applies to the local administrator only and is
+not offered in single sign-on sessions. Behind a reverse proxy, configure trusted proxies
 (see above) so the callback URL uses the public `https` host. Incomplete settings fail
 startup; an unreachable provider shows an error on the login page.
 

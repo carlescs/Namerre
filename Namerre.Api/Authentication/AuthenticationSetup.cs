@@ -81,7 +81,7 @@ public static class AuthenticationSetup
         if (principal.FindFirst(OidcLogin.MethodClaim)?.Value == OidcLogin.Scheme)
             return oidc.IsValidSession(principal);
         return !account.RequiresSetup &&
-            principal.FindFirst(OidcLogin.CredentialStampClaim)?.Value == account.Stamp;
+            principal.FindFirst(AdminAccount.StampClaim)?.Value == account.Stamp;
     }
 
     private static void ConfigureOidc(OpenIdConnectOptions options, OidcLogin oidc)

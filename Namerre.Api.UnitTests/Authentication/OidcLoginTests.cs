@@ -19,7 +19,7 @@ public sealed class OidcLoginTests
         Assert.False(oidc.Enabled);
         Assert.Null(oidc.CreateSessionPrincipal(External(("sub", "1"))));
         Assert.False(oidc.IsValidSession(new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(OidcLogin.CredentialStampClaim, "")]))));
+            [new Claim(AdminAccount.StampClaim, "")]))));
     }
 
     public static TheoryData<OidcOptions, string> InvalidSettings => new()
@@ -112,7 +112,7 @@ public sealed class OidcLoginTests
     {
         var oidc = Create(Valid());
         var local = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(OidcLogin.CredentialStampClaim, oidc.Stamp)], "Cookies"));
+            [new Claim(AdminAccount.StampClaim, oidc.Stamp)], "Cookies"));
 
         Assert.False(AuthenticationSetup.IsValidSession(local, UnconfiguredAccount(), oidc));
     }

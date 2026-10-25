@@ -13,7 +13,6 @@ public sealed class OidcLogin
 {
     public const string Scheme = "oidc";
     public const string MethodClaim = "auth-method";
-    public const string CredentialStampClaim = "credential-stamp";
     public const string CallbackPath = "/api/auth/oidc/callback";
 
     public OidcLogin(IOptions<NamerreOptions> options)
@@ -69,12 +68,12 @@ public sealed class OidcLogin
             new Claim(ClaimTypes.NameIdentifier, subject),
             new Claim(ClaimTypes.Name, username),
             new Claim(MethodClaim, Scheme),
-            new Claim(CredentialStampClaim, Stamp)
+            new Claim(AdminAccount.StampClaim, Stamp)
         ], CookieAuthenticationDefaults.AuthenticationScheme));
     }
 
     public bool IsValidSession(ClaimsPrincipal principal)
-        => Enabled && principal.FindFirst(CredentialStampClaim)?.Value == Stamp;
+        => Enabled && principal.FindFirst(AdminAccount.StampClaim)?.Value == Stamp;
 
     /// <summary>
     /// Checks <paramref name="claimPath"/> for <paramref name="role"/>. The first segment is the claim type;

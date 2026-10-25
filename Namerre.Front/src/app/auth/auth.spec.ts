@@ -94,4 +94,23 @@ describe('Auth', () => {
     await failure;
     expect(auth.username()).toBe('admin');
   });
+
+  it('changes the password with CSRF protection and reports whether it is possible', async () => {
+    const change = auth.changePassword('old-password', 'new-password');
+    http
+      .expectOne('/api/auth/session')
+      .flush({ username: 'admin', requiresSetup: false, canChangePassword: true });
+    document.cookie = 'XSRF-TOKEN=change-csrf; Path=/';
+    const request = await vi.waitFor(() => http.expectOne('/api/auth/password'));
+    expect(auth.canChangePassword()).toBe(true);
+    expect(request.request.method).toBe('POST');
+    expect(request.request.headers.get('X-XSRF-TOKEN')).toBe('change-csrf');
+    expect(request.request.body).toEqual({
+      currentPassword: 'old-password',
+      newPassword: 'new-password',
+    });
+    request.flush(null);
+    await change;
+    expect(auth.username()).toBe('admin');
+  });
 });
