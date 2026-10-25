@@ -103,6 +103,35 @@ describe('RunHistoryComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/runs', 'rollback-1']);
   });
 
+  it('shows an indeterminate progress indicator while the rollback check runs', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush(run);
+    await fixture.whenStable();
+    (fixture.nativeElement.querySelector('input.file-select') as HTMLInputElement).click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('progress')).toBeNull();
+    button('Check selected-file').click();
+    await fixture.whenStable();
+    const progress = fixture.nativeElement.querySelector('progress') as HTMLProgressElement;
+    expect(progress.getAttribute('aria-label')).toBe('Checking selected files for rollback');
+    expect(progress.hasAttribute('value')).toBe(false);
+    expect(fixture.nativeElement.textContent).toContain('Checking 1 selected file for rollback');
+    expect(fixture.nativeElement.textContent).not.toContain('Processing the requested check');
+    http
+      .expectOne('/api/rename-runs/run-1/rollback-preview')
+      .flush({ code: 'Busy', message: 'Try again.' }, { status: 503, statusText: 'Unavailable' });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('progress')).toBeNull();
+    button('Check selected-file').click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('progress')).not.toBeNull();
+    http.expectOne('/api/rename-runs/run-1/rollback-preview').flush({
+      files: [{ id: 'a', safe: true, currentPath: 'A.txt', destinationPath: 'a.txt', issues: [] }],
+    });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('progress')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Rollback review — 1 safe files');
+  });
+
   it('selects and clears every completed file from the header checkbox', async () => {
     http.expectOne('/api/rename-runs/run-1').flush({
       ...run,

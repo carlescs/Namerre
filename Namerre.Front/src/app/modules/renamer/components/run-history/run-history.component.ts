@@ -63,6 +63,7 @@ export class RunHistoryComponent {
   protected readonly recovery = signal<RecoveryPreview | null>(null);
   protected readonly loading = signal(false);
   protected readonly busy = signal(false);
+  protected readonly checkingRollback = signal(0);
   protected readonly error = signal('');
   protected readonly actionError = signal('');
   protected readonly savedPlan = signal<PlanView | null>(null);
@@ -214,6 +215,7 @@ export class RunHistoryComponent {
     const request = { fileIds: [...this.selected()], operationId: operationId() };
     this.selectionRequest = request;
     this.busy.set(true);
+    this.checkingRollback.set(request.fileIds.length);
     this.action = this.api
       .rollbackPreview(this.runId(), request)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -222,6 +224,7 @@ export class RunHistoryComponent {
           if (revision !== this.revision) return;
           this.rollback.set(preview);
           this.busy.set(false);
+          this.checkingRollback.set(0);
         },
         error: (error: unknown) => this.failAction(error, revision),
       });
@@ -340,12 +343,14 @@ export class RunHistoryComponent {
     this.recovery.set(null);
     this.selectionRequest = null;
     this.busy.set(false);
+    this.checkingRollback.set(0);
     this.actionError.set('');
   }
 
   private failAction(error: unknown, revision: number): void {
     if (revision !== this.revision) return;
     this.busy.set(false);
+    this.checkingRollback.set(0);
     this.actionError.set(renameError(error));
   }
 }
