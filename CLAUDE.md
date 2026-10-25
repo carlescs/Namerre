@@ -95,7 +95,9 @@ works on plain-HTTP origins); keep both sides in sync. Confirmed metadata is sna
 
 **Configuration.** Everything app-specific is under the `Namerre` section, bound to
 `NamerreOptions` (`Infrastructure/Configuration`) and consumed via `IOptions<NamerreOptions>`:
-`RootPath`, `DataPath`, `Authentication`, `Tmdb`, `ReverseProxy`, `Telemetry` (optional OTLP
+`RootPath`, `DataPath`, `Authentication` (incl. optional `Oidc` single sign-on, e.g. Keycloak — see
+`Namerre.Api/Authentication/OidcLogin.cs`; the OIDC scheme is hidden by `OidcAwareSchemeProvider` unless
+`Authority` is set), `Tmdb`, `ReverseProxy`, `Telemetry` (optional OTLP
 export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless `OtlpEndpoint` is set).
 
 **Hosting.** `Program.cs` requires HTTPS for `/api` (400 otherwise), sets `no-store` on API

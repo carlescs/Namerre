@@ -61,7 +61,18 @@ Application settings live in one `Namerre` section in `Namerre.Api\appsettings.j
     "DataPath": "",
     "Authentication": {
       "Username": "",
-      "PasswordHash": ""
+      "PasswordHash": "",
+      "Oidc": {
+        "Authority": "",
+        "ClientId": "",
+        "ClientSecret": "",
+        "RequiredRole": "",
+        "DisplayName": "Single sign-on",
+        "RoleClaim": "realm_access.roles",
+        "UsernameClaim": "preferred_username",
+        "Scopes": [],
+        "RequireHttpsMetadata": true
+      }
     },
     "Tmdb": {
       "ReadAccessToken": "",
@@ -204,7 +215,7 @@ Signing out removes the browser cookie; a stolen copy remains usable until its
 expiry or a credential change. Keep the server, browser, and TLS keys protected.
 
 All controllers and development OpenAPI require authentication, except session
-discovery, first-time setup, and login. The public HTML/assets contain no server file
+discovery, first-time setup, login, and the single sign-on redirect and callback. The public HTML/assets contain no server file
 information.
 API responses are not cached. State-changing requests (including login and logout)
 require an antiforgery cookie and `X-XSRF-TOKEN` header; the Angular client manages
@@ -212,6 +223,60 @@ these automatically. Login is limited to five attempts per minute globally, so
 changing source IP does not bypass the single-account limit. This also means an
 attacker can temporarily deny sign-in; keep network access restricted to trusted
 users or a VPN rather than exposing the app directly to the public internet.
+
+### Single sign-on with OpenID Connect (optional)
+
+Namerre can also sign users in through an OpenID Connect provider such as Keycloak.
+It is off while `Namerre:Authentication:Oidc:Authority` is empty. When enabled, the
+login (and installation) page shows a **Sign in with _DisplayName_** button next to
+the local administrator form; the local account keeps working. Every user who holds
+`RequiredRole` acts as the administrator, so the role is mandatory: grant it only to
+people you would give the administrator password.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `Authority` | empty | Issuer URL, for Keycloak `https://keycloak.example.com/realms/<realm>`. Must be HTTPS. |
+| `ClientId` | empty | Required. |
+| `ClientSecret` | empty | Secret of a confidential client (recommended). Treat as a secret. Omit for a public client; PKCE is always used. |
+| `RequiredRole` | empty | Required. Role (or group) the ID token must contain. |
+| `RoleClaim` | `realm_access.roles` | ID token claim holding the roles. Dots navigate nested JSON, e.g. `resource_access.namerre.roles` for client roles, or a flat claim such as `groups`. |
+| `UsernameClaim` | `preferred_username` | Claim shown as the signed-in user; falls back to `sub`. |
+| `DisplayName` | `Single sign-on` | Button label (1-64 characters). |
+| `Scopes` | `[]` | Scopes requested in addition to `openid` and `profile`. |
+| `RequireHttpsMetadata` | `true` | Set to `false` only for a development provider on plain HTTP. |
+
+Keycloak setup:
+
+1. In your realm, create an **OpenID Connect** client (for example `namerre`) with
+   **Client authentication** on and only the **Standard flow** enabled. Set
+   **Valid redirect URIs** to `https://<namerre-host>/api/auth/oidc/callback` and
+   **Web origins** to `https://<namerre-host>`. Copy the client secret from **Credentials**.
+2. Create a realm role (for example `namerre-admin`) and assign it to the allowed users
+   or a group.
+3. Keycloak does not put roles in the ID token by default. Under **Client scopes** →
+   `roles` → **Mappers** → **realm roles**, enable **Add to ID token** (or add a
+   dedicated "User Realm Role" mapper to the client's dedicated scope with that option).
+4. Configure Namerre, for example:
+
+```powershell
+$env:Namerre__Authentication__Oidc__Authority = 'https://keycloak.example.com/realms/media'
+$env:Namerre__Authentication__Oidc__ClientId = 'namerre'
+$env:Namerre__Authentication__Oidc__ClientSecret = '<client-secret>'
+$env:Namerre__Authentication__Oidc__RequiredRole = 'namerre-admin'
+$env:Namerre__Authentication__Oidc__DisplayName = 'Keycloak'
+```
+
+Namerre uses the authorization code flow with PKCE, validates the ID token and
+discards the provider's tokens after sign-in: it keeps only the subject and username
+in the same eight-hour, SameSite=Strict session cookie as local sign-in. Users without
+the role are rejected. Changing `Authority`, `ClientId`, `RequiredRole`, `RoleClaim` or
+`UsernameClaim` invalidates existing single sign-on sessions after a restart; removing
+the role in Keycloak takes effect at the next sign-in. **Sign out** ends the Namerre
+session only, not the Keycloak session, so the button may sign straight back in while
+Keycloak still remembers the user. **Change password** applies to the local administrator only and is
+not offered in single sign-on sessions. Behind a reverse proxy, configure trusted proxies
+(see above) so the callback URL uses the public `https` host. Incomplete settings fail
+startup; an unreachable provider shows an error on the login page.
 
 ## Renaming workflow
 

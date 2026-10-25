@@ -2,11 +2,14 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Namerre.Application.Authentication;
 using Namerre.Application.Renaming;
 using Namerre.Authentication;
@@ -25,6 +28,8 @@ public sealed class AuthControllerTests
     private readonly IAdministratorStore store = Substitute.For<IAdministratorStore>();
     private readonly IAntiforgery antiforgery = Substitute.For<IAntiforgery>();
     private readonly IAuthenticationService authentication = Substitute.For<IAuthenticationService>();
+    private readonly IConfigurationManager<OpenIdConnectConfiguration> providerMetadata =
+        Substitute.For<IConfigurationManager<OpenIdConnectConfiguration>>();
 
     [Fact]
     public void SessionIssuesXsrfCookieAndReportsSetupState()
@@ -217,10 +222,99 @@ public sealed class AuthControllerTests
 
     private AdminAccount Unconfigured() => new(Options.Create(new NamerreOptions()), store);
 
-    private AuthController Controller(AdminAccount account)
+    [Fact]
+    public void SessionAdvertisesConfiguredSingleSignOn()
+    {
+        antiforgery.GetAndStoreTokens(Arg.Any<HttpContext>())
+            .Returns(new AntiforgeryTokenSet("t", "c", "form", "X-XSRF-TOKEN"));
+        var controller = Controller(Configured(), Oidc());
+
+        var result = Assert.IsType<OkObjectResult>(controller.Session());
+
+        Assert.Equivalent(new { oidc = new { displayName = "Keycloak" } }, result.Value);
+    }
+
+    [Fact]
+    public async Task SingleSignOnIsNotFoundWhenNotConfigured()
+        => Assert.IsType<NotFoundResult>(await Controller(Configured()).OidcLogin(CancellationToken.None));
+
+    [Fact]
+    public async Task SingleSignOnChallengesTheIdentityProviderWithAFixedReturnAddress()
+    {
+        var controller = Controller(Configured(), Oidc());
+
+        Assert.IsType<EmptyResult>(await controller.OidcLogin(CancellationToken.None));
+
+        await authentication.Received(1).ChallengeAsync(controller.HttpContext, OidcLogin.Scheme,
+            Arg.Is<AuthenticationProperties>(p => p.RedirectUri == "/"));
+    }
+
+    [Fact]
+    public async Task AFailingChallengeReturnsToTheSignInPage()
+    {
+        var controller = Controller(Configured(), Oidc());
+        authentication.ChallengeAsync(controller.HttpContext, OidcLogin.Scheme, Arg.Any<AuthenticationProperties>())
+            .ThrowsAsync(new HttpRequestException("pushed authorization failed"));
+
+        var result = Assert.IsType<RedirectResult>(await controller.OidcLogin(CancellationToken.None));
+
+        Assert.Equal("/?signInError=unavailable", result.Url);
+    }
+
+    [Fact]
+    public async Task AnUnavailableIdentityProviderReturnsToTheSignInPage()
+    {
+        providerMetadata.GetConfigurationAsync(Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("IDX20803"));
+
+        var result = Assert.IsType<RedirectResult>(
+            await Controller(Configured(), Oidc()).OidcLogin(CancellationToken.None));
+
+        Assert.Equal("/?signInError=unavailable", result.Url);
+    }
+
+    [Fact]
+    public async Task SingleSignOnSessionsCannotChangeTheLocalPassword()
+    {
+        antiforgery.GetAndStoreTokens(Arg.Any<HttpContext>())
+            .Returns(new AntiforgeryTokenSet("t", "c", "form", "X-XSRF-TOKEN"));
+        var account = Stored();
+        var oidc = Oidc();
+        var controller = Controller(account, oidc);
+        controller.ControllerContext.HttpContext.User = oidc.CreateSessionPrincipal(new ClaimsPrincipal(
+            new ClaimsIdentity([new Claim("sub", "subject-1"),
+                new Claim("realm_access", """{"roles":["namerre-admin"]}""")], "oidc")))!;
+
+        var session = Assert.IsType<OkObjectResult>(controller.Session());
+        var result = await controller.ChangePassword(new ChangePasswordRequest("password", "new password"));
+
+        Assert.Equivalent(new { canChangePassword = false }, session.Value);
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.True(account.Verify("admin", "password"));
+        await authentication.DidNotReceiveWithAnyArgs().SignInAsync(default!, default, default!, default);
+    }
+
+    private static OidcLogin Oidc() => new(Options.Create(new NamerreOptions
+    {
+        Authentication = new AuthenticationOptions
+        {
+            Oidc = new OidcOptions
+            {
+                Authority = "https://keycloak.example/realms/media",
+                ClientId = "namerre",
+                RequiredRole = "namerre-admin",
+                DisplayName = "Keycloak"
+            }
+        }
+    }));
+
+    private AuthController Controller(AdminAccount account, OidcLogin? oidc = null)
     {
         var services = new ServiceCollection().AddSingleton(authentication).BuildServiceProvider();
-        return new AuthController(account, antiforgery, NullLogger<AuthController>.Instance)
+        var oidcOptions = Substitute.For<IOptionsMonitor<OpenIdConnectOptions>>();
+        oidcOptions.Get(OidcLogin.Scheme).Returns(new OpenIdConnectOptions { ConfigurationManager = providerMetadata });
+        return new AuthController(account, oidc ?? new OidcLogin(Options.Create(new NamerreOptions())), oidcOptions,
+            antiforgery, NullLogger<AuthController>.Instance)
         {
             ControllerContext = new ControllerContext
             {

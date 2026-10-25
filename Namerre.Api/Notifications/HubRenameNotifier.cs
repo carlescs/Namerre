@@ -6,7 +6,7 @@ namespace Namerre.Notifications;
 
 /// <summary>
 /// Broadcasts <see cref="RenameChange"/> signals to every connection signed in with the current
-/// administrator credentials; there is a single administrator.
+/// administrator credentials or current single sign-on settings; there is a single administrator.
 /// Sends are fire-and-forget so the rename worker never waits on a slow client.
 /// </summary>
 public sealed class HubRenameNotifier(IHubContext<RenameHub> hub, IServiceProvider services,
@@ -21,8 +21,12 @@ public sealed class HubRenameNotifier(IHubContext<RenameHub> hub, IServiceProvid
         try
         {
             // Resolved on send so the rename worker does not load the administrator at startup.
-            var stamp = services.GetRequiredService<AdminAccount>().Stamp;
-            await hub.Clients.Group(RenameHub.StampGroup(stamp)).SendAsync(Method, change);
+            List<string> groups = [RenameHub.StampGroup(services.GetRequiredService<AdminAccount>().Stamp)];
+            // Single sign-on sessions carry their own stamp (see OidcLogin).
+            var oidc = services.GetRequiredService<OidcLogin>();
+            if (oidc.Enabled)
+                groups.Add(RenameHub.StampGroup(oidc.Stamp));
+            await hub.Clients.Groups(groups).SendAsync(Method, change);
         }
         catch (Exception exception)
         {

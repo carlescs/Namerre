@@ -27,7 +27,14 @@ describe('App', () => {
         provideHttpClientTesting(),
         {
           provide: Auth,
-          useValue: { username, requiresSetup, canChangePassword, refresh, logout },
+          useValue: {
+            username,
+            requiresSetup,
+            canChangePassword,
+            singleSignOn: signal(null),
+            refresh,
+            logout,
+          },
         },
       ],
     }).compileComponents();

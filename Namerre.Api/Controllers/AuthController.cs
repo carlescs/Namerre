@@ -3,9 +3,12 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Namerre.Authentication;
 using Namerre.Application.Authentication;
 using Namerre.Application.Renaming;
@@ -14,8 +17,8 @@ namespace Namerre.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public sealed class AuthController(AdminAccount account, IAntiforgery antiforgery,
-    ILogger<AuthController> logger) : ControllerBase
+public sealed class AuthController(AdminAccount account, OidcLogin oidc,
+    IOptionsMonitor<OpenIdConnectOptions> oidcOptions, IAntiforgery antiforgery, ILogger<AuthController> logger) : ControllerBase
 {
     [AllowAnonymous]
     [HttpGet("session")]
@@ -33,8 +36,37 @@ public sealed class AuthController(AdminAccount account, IAntiforgery antiforger
         {
             username = User.Identity?.IsAuthenticated == true ? User.Identity.Name : null,
             requiresSetup = account.RequiresSetup,
-            canChangePassword = account.CanChangePassword
+            oidc = oidc.Enabled ? new { displayName = oidc.DisplayName } : null,
+            // A single sign-on session does not know the local administrator password.
+            canChangePassword = account.CanChangePassword && !IsSingleSignOnSession
         });
+    }
+
+    [AllowAnonymous]
+    [HttpGet("oidc/login")]
+    public async Task<IActionResult> OidcLogin(CancellationToken cancellationToken)
+    {
+        if (!oidc.Enabled)
+            return NotFound();
+        try
+        {
+            // Load the provider metadata first so an unreachable identity provider is not a bare server error.
+            await oidcOptions.Get(Authentication.OidcLogin.Scheme).ConfigurationManager!
+                .GetConfigurationAsync(cancellationToken);
+            // The challenge itself may call the provider (pushed authorization requests), so it is guarded too.
+            // A fixed return address avoids open redirects.
+            await HttpContext.ChallengeAsync(Authentication.OidcLogin.Scheme,
+                new AuthenticationProperties { RedirectUri = "/" });
+            return new EmptyResult();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or
+            HttpRequestException or OpenIdConnectProtocolException)
+        {
+            logger.LogWarning(exception, "The identity provider is unavailable.");
+            if (!Response.HasStarted)
+                Response.Clear();
+            return Redirect("/?signInError=unavailable");
+        }
     }
 
     [AllowAnonymous]
@@ -80,6 +112,9 @@ public sealed class AuthController(AdminAccount account, IAntiforgery antiforger
     [HttpPost("password")]
     public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
     {
+        if (IsSingleSignOnSession)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new { message = "Sign in with the local administrator account to change its password." });
         PasswordChangeResult result;
         AdminCredentials? changed;
         try
@@ -113,6 +148,9 @@ public sealed class AuthController(AdminAccount account, IAntiforgery antiforger
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         return NoContent();
     }
+
+    private bool IsSingleSignOnSession
+        => User.FindFirst(Authentication.OidcLogin.MethodClaim)?.Value == Authentication.OidcLogin.Scheme;
 
     private Task SignInAsync(AdminCredentials credentials)
     {

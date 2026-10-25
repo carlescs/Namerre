@@ -1,12 +1,16 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Mvc.Testing.Handlers;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Namerre.Application.Renaming;
 using Namerre.Authentication;
 using Xunit;
@@ -151,6 +155,51 @@ public sealed class RenameNotificationTests : IDisposable
         lock (revokedChanges) Assert.Empty(revokedChanges);
         using var revokedRequest = await revoked.GetAsync("/api/rename-plans/" + accepted.Id);
         Assert.Equal(HttpStatusCode.Unauthorized, revokedRequest.StatusCode);
+    }
+
+    [Fact]
+    public async Task SingleSignOnSessionsReceiveChanges()
+    {
+        File.WriteAllText(Path.Combine(Root, "alpha.txt"), "A");
+        using var factory = new AuthWebApplicationFactory().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration(
+            (_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Namerre:RootPath"] = Root,
+                ["Namerre:DataPath"] = Path.Combine(workspace, "data"),
+                ["Namerre:Authentication:Oidc:Authority"] = "https://keycloak.test/realms/media",
+                ["Namerre:Authentication:Oidc:ClientId"] = "namerre",
+                ["Namerre:Authentication:Oidc:RequiredRole"] = "namerre-admin"
+            })));
+        var principal = factory.Services.GetRequiredService<OidcLogin>().CreateSessionPrincipal(new ClaimsPrincipal(
+            new ClaimsIdentity(
+            [
+                new Claim("sub", "subject-1"),
+                new Claim("preferred_username", "alice"),
+                new Claim("realm_access", """{"roles":["namerre-admin"]}""")
+            ], "oidc")))!;
+        var ticketFormat = factory.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(CookieAuthenticationDefaults.AuthenticationScheme).TicketDataFormat;
+        var cookies = new CookieContainer();
+        cookies.Add(new Uri("https://localhost"), new Cookie("__Host-namerre-session", ticketFormat.Protect(
+            new AuthenticationTicket(principal, CookieAuthenticationDefaults.AuthenticationScheme))) { Secure = true });
+        using var client = CookieClient(factory, cookies);
+        await AuthWebApplicationFactory.RefreshCsrf(client);
+
+        await using var connection = ConnectHub(factory, cookies);
+        var ready = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        connection.On<RenameChange>("renameChanged", change =>
+        {
+            if (change is { Kind: "Plan", Status: "Ready" }) ready.TrySetResult(change.Id);
+        });
+        await connection.StartAsync();
+
+        var request = new PipelineRequest([new FileInput("0", "alpha.txt")],
+            [new PluginInstance("upper", "case", 1, true, JsonSerializer.SerializeToElement(new { mode = "upper" }))]);
+        using var prepare = await client.PostAsJsonAsync("/api/rename-plans", request);
+        Assert.Equal(HttpStatusCode.Accepted, prepare.StatusCode);
+        var accepted = (await prepare.Content.ReadFromJsonAsync<JobAccepted>())!;
+
+        Assert.Equal(accepted.Id, await ready.Task.WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
     private static HttpClient CookieClient(WebApplicationFactory<Program> factory, CookieContainer cookies)

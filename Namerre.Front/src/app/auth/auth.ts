@@ -1,25 +1,38 @@
 import { HttpClient, HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
-import { inject, Injectable, signal } from '@angular/core';
+import { DOCUMENT, inject, Injectable, signal } from '@angular/core';
 import { catchError, firstValueFrom, throwError } from 'rxjs';
+
+export interface SingleSignOnProvider {
+  displayName: string;
+}
+
+interface Session {
+  username: string | null;
+  requiresSetup: boolean;
+  canChangePassword?: boolean;
+  oidc?: SingleSignOnProvider | null;
+}
 
 @Injectable({ providedIn: 'root' })
 export class Auth {
   private readonly http = inject(HttpClient);
+  private readonly document = inject(DOCUMENT);
   readonly username = signal<string | null>(null);
   readonly requiresSetup = signal(false);
   readonly canChangePassword = signal(false);
+  readonly singleSignOn = signal<SingleSignOnProvider | null>(null);
 
   async refresh(): Promise<void> {
-    const session = await firstValueFrom(
-      this.http.get<{
-        username: string | null;
-        requiresSetup: boolean;
-        canChangePassword?: boolean;
-      }>('/api/auth/session'),
-    );
+    const session = await firstValueFrom(this.http.get<Session>('/api/auth/session'));
     this.username.set(session.username);
     this.requiresSetup.set(session.requiresSetup);
     this.canChangePassword.set(session.canChangePassword ?? false);
+    this.singleSignOn.set(session.oidc ?? null);
+  }
+
+  /** Leaves the app for the identity provider, which returns to `/` after sign-in. */
+  startSingleSignOn(): void {
+    this.document.location.assign('/api/auth/oidc/login');
   }
 
   async setup(token: string, username: string, password: string): Promise<void> {
