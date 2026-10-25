@@ -116,5 +116,6 @@ cleared on rebuild) — put static assets in `Namerre.Front/public`.
   and Angular compiler flags enabled.
 - Workload limits enforced server-side: ≤200 files and ≤32 plugin instances per run, ≤32 queued
   jobs, regex timeout 100 ms, TMDB HTTP timeout 15 s.
-- CI (`.github/workflows/backend.yml`) builds/tests on Ubuntu and Windows — keep path handling
-  cross-platform.
+- CI (`.github/workflows/backend.yml`, PRs and `main`) only builds/tests, on Ubuntu and Windows —
+  keep path handling cross-platform. Docker images are built and published only for version tags
+  (`docker.yml`); `version-tag.yml` (manual) creates stable or `-pre.N` tags and dispatches it.

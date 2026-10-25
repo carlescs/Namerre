@@ -1,6 +1,10 @@
 name: Build and test application
 
 on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
   workflow_call:
     secrets:
       CMEDIATOR_PACKAGES_TOKEN:
@@ -9,6 +13,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: build-and-test-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   backend:

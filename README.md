@@ -527,3 +527,22 @@ restore. Fork pull requests cannot access this secret and require a trusted run
 with package access; do not expose package credentials to untrusted code.
 Backend CI runs on both Windows and Linux so filesystem-sensitive behavior is not
 validated only through platform-independent string comparisons.
+
+The pipeline is split by purpose:
+
+- **Build and test** (`.github/workflows/backend.yml`) runs on pull requests to
+  `main` and pushes to `main`. It only builds the solution and runs the backend and
+  frontend tests; it never builds or publishes a Docker image.
+- **Build and publish Docker image** (`.github/workflows/docker.yml`) runs only for
+  version tags (`vX.Y.Z` or `vX.Y.Z-pre.N`). It reruns the tests, publishes the image
+  to `ghcr.io` and creates the matching GitHub release. Stable tags are published as
+  `latest`; pre-release tags as `prerelease`. Both also get the version tag and the
+  commit SHA as image tags. Dispatching it on anything other than a version tag fails.
+  Release notes list every commit since the previous stable version (so a stable
+  release also covers what was first shipped in its pre-releases), followed by
+  GitHub's generated pull-request notes for the same range and the image tags and digest.
+- **Create version tag** (`.github/workflows/version-tag.yml`) is started manually
+  from the Actions tab. Choose the `major`/`minor`/`patch` increment relative to the
+  latest stable tag; tick **prerelease** to create the next `vX.Y.Z-pre.N` tag for
+  that version instead. It tags the selected commit and dispatches the Docker
+  workflow, so a pre-release image can be produced on demand from any branch.
