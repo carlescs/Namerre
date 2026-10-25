@@ -116,10 +116,14 @@ jobs:
           # Every release (stable or pre-release) lists everything it contains relative to the
           # previous stable version reachable from this commit, so a stable release also includes
           # the changes that were first shipped in its pre-releases.
+          # The baseline must be strictly older than this release's version: a pre-release
+          # vX.Y.Z-pre.N never uses vX.Y.Z (e.g. promoted on the same commit) or anything newer.
           stable_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          release_version="${release_tag%%-*}"
           previous_tag=""
           while IFS= read -r tag; do
-            if [[ -n "$tag" && "$tag" != "$release_tag" && "$tag" =~ $stable_pattern ]]; then
+            if [[ -n "$tag" && "$tag" != "$release_version" && "$tag" =~ $stable_pattern \
+              && "$(printf '%s\n%s\n' "$tag" "$release_version" | sort -V | head -n1)" == "$tag" ]]; then
               previous_tag="$tag"
               break
             fi
