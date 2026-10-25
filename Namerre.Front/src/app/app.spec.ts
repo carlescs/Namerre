@@ -90,16 +90,21 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('header app-theme-picker')).not.toBeNull();
   });
 
-  it('links to the account page from the header', async () => {
+  it('opens change password from the username menu in the header', async () => {
     username.set('admin');
     const fixture = TestBed.createComponent(App);
-    await TestBed.inject(Router).navigateByUrl('/account');
+    await TestBed.inject(Router).navigateByUrl('/');
     await fixture.whenStable();
-    const link = fixture.nativeElement.querySelector('header a[href="/account"]');
-    expect(link?.getAttribute('aria-current')).toBe('page');
-    expect(fixture.nativeElement.querySelector('app-account h2')?.textContent).toBe(
-      'Change password',
-    );
+    const element = fixture.nativeElement as HTMLElement;
+    const trigger = element.querySelector('header app-user-menu button') as HTMLButtonElement;
+    expect(trigger.textContent).toContain('admin');
+    trigger.click();
+    await fixture.whenStable();
+    (element.querySelector('[role="menuitem"]') as HTMLAnchorElement).click();
+    await fixture.whenStable();
+    expect(TestBed.inject(Router).url).toBe('/account');
+    expect(element.querySelector('[role="menu"]')).toBeNull();
+    expect(element.querySelector('app-account h2')?.textContent).toBe('Change password');
   });
 
   it('removes protected content after signing out', async () => {
