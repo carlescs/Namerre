@@ -40,7 +40,8 @@ public sealed class AuthControllerTests
         Assert.Contains("secure", cookie);
         Assert.Contains("samesite=strict", cookie);
         Assert.DoesNotContain("httponly", cookie);
-        Assert.Equivalent(new { username = (string?)null, requiresSetup = true }, result.Value);
+        Assert.Equivalent(new { username = (string?)null, requiresSetup = true, canChangePassword = false },
+            result.Value);
     }
 
     [Fact]
@@ -54,7 +55,8 @@ public sealed class AuthControllerTests
 
         var result = Assert.IsType<OkObjectResult>(controller.Session());
 
-        Assert.Equivalent(new { username = "admin", requiresSetup = false }, result.Value);
+        Assert.Equivalent(new { username = "admin", requiresSetup = false, canChangePassword = false },
+            result.Value);
     }
 
     [Theory]
@@ -149,6 +151,63 @@ public sealed class AuthControllerTests
 
         await authentication.Received(1).SignOutAsync(controller.HttpContext,
             CookieAuthenticationDefaults.AuthenticationScheme, Arg.Any<AuthenticationProperties?>());
+    }
+
+    [Fact]
+    public async Task ChangingThePasswordKeepsTheCurrentSessionWithTheNewStamp()
+    {
+        var account = Stored();
+        var stamp = account.Stamp;
+        var controller = Controller(account);
+
+        Assert.IsType<NoContentResult>(await controller.ChangePassword(
+            new ChangePasswordRequest("password", "new password")));
+
+        Assert.True(account.Verify("admin", "new password"));
+        Assert.NotEqual(stamp, account.Stamp);
+        await authentication.Received(1).SignInAsync(controller.HttpContext,
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            Arg.Is<ClaimsPrincipal>(p => p.Identity!.Name == "admin"
+                && p.FindFirst("credential-stamp")!.Value == account.Stamp),
+            Arg.Is<AuthenticationProperties>(p => !p.IsPersistent));
+    }
+
+    [Fact]
+    public async Task ChangingThePasswordWithAWrongCurrentPasswordIsForbidden()
+    {
+        var account = Stored();
+
+        var result = await Controller(account).ChangePassword(new ChangePasswordRequest("wrong", "new password"));
+
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.True(account.Verify("admin", "password"));
+        await authentication.DidNotReceiveWithAnyArgs().SignInAsync(default!, default, default!, default);
+    }
+
+    [Fact]
+    public async Task ConfiguredPasswordsCannotBeChangedThroughTheApi()
+        => Assert.IsType<ConflictObjectResult>(await Controller(Configured())
+            .ChangePassword(new ChangePasswordRequest("password", "new password")));
+
+    [Theory]
+    [MemberData(nameof(StorageFailures))]
+    public async Task StorageFailuresDuringPasswordChangeAreServiceUnavailable(Exception failure)
+    {
+        var account = Stored();
+        store.TryUpdate(Arg.Any<AdminCredentials>(), Arg.Any<string>()).Throws(failure);
+
+        var result = await Controller(account).ChangePassword(new ChangePasswordRequest("password", "new password"));
+
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.True(account.Verify("admin", "password"));
+    }
+
+    private AdminAccount Stored()
+    {
+        var credentials = new AdminCredentials("admin", Hash);
+        store.Load().Returns(credentials);
+        store.TryUpdate(credentials, Arg.Any<string>()).Returns(true);
+        return Unconfigured();
     }
 
     private AdminAccount Configured() => new(Options.Create(new NamerreOptions

@@ -76,6 +76,22 @@ public sealed class AdminAccountTests
     }
 
     [Fact]
+    public void AuthenticateReturnsTheVerifiedCredentialsSnapshot()
+    {
+        store.Load().Returns(new AdminCredentials("stored", Hash));
+        store.TryUpdate(Arg.Any<AdminCredentials>(), Arg.Any<string>()).Returns(true);
+        var account = new AdminAccount(Configured(null, null), store);
+
+        var verified = account.Authenticate("stored", "correct horse");
+        account.ChangePassword("correct horse", "battery staple", out _);
+
+        // A login verified before the change keeps the old, now revoked, stamp.
+        Assert.Equal(new AdminCredentials("stored", Hash), verified);
+        Assert.NotEqual(account.Stamp, AdminAccount.StampOf(verified));
+        Assert.Null(account.Authenticate("stored", "correct horse"));
+    }
+
+    [Fact]
     public void StampChangesWithTheCredentials()
     {
         var first = new AdminAccount(Configured("admin", Hash), store);
@@ -140,6 +156,71 @@ public sealed class AdminAccountTests
     public void SetupIsRefusedOnceConfigured()
         => Assert.Equal(SetupResult.AlreadyConfigured,
             new AdminAccount(Configured("admin", Hash), store).CompleteSetup("token", "admin", "pass"));
+
+    [Fact]
+    public void StoredAdministratorCanChangeThePassword()
+    {
+        var stored = new AdminCredentials("stored", Hash);
+        store.Load().Returns(stored);
+        store.TryUpdate(stored, Arg.Any<string>()).Returns(true);
+        var account = new AdminAccount(Configured(null, null), store);
+        var stamp = account.Stamp;
+
+        Assert.True(account.CanChangePassword);
+        Assert.Equal(PasswordChangeResult.Changed,
+            account.ChangePassword("correct horse", "battery staple", out var changed));
+
+        Assert.Equal(account.Stamp, AdminAccount.StampOf(changed));
+        Assert.True(account.Verify("stored", "battery staple"));
+        Assert.False(account.Verify("stored", "correct horse"));
+        Assert.NotEqual(stamp, account.Stamp);
+        store.Received(1).TryUpdate(stored, Arg.Is<string>(hash => hash != "battery staple"));
+    }
+
+    [Fact]
+    public void PasswordChangeRequiresTheCurrentPassword()
+    {
+        store.Load().Returns(new AdminCredentials("stored", Hash));
+        var account = new AdminAccount(Configured(null, null), store);
+
+        Assert.Equal(PasswordChangeResult.InvalidPassword, account.ChangePassword("wrong", "battery staple", out _));
+
+        Assert.True(account.Verify("stored", "correct horse"));
+        store.DidNotReceiveWithAnyArgs().TryUpdate(default!, default!);
+    }
+
+    [Fact]
+    public void PasswordChangeKeepsTheOldPasswordWhenTheStoredAccountChanged()
+    {
+        store.Load().Returns(new AdminCredentials("stored", Hash));
+        store.TryUpdate(Arg.Any<AdminCredentials>(), Arg.Any<string>()).Returns(false);
+        var account = new AdminAccount(Configured(null, null), store);
+
+        Assert.Equal(PasswordChangeResult.Conflict, account.ChangePassword("correct horse", "battery staple", out _));
+
+        Assert.True(account.Verify("stored", "correct horse"));
+    }
+
+    [Fact]
+    public void ConfiguredCredentialsCannotBeChanged()
+    {
+        var account = new AdminAccount(Configured("admin", Hash), store);
+
+        Assert.False(account.CanChangePassword);
+        Assert.Equal(PasswordChangeResult.ManagedByConfiguration,
+            account.ChangePassword("correct horse", "battery staple", out _));
+        Assert.True(account.Verify("admin", "correct horse"));
+        store.DidNotReceiveWithAnyArgs().TryUpdate(default!, default!);
+    }
+
+    [Fact]
+    public void UnconfiguredAccountCannotChangeAPassword()
+    {
+        var account = new AdminAccount(Configured(null, null), store);
+
+        Assert.False(account.CanChangePassword);
+        Assert.Equal(PasswordChangeResult.ManagedByConfiguration, account.ChangePassword("", "new", out _));
+    }
 
     private static IOptions<NamerreOptions> Configured(string? username, string? hash) => Options.Create(
         new NamerreOptions { Authentication = new AuthenticationOptions { Username = username, PasswordHash = hash } });

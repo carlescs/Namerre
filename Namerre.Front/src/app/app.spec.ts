@@ -10,6 +10,7 @@ import { Auth } from './auth/auth';
 describe('App', () => {
   const username = signal<string | null>(null);
   const requiresSetup = signal(false);
+  const canChangePassword = signal(true);
   const refresh = vi.fn<() => Promise<void>>();
   const logout = vi.fn<() => Promise<void>>();
 
@@ -24,7 +25,10 @@ describe('App', () => {
         provideRouter(routes),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: Auth, useValue: { username, requiresSetup, refresh, logout } },
+        {
+          provide: Auth,
+          useValue: { username, requiresSetup, canChangePassword, refresh, logout },
+        },
       ],
     }).compileComponents();
   });
@@ -86,13 +90,34 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('header app-theme-picker')).not.toBeNull();
   });
 
+  it('opens change password from the username menu in the header', async () => {
+    username.set('admin');
+    const fixture = TestBed.createComponent(App);
+    await TestBed.inject(Router).navigateByUrl('/');
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    const trigger = element.querySelector('header app-user-menu button') as HTMLButtonElement;
+    expect(trigger.textContent).toContain('admin');
+    trigger.click();
+    await fixture.whenStable();
+    (element.querySelector('[role="menuitem"]') as HTMLAnchorElement).click();
+    await fixture.whenStable();
+    expect(TestBed.inject(Router).url).toBe('/account');
+    expect(element.querySelector('[role="menu"]')).toBeNull();
+    expect(element.querySelector('app-account h2')?.textContent).toBe('Change password');
+  });
+
   it('removes protected content after signing out', async () => {
     username.set('admin');
     const fixture = TestBed.createComponent(App);
     await TestBed.inject(Router).navigateByUrl('/');
     await fixture.whenStable();
-    const signOut = [...fixture.nativeElement.querySelectorAll('header button')].find(
-      (button: HTMLButtonElement) => button.textContent?.trim() === 'Sign out',
+    (
+      fixture.nativeElement.querySelector('header app-user-menu button') as HTMLButtonElement
+    ).click();
+    await fixture.whenStable();
+    const signOut = [...fixture.nativeElement.querySelectorAll('[role="menuitem"]')].find(
+      (item: HTMLElement) => item.textContent?.trim() === 'Sign out',
     ) as HTMLButtonElement;
     signOut.click();
     await fixture.whenStable();

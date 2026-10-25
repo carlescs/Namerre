@@ -36,7 +36,7 @@ public static class AuthenticationSetup
                 {
                     var account = context.HttpContext.RequestServices.GetRequiredService<AdminAccount>();
                     if (account.RequiresSetup ||
-                        context.Principal?.FindFirst("credential-stamp")?.Value != account.Stamp)
+                        context.Principal?.FindFirst(AdminAccount.StampClaim)?.Value != account.Stamp)
                         context.RejectPrincipal();
                     return Task.CompletedTask;
                 };

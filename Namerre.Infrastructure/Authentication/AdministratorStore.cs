@@ -40,4 +40,21 @@ public sealed class AdministratorStore(RenameStore store) : IAdministratorStore
             throw new AdministratorStorageException("Unable to save the administrator to the database.", exception);
         }
     }
+
+    public bool TryUpdate(AdminCredentials current, string passwordHash)
+    {
+        store.Initialize();
+        using var db = store.Open();
+        try
+        {
+            // Compare-and-swap: only replace the hash this process last loaded.
+            return db.Administrators
+                .Where(a => a.Id == 1 && a.Username == current.Username && a.PasswordHash == current.PasswordHash)
+                .ExecuteUpdate(setters => setters.SetProperty(a => a.PasswordHash, passwordHash)) == 1;
+        }
+        catch (SqliteException exception)
+        {
+            throw new AdministratorStorageException("Unable to save the administrator to the database.", exception);
+        }
+    }
 }

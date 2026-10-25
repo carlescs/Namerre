@@ -44,14 +44,8 @@
           >
         </nav>
         <div class="ml-auto flex min-w-0 items-center gap-3">
-          <span
-            class="hidden max-w-48 truncate text-xs text-slate-500 dark:text-slate-400 sm:block"
-            [title]="username"
-            >Signed in as
-            <strong class="text-slate-700 dark:text-slate-300">{{ username }}</strong></span
-          >
           <app-theme-picker />
-          <button type="button" (click)="logout()" [disabled]="signingOut()">Sign out</button>
+          <app-user-menu [username]="username" [signingOut]="signingOut()" (signOut)="logout()" />
         </div>
       </div>
     </header>
