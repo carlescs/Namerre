@@ -32,9 +32,27 @@
   </div>
   @if (suggesting()) {
     <p role="status">Searching and verifying per-file TMDB suggestions…</p>
+  } @else if (hasPreview() && !loadingPreview() && unmatchedFiles(); as count) {
+    <div
+      class="unmatched-summary my-4 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 text-amber-900 dark:text-amber-200"
+      role="status"
+    >
+      <p>
+        {{ count }} {{ count === 1 ? 'file still needs' : 'files still need' }} a confirmed TMDB
+        match before you can review filenames. Accept a proposal, search again, or remove files that
+        should not be renamed.
+      </p>
+      <button type="button" (click)="showFirstUnmatched()">
+        Show {{ count === 1 ? 'file' : 'first file' }}
+      </button>
+    </div>
   }
   @for (row of rows(); track row.fileId + ':' + row.plugin.instanceId) {
-    <article>
+    <article
+      tabindex="-1"
+      class="focus:outline-2 focus:outline-offset-2 focus:outline-indigo-600 dark:focus:outline-indigo-400"
+      [attr.data-unmatched]="needsMatch(row) ? '' : null"
+    >
       <h4>{{ row.fileId }} — step {{ row.position }}</h4>
       @if (row.step; as step) {
         <p>
@@ -77,13 +95,25 @@
         } @else {
           <p class="error">{{ step.error.message }}</p>
         }
-        <button
-          type="button"
-          (click)="matchRequested.emit({ fileId: row.fileId, step })"
-          [disabled]="loadingPreview() || suggesting() || disabled()"
-        >
-          Choose / change TMDB match — search again
-        </button>
+        <div class="actions">
+          <button
+            type="button"
+            (click)="matchRequested.emit({ fileId: row.fileId, step })"
+            [disabled]="loadingPreview() || suggesting() || disabled()"
+          >
+            Choose / change TMDB match — search again
+          </button>
+          @if (step.error) {
+            <button
+              type="button"
+              (click)="fileRemoved.emit(row.fileId)"
+              [disabled]="loadingPreview() || suggesting() || disabled()"
+              [attr.aria-label]="'Remove from collection: ' + row.fileId"
+            >
+              Remove from collection
+            </button>
+          }
+        </div>
       } @else {
         <p>
           {{

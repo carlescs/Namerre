@@ -11,4 +11,8 @@ import { RenameWorkflowComponent } from '../rename-workflow/rename-workflow.comp
 })
 export class RenamerComponent {
   protected readonly files = signal<RenamerFile[]>([]);
+
+  protected removeFile(path: string): void {
+    this.files.update((files) => files.filter((file) => file.path !== path));
+  }
 }

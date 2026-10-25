@@ -84,6 +84,61 @@ describe('FolderPickerComponent', () => {
     expect(actions).toEqual(['Cancel', 'Select folder']);
   });
 
+  it('hides hidden and system entries unless the owner shows them', async () => {
+    const show: FolderListing = {
+      path: 'Show',
+      parentPath: '',
+      directories: [
+        { name: '@eaDir', path: 'Show/@eaDir' },
+        { name: 'S01', path: 'Show/S01' },
+      ],
+      files: [
+        { name: '.DS_Store', length: 1, lastModifiedUtc: '2026-10-18T07:00:00Z' },
+        { name: 'Thumbs.db', length: 1, lastModifiedUtc: '2026-10-18T07:00:00Z' },
+      ],
+    };
+    const season: FolderListing = {
+      path: 'Show/S01',
+      parentPath: 'Show',
+      directories: [{ name: '@eaDir', path: 'Show/S01/@eaDir' }],
+      files: [{ name: 'E01.mkv', length: 1, lastModifiedUtc: '2026-10-18T07:00:00Z' }],
+    };
+    const metadata: FolderListing = {
+      path: 'Show/S01/@eaDir',
+      parentPath: 'Show/S01',
+      directories: [],
+      files: [{ name: 'E01.mkv', length: 1, lastModifiedUtc: '2026-10-18T07:00:00Z' }],
+    };
+    component.open();
+    http.expectOne('/api/folders?path=').flush(show);
+    await fixture.whenStable();
+    const folders = () =>
+      Array.from(dialog.querySelectorAll('.folder-table tbody button')).map((button) =>
+        button.textContent?.trim(),
+      );
+    expect(folders()).toEqual(['S01']);
+    showHidden().click();
+    fixture.detectChanges();
+    expect(folders()).toEqual(['@eaDir', 'S01']);
+    showHidden().click();
+    includeSubfolders().click();
+    clickButton('Select folder');
+    http
+      .expectOne('/api/folders/selection?path=Show&includeSubfolders=true')
+      .flush([show, season, metadata]);
+    await fixture.whenStable();
+    expect(selected).toEqual([[{ ...show, files: [] }, season]]);
+
+    await openPickerAt(show);
+    showHidden().click();
+    clickButton('Select folder');
+    http
+      .expectOne('/api/folders/selection?path=Show&includeSubfolders=true')
+      .flush([show, season, metadata]);
+    await fixture.whenStable();
+    expect(selected[1]).toEqual([show, season, metadata]);
+  });
+
   it('disables selection on errors and supports retry', async () => {
     await openPicker();
     clickButton('Movies');
@@ -270,6 +325,16 @@ describe('FolderPickerComponent', () => {
 
   function includeSubfolders(): HTMLInputElement {
     return fixture.nativeElement.querySelector('input[type="checkbox"]');
+  }
+
+  function showHidden(): HTMLInputElement {
+    return fixture.nativeElement.querySelectorAll('input[type="checkbox"]')[1];
+  }
+
+  async function openPickerAt(folder: FolderListing): Promise<void> {
+    component.open();
+    http.expectOne(`/api/folders?path=${folder.path}`).flush(folder);
+    await fixture.whenStable();
   }
 
   function confirmFolder(folder: FolderListing): void {

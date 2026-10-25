@@ -55,7 +55,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (directory of selected.directories; track directory.path) {
+            @for (directory of directories(); track directory.path) {
               <tr>
                 <td>
                   <button
@@ -105,8 +105,19 @@
         />
         Include subfolders
       </label>
+      <label class="selection-option">
+        <input
+          type="checkbox"
+          [checked]="showHidden()"
+          (change)="showHidden.set($event.target.checked)"
+          [disabled]="loading()"
+        />
+        Show hidden files and folders
+      </label>
       <p class="hint">
-        Only folders within the configured server root are available. Links are excluded.
+        Only folders within the configured server root are available. Links are excluded. Hidden and
+        system entries such as <code>.DS_Store</code> or <code>&#64;eaDir</code> are skipped unless
+        shown.
       </p>
     }
   </div>

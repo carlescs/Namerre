@@ -432,6 +432,26 @@ describe('RenameWorkflowComponent', () => {
     expect(text()).not.toContain('MetadataRequired');
     expect(text()).not.toContain('Final target:');
     expect(button('Next: review filenames').disabled).toBe(true);
+    expect(text()).toContain('1 file still needs a confirmed TMDB match');
+    expect(text()).toContain('1 file needs a TMDB match');
+  });
+
+  it('asks the owner to drop a file that cannot be matched', async () => {
+    changePlugins([tmdb]);
+    await fixture.whenStable();
+    button('Next: match metadata').click();
+    await fixture.whenStable();
+    http.expectOne('/api/rename-previews').flush(tmdbPreview);
+    await fixture.whenStable();
+    const removed = vi.fn();
+    fixture.componentInstance.fileRemoved.subscribe(removed);
+    button('Remove from collection').click();
+    expect(removed).toHaveBeenCalledWith('a.txt');
+    const show = button('Show file');
+    show.click();
+    expect(document.activeElement).toBe(
+      fixture.nativeElement.querySelector('article[data-unmatched]'),
+    );
   });
 
   it('retains matches across downstream edits and collection additions but still invalidates plans', async () => {

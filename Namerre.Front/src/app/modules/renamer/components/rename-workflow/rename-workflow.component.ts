@@ -8,6 +8,7 @@ import {
   effect,
   inject,
   input,
+  output,
   signal,
   untracked,
   viewChild,
@@ -59,6 +60,7 @@ type WizardStage = 'files' | 'plugins' | 'matching' | 'preview' | 'confirmation'
 })
 export class RenameWorkflowComponent {
   readonly files = input.required<RenamerFile[]>();
+  readonly fileRemoved = output<string>();
   private readonly api = inject(RenameApi);
   private readonly events = inject(RenameEvents);
   private readonly router = inject(Router);
@@ -147,6 +149,9 @@ export class RenameWorkflowComponent {
     ),
   );
   protected readonly metadataPending = computed(() => this.preview()?.files.some(awaitingMetadata));
+  protected readonly unmatchedFiles = computed(
+    () => this.preview()?.files.filter(awaitingMetadata).length ?? 0,
+  );
   protected readonly pendingMatches = computed(() =>
     this.matchRows().flatMap((row): MetadataSelection[] => {
       const suggestion = row.suggestion;

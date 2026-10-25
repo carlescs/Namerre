@@ -15,7 +15,7 @@
       Self-hosted workspace
     </span>
   </div>
-  <app-rename-workflow [files]="files()">
+  <app-rename-workflow [files]="files()" (fileRemoved)="removeFile($event)">
     <app-file-selection [files]="files()" (filesChanged)="files.set($event)" />
   </app-rename-workflow>
 </main>
