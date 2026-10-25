@@ -485,6 +485,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             .OrderByDescending(entry => entry.Folder.Count(c => c == '/'));
         foreach (var (folder, fileId) in folders)
         {
+            string? failed = null;
             try
             {
                 if (!fileSystem.IsEmptyDirectory(folder)) continue;
@@ -492,11 +493,14 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             catch (Exception exception) when (exception is RenameException or IOException or UnauthorizedAccessException)
             {
                 logger.LogWarning(exception, "Cannot inspect folder {Folder} for cleanup", folder);
-                continue;
+                failed = "Failed";
             }
+            // A failed inspection changed nothing on disk, so its entry is recorded as failed without an intent.
             var sequence = NextSequence(run);
-            run = run with { Journal = run.Journal.Append(new JournalEntry(sequence, "DeleteDirectory", fileId, folder, "", "Intent")).ToArray() };
+            run = run with { Journal = run.Journal.Append(new JournalEntry(sequence, "DeleteDirectory", fileId, folder, "",
+                failed ?? "Intent")).ToArray() };
             Save(run);
+            if (failed is not null) continue;
             var status = "Skipped";
             try { if (fileSystem.DeleteEmptyDirectory(folder)) status = "Completed"; }
             catch (Exception exception) when (exception is RenameException or IOException or UnauthorizedAccessException)

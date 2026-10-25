@@ -99,36 +99,26 @@ public sealed class TmdbRenamingTests : IDisposable
     [InlineData(true)]
     public async Task EmptiedFoldersAreDeletedOnlyWhenRequested(bool deleteEmptyFolders)
     {
+        WriteRelease();
         Directory.CreateDirectory(Path.Combine(Root, "Downloads", "Release", "Extras"));
-        File.WriteAllText(Path.Combine(Root, "Downloads", "Release", "input.mkv"), "content");
         File.WriteAllText(Path.Combine(Root, "Downloads", "keep.txt"), "kept");
         var filesystem = new BoundedFileSystem(Root, workspace);
         using var store = new RenameStore(filesystem, Data, workspace);
-        using var handler = new StubHandler(_ => Response("""{"id":42,"title":"A Movie","release_date":"2001-02-03"}"""));
-        using var client = new HttpClient(handler);
+        using var client = MovieClient();
         var metadata = new TmdbMetadata(client, Config("secret"), store);
-        var options = JsonSerializer.SerializeToElement(new { nameTemplate = "", changeFolder = true,
-            folderTemplate = "{title} ({year})" });
-        var match = Assert.Single((await metadata.Search(new("movie", "", Id: 42, FileId: "file", InstanceId: "tmdb1",
-            InputPath: "Downloads/Release/input.mkv", OptionsHash: PipelineEngine.OptionsHash(options)), default)).Matches);
         var service = new RenameService(store, filesystem, new PipelineEngine(metadata, filesystem), NullLogger<RenameService>.Instance);
-        var prepared = await service.Prepare(new([new("file", "Downloads/Release/input.mkv")],
-            [new("tmdb1", "tmdb", 1, true, options)], [new("file", "tmdb1", "Downloads/Release/input.mkv",
-                PipelineEngine.OptionsHash(options), match.ConfirmationToken!)], DeleteEmptyFolders: deleteEmptyFolders), default);
-        await service.ProcessNext(default);
-        var job = await service.Execute(prepared.Id, new(1, Guid.NewGuid().ToString()), default);
-        await service.ProcessNext(default);
+        var id = await MoveMovie(service, metadata, deleteEmptyFolders);
 
-        var run = await service.GetRun(job.Id, default);
+        var run = await service.GetRun(id, default);
         Assert.Equal("Completed", run.Status);
         Assert.Equal(deleteEmptyFolders, run.DeleteEmptyFolders);
-        Assert.Equal("content", File.ReadAllText(Path.Combine(Root, "A Movie (2001)", "A Movie (2001).mkv")));
+        Assert.Equal("content", File.ReadAllText(MovieTarget));
         // A nested folder that was already empty is not something the run emptied.
         Assert.True(Directory.Exists(Path.Combine(Root, "Downloads", "Release", "Extras")));
         Assert.True(File.Exists(Path.Combine(Root, "Downloads", "keep.txt")));
         Assert.DoesNotContain(run.Journal, j => j.Kind == "DeleteDirectory");
 
-        var second = await service.Rollback(job.Id, new(["file"], Guid.NewGuid().ToString()), default);
+        var second = await service.Rollback(id, new(["file"], Guid.NewGuid().ToString()), default);
         await service.ProcessNext(default);
         var rollback = await service.GetRun(second.Id, default);
         Assert.Equal("Completed", rollback.Status);
@@ -142,27 +132,15 @@ public sealed class TmdbRenamingTests : IDisposable
     public async Task EmptiedSourceFoldersAreDeletedDeepestFirstButNeverTheRootOrOccupiedFolders()
     {
         File.WriteAllText(Path.Combine(Root, "input.mkv"), "root file");
-        Directory.CreateDirectory(Path.Combine(Root, "Downloads", "Release"));
-        File.WriteAllText(Path.Combine(Root, "Downloads", "Release", "input.mkv"), "content");
+        WriteRelease();
         var filesystem = new BoundedFileSystem(Root, workspace);
         using var store = new RenameStore(filesystem, Data, workspace);
-        using var handler = new StubHandler(_ => Response("""{"id":42,"title":"A Movie","release_date":"2001-02-03"}"""));
-        using var client = new HttpClient(handler);
+        using var client = MovieClient();
         var metadata = new TmdbMetadata(client, Config("secret"), store);
-        var options = JsonSerializer.SerializeToElement(new { nameTemplate = "", changeFolder = true,
-            folderTemplate = "{title} ({year})" });
-        var hash = PipelineEngine.OptionsHash(options);
-        var token = Assert.Single((await metadata.Search(new("movie", "", Id: 42, FileId: "file", InstanceId: "tmdb1",
-            InputPath: "Downloads/Release/input.mkv", OptionsHash: hash), default)).Matches).ConfirmationToken!;
         var service = new RenameService(store, filesystem, new PipelineEngine(metadata, filesystem), NullLogger<RenameService>.Instance);
-        var prepared = await service.Prepare(new([new("file", "Downloads/Release/input.mkv")],
-            [new("tmdb1", "tmdb", 1, true, options)], [new("file", "tmdb1", "Downloads/Release/input.mkv", hash, token)],
-            DeleteEmptyFolders: true), default);
-        await service.ProcessNext(default);
-        var job = await service.Execute(prepared.Id, new(1, Guid.NewGuid().ToString()), default);
-        await service.ProcessNext(default);
+        var id = await MoveMovie(service, metadata, deleteEmptyFolders: true);
 
-        var run = await service.GetRun(job.Id, default);
+        var run = await service.GetRun(id, default);
         Assert.Equal("Completed", run.Status);
         Assert.Equal(["Downloads/Release", "Downloads"], run.Journal.Where(j => j.Kind == "DeleteDirectory")
             .Select(j => j.FromPath));
@@ -170,6 +148,81 @@ public sealed class TmdbRenamingTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(Root, "Downloads")));
         Assert.True(Directory.Exists(Root));
         Assert.Equal("root file", File.ReadAllText(Path.Combine(Root, "input.mkv")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FolderThatCannotBeInspectedOrDeletedIsJournaledAsFailedAndTheRunCompletes(bool inspection)
+    {
+        WriteRelease();
+        var bounded = new BoundedFileSystem(Root, workspace);
+        var filesystem = new CleanupFaultFileSystem(bounded, "Downloads/Release", inspection);
+        using var store = new RenameStore(bounded, Data, workspace);
+        using var client = MovieClient();
+        var metadata = new TmdbMetadata(client, Config("secret"), store);
+        var service = new RenameService(store, filesystem, new PipelineEngine(metadata, filesystem), NullLogger<RenameService>.Instance);
+        var id = await MoveMovie(service, metadata, deleteEmptyFolders: true);
+
+        var run = await service.GetRun(id, default);
+        Assert.Equal("Completed", run.Status);
+        Assert.Equal("content", File.ReadAllText(MovieTarget));
+        // The folder that failed keeps its parent occupied, so the parent is never a candidate.
+        Assert.Equal([("Downloads/Release", "Failed")], run.Journal.Where(j => j.Kind == "DeleteDirectory")
+            .Select(j => (j.FromPath, j.Status)));
+        Assert.True(Directory.Exists(Path.Combine(Root, "Downloads", "Release")));
+    }
+
+    // Counts the run's write boundaries once the file is placed: the Place completion and file status (1-4), the
+    // intent and outcome of deleting Downloads/Release (5-8) and then Downloads (9-12), and finalization (13-14).
+    [Theory]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    [InlineData(10)]
+    [InlineData(11)]
+    [InlineData(12)]
+    [InlineData(13)]
+    [InlineData(14)]
+    public async Task EveryFolderCleanupBoundaryCanBeExplicitlyRecovered(int boundaryNumber)
+    {
+        WriteRelease();
+        var filesystem = new BoundedFileSystem(Root, workspace);
+        var boundaries = 0;
+        var fired = false;
+        string id;
+        using (var store = new RenameStore(filesystem, Data, workspace, name =>
+        {
+            if ((name.StartsWith("Save:Run:Running:", StringComparison.Ordinal) || name.StartsWith("Finalize:", StringComparison.Ordinal))
+                && File.Exists(MovieTarget) && ++boundaries == boundaryNumber && !fired)
+            {
+                fired = true;
+                throw new IOException("Injected write boundary.");
+            }
+        }))
+        {
+            using var client = MovieClient();
+            var metadata = new TmdbMetadata(client, Config("secret"), store);
+            var service = new RenameService(store, filesystem, new PipelineEngine(metadata, filesystem), NullLogger<RenameService>.Instance);
+            id = await MoveMovie(service, metadata, deleteEmptyFolders: true);
+            Assert.True(fired);
+            Assert.Equal("RecoveryRequired", (await service.GetRun(id, default)).Status);
+        }
+        using (var store = new RenameStore(filesystem, Data, workspace))
+        {
+            using var client = new HttpClient();
+            var service = new RenameService(store, filesystem,
+                new PipelineEngine(new TmdbMetadata(client, Config(""), store), filesystem), NullLogger<RenameService>.Instance);
+            var evidence = await service.PreviewRecovery(id, default);
+            Assert.True(evidence.CanRecover, JsonSerializer.Serialize(evidence));
+            await service.Recover(id, new("RestoreOriginal", Guid.NewGuid().ToString()), default);
+            await service.ProcessNext(default);
+            Assert.Equal("Recovered", (await service.GetRun(id, default)).Status);
+            Assert.Equal("content", File.ReadAllText(Path.Combine(Root, "Downloads", "Release", "input.mkv")));
+            Assert.False(File.Exists(MovieTarget));
+        }
     }
 
     [Fact]
@@ -277,6 +330,30 @@ public sealed class TmdbRenamingTests : IDisposable
             () => timeout.Search(new("movie", "query"), default))).Code);
     }
 
+    private string MovieTarget => Path.Combine(Root, "A Movie (2001)", "A Movie (2001).mkv");
+    private void WriteRelease()
+    {
+        Directory.CreateDirectory(Path.Combine(Root, "Downloads", "Release"));
+        File.WriteAllText(Path.Combine(Root, "Downloads", "Release", "input.mkv"), "content");
+    }
+    private static HttpClient MovieClient()
+        => new(new StubHandler(_ => Response("""{"id":42,"title":"A Movie","release_date":"2001-02-03"}""")));
+    // Confirms the TMDB match, then prepares and executes the move of Downloads/Release/input.mkv into "A Movie (2001)".
+    private static async Task<string> MoveMovie(RenameService service, TmdbMetadata metadata, bool deleteEmptyFolders)
+    {
+        var options = JsonSerializer.SerializeToElement(new { nameTemplate = "", changeFolder = true,
+            folderTemplate = "{title} ({year})" });
+        var hash = PipelineEngine.OptionsHash(options);
+        var token = Assert.Single((await metadata.Search(new("movie", "", Id: 42, FileId: "file", InstanceId: "tmdb1",
+            InputPath: "Downloads/Release/input.mkv", OptionsHash: hash), default)).Matches).ConfirmationToken!;
+        var prepared = await service.Prepare(new([new("file", "Downloads/Release/input.mkv")],
+            [new("tmdb1", "tmdb", 1, true, options)], [new("file", "tmdb1", "Downloads/Release/input.mkv", hash, token)],
+            DeleteEmptyFolders: deleteEmptyFolders), default);
+        await service.ProcessNext(default);
+        var job = await service.Execute(prepared.Id, new(1, Guid.NewGuid().ToString()), default);
+        await service.ProcessNext(default);
+        return job.Id;
+    }
     private static IOptions<NamerreOptions> Config(string token, string? language = "en") => Options.Create(new NamerreOptions
     {
         Tmdb = new TmdbOptions { ReadAccessToken = token, Language = language }
@@ -287,6 +364,25 @@ public sealed class TmdbRenamingTests : IDisposable
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
             => Task.FromResult(response(request));
+    }
+    // Fails inspecting or deleting one folder during cleanup; everything else reaches the real filesystem.
+    private sealed class CleanupFaultFileSystem(IRenameFileSystem inner, string folder, bool inspection) : IRenameFileSystem
+    {
+        public string RootBinding => inner.RootBinding;
+        public void Validate(string path) => inner.Validate(path);
+        public bool Exists(string path) => inner.Exists(path);
+        public string ActualPath(string path) => inner.ActualPath(path);
+        public bool SamePath(string first, string second) => inner.SamePath(first, second);
+        public Task<(string Hash, long Size)> Hash(string path, CancellationToken cancellationToken) => inner.Hash(path, cancellationToken);
+        public (string Hash, long Size) Stamp(string path) => inner.Stamp(path);
+        public void CheckSameDevice(string source, string target) => inner.CheckSameDevice(source, target);
+        public void Move(string source, string destination) => inner.Move(source, destination);
+        public IReadOnlyList<string> MissingDirectories(string path) => inner.MissingDirectories(path);
+        public void CreateDirectory(string path) => inner.CreateDirectory(path);
+        public bool IsEmptyDirectory(string path) => inspection && path == folder
+            ? throw new UnauthorizedAccessException("Injected inspection failure.") : inner.IsEmptyDirectory(path);
+        public bool DeleteEmptyDirectory(string path) => !inspection && path == folder
+            ? throw new IOException("Injected deletion failure.") : inner.DeleteEmptyDirectory(path);
     }
     public void Dispose()
     {
