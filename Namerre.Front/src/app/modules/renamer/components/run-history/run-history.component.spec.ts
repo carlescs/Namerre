@@ -481,7 +481,7 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     button('Check selected-file').click();
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Processing the requested check');
+    expect(fixture.nativeElement.textContent).toContain('Checking 2 selected files for rollback');
     http
       .expectOne('/api/rename-runs/run-1/rollback-preview')
       .flush({ title: 'Run changed.' }, { status: 409, statusText: 'Conflict' });
