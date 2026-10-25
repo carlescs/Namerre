@@ -51,6 +51,9 @@ export class RunHistoryComponent {
     if (run?.status !== 'Completed') return [];
     return run.files.filter((file) => file.status === 'Completed').map((file) => file.id);
   });
+  protected readonly someSelected = computed(() =>
+    this.selectableIds().some((id) => this.selected().has(id)),
+  );
   protected readonly allSelected = computed(() => {
     const ids = this.selectableIds();
     const selection = this.selected();
@@ -124,6 +127,12 @@ export class RunHistoryComponent {
               this.invalidateApproval();
             }
             this.run.set(run);
+            const selectable = new Set(this.selectableIds());
+            this.selected.update((selection) =>
+              [...selection].every((id) => selectable.has(id))
+                ? selection
+                : new Set([...selection].filter((id) => selectable.has(id))),
+            );
             this.loading.set(false);
             if (!['Queued', 'Running', 'RecoveryQueued', 'Recovering'].includes(run.status)) {
               this.polling?.unsubscribe();

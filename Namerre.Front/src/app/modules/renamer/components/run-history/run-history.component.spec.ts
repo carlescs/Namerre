@@ -145,6 +145,27 @@ describe('RunHistoryComponent', () => {
     expect(all.checked).toBe(false);
   });
 
+  it('drops selected files that are no longer eligible after a refresh', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush(run);
+    await fixture.whenStable();
+    (fixture.nativeElement.querySelector('input.file-select') as HTMLInputElement).click();
+    await fixture.whenStable();
+    button('Refresh').click();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    http.expectOne('/api/rename-runs/run-1').flush({
+      ...run,
+      files: [{ ...run.files[0], status: 'RolledBack' }, run.files[1]],
+    });
+    await fixture.whenStable();
+    const all = fixture.nativeElement.querySelector(
+      'thead input[type="checkbox"]',
+    ) as HTMLInputElement;
+    expect(all.indeterminate).toBe(false);
+    expect(all.checked).toBe(false);
+    expect(fixture.nativeElement.textContent).toContain('0 files explicitly selected');
+    expect(button('Check selected-file').disabled).toBe(true);
+  });
+
   it('invalidates an approved rollback when the selection changes', async () => {
     http.expectOne('/api/rename-runs/run-1').flush(run);
     await fixture.whenStable();

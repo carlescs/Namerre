@@ -135,11 +135,12 @@
         <thead>
           <tr>
             <th scope="col">
+              <span class="sr-only">Select</span>
               <input
                 type="checkbox"
                 aria-label="Select all completed files for rollback"
                 [checked]="allSelected()"
-                [indeterminate]="selected().size > 0 && !allSelected()"
+                [indeterminate]="someSelected() && !allSelected()"
                 (change)="toggleAll()"
                 [disabled]="busy() || !selectableIds().length"
               />
