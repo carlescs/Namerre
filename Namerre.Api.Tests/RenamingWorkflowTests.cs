@@ -181,6 +181,49 @@ public sealed class RenamingWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task DurableChangesNotifyClientsIncludingRollbackParentsAndDeletions()
+    {
+        Write("alpha.txt", "A");
+        var notifier = new RecordingNotifier();
+        using var harness = Harness(notifier: notifier);
+        var plan = await Prepare(harness, UpperRequest(["alpha.txt"]));
+        Assert.Equal(new RenameChange("Plan", plan.Id, "Preparing"), notifier.Changes[0]);
+        Assert.Equal(new RenameChange("Plan", plan.Id, "Ready"), notifier.Changes[^1]);
+
+        notifier.Changes.Clear();
+        var rename = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        Assert.Equal(new RenameChange("Run", rename.Id, "Queued"), notifier.Changes[0]);
+        Assert.Contains(new RenameChange("Run", rename.Id, "Running"), notifier.Changes);
+        Assert.Equal(new RenameChange("Run", rename.Id, "Completed"), notifier.Changes[^1]);
+
+        notifier.Changes.Clear();
+        var rollback = await harness.Service.Rollback(rename.Id, new(["0"], Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        // The parent's file statuses changed too, so its watchers must refresh.
+        Assert.Equal([new RenameChange("Run", rollback.Id, "Completed"), new RenameChange("Run", rename.Id, "Completed")],
+            notifier.Changes.TakeLast(2));
+
+        notifier.Changes.Clear();
+        await harness.Service.DeleteRun(rename.Id, default);
+        Assert.Equal([new RenameChange("Run", rename.Id, "Deleted"), new RenameChange("Run", rollback.Id, "Deleted")],
+            notifier.Changes);
+    }
+
+    [Fact]
+    public async Task NotificationFailureNeverFailsTheJob()
+    {
+        Write("alpha.txt", "A");
+        using var harness = Harness(notifier: new ThrowingNotifier());
+        var plan = await Prepare(harness, UpperRequest(["alpha.txt"]));
+        var rename = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+
+        Assert.Equal("Completed", (await harness.Service.GetRun(rename.Id, default)).Status);
+        Assert.Equal("A", Read("ALPHA.txt"));
+    }
+
+    [Fact]
     public async Task RunDetailsLinkOriginalAndRollbackRuns()
     {
         Write("alpha.txt", "A");
@@ -786,8 +829,9 @@ public sealed class RenamingWorkflowTests : IDisposable
     private static PipelineRequest Request(string[] paths, IReadOnlyList<PluginInstance> plugins)
         => new(paths.Select((path, i) => new FileInput(i.ToString(), path)).ToArray(), plugins);
     private static PipelineRequest UpperRequest(string[] paths) => Request(paths, [Plugin("upper", "case", new { mode = "upper" })]);
-    private TestHarness Harness(int moveFailure = 0, bool failAfter = false, Action<string>? boundary = null)
-        => new(Root, Data, workspace, moveFailure, failAfter, boundary);
+    private TestHarness Harness(int moveFailure = 0, bool failAfter = false, Action<string>? boundary = null,
+        IRenameNotifier? notifier = null)
+        => new(Root, Data, workspace, moveFailure, failAfter, boundary, notifier);
     private static async Task<PlanView> Prepare(TestHarness harness, PipelineRequest request)
     {
         var accepted = await harness.Service.Prepare(request, default);
@@ -822,16 +866,27 @@ public sealed class RenamingWorkflowTests : IDisposable
         public RenameStore Store { get; }
         public RenameService Service { get; }
         public FaultFileSystem? Fault { get; }
-        public TestHarness(string root, string data, string workspace, int moveFailure, bool failAfter, Action<string>? boundary)
+        public TestHarness(string root, string data, string workspace, int moveFailure, bool failAfter, Action<string>? boundary,
+            IRenameNotifier? notifier)
         {
             var filesystem = new BoundedFileSystem(root, workspace);
             Store = new RenameStore(filesystem, data, workspace, boundary);
             var metadata = new NoMetadata();
             Fault = moveFailure > 0 ? new FaultFileSystem(filesystem, moveFailure, failAfter) : null;
             IRenameFileSystem mutation = Fault is null ? filesystem : Fault;
-            Service = new RenameService(Store, mutation, new PipelineEngine(metadata, mutation), NullLogger<RenameService>.Instance);
+            Service = new RenameService(Store, mutation, new PipelineEngine(metadata, mutation), NullLogger<RenameService>.Instance,
+                notifier);
         }
         public void Dispose() => Store.Dispose();
+    }
+    private sealed class RecordingNotifier : IRenameNotifier
+    {
+        public List<RenameChange> Changes { get; } = [];
+        public void Changed(RenameChange change) => Changes.Add(change);
+    }
+    private sealed class ThrowingNotifier : IRenameNotifier
+    {
+        public void Changed(RenameChange change) => throw new InvalidOperationException("Hub unavailable.");
     }
     private sealed class NoMetadata : ITmdbMetadata
     {

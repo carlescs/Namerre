@@ -180,6 +180,9 @@ Only configured proxies/networks and ASP.NET Core's default loopback proxies are
 trusted. Keep the backend port private and trust only proxy-controlled networks;
 do not trust arbitrary clients or enable unrestricted forwarded-header trust.
 Secure cookies and CSRF protection remain enabled.
+Live progress uses a SignalR WebSocket at `/api/hubs/rename`; Traefik forwards WebSocket
+upgrades by default. If a proxy blocks them, SignalR falls back to Server-Sent Events or
+long polling, and the browser keeps refreshing active jobs every second while it cannot connect.
 For direct local access, use the `https` launch profile (`https://localhost:7151`).
 The separate Angular development server is not configured for same-origin API access;
 use the API-hosted frontend.
@@ -231,6 +234,11 @@ Review the prepared paths, then confirm execution.
 Changing the collection, plugin options, order, or metadata selections invalidates
 the previous preparation. Accepted jobs continue independently of the browser;
 their progress and outcome are available in persistent history.
+Open pages follow progress live: the server pushes a short change signal (`renameChanged`
+with `kind`, `id` and `status`) over SignalR after every durable plan or run update, and the
+browser re-reads the record from the REST API. The signal carries no file paths. The hub
+requires the same session cookie as the API and closes when the session expires; a fallback
+refresh every 15 seconds covers any missed signal.
 
 Existing targets and duplicate destinations block execution. Files can move within
 the configured root on the same filesystem, including swaps and case-only renames.

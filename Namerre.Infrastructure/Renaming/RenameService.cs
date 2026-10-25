@@ -10,7 +10,7 @@ using Namerre.Application.Renaming.Runs;
 namespace Namerre.Infrastructure.Renaming;
 
 public sealed class RenameService(RenameStore store, IRenameFileSystem fileSystem, PipelineEngine pipeline,
-    ILogger<RenameService> logger) : IRenameService
+    ILogger<RenameService> logger, IRenameNotifier? notifier = null) : IRenameService
 {
     private readonly SemaphoreSlim gate = new(1);
     private readonly SemaphoreSlim previews = new(4);
@@ -38,6 +38,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
                 System.Text.Json.JsonSerializer.Serialize(request, RenameStore.Json), RenameStore.Json)!;
             var plan = new PlanView(id, 1, "Preparing", 0, snapshot, [], [], DateTimeOffset.UtcNow);
             store.Enqueue(id, "Plan", plan.Status, plan, "Prepare");
+            Notify("Plan", id, plan.Status);
             return Accepted(id, plan.Status, true);
         }
         finally { gate.Release(); }
@@ -65,6 +66,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             var run = CreateRun(plan.Id, null, "Rename", plan.Files.Select(f =>
                 new RunFile(f.Id, f.SourcePath, f.TargetPath, Staging(f.SourcePath), f.Hash, "Pending")).ToArray());
             store.Enqueue(run.Id, "Run", run.Status, run, "Execute", operation);
+            Notify("Run", run.Id, run.Status);
             return Accepted(run.Id, run.Status);
         }
         finally { gate.Release(); }
@@ -87,7 +89,9 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         try
         {
             EnsureOperational();
-            return store.DeleteRun(id);
+            var deleted = store.DeleteRun(id);
+            foreach (var run in deleted) Notify("Run", run, "Deleted");
+            return deleted;
         }
         finally { gate.Release(); }
     }
@@ -140,6 +144,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
                 new RunFile(f.Id, f.TargetPath, f.SourcePath, Staging(f.TargetPath), f.Hash, "Pending")).ToArray();
             var run = CreateRun(parent.PlanId, parent.Id, "Rollback", files);
             store.Enqueue(run.Id, "Run", run.Status, run, "Execute", key);
+            Notify("Run", run.Id, run.Status);
             return Accepted(run.Id, run.Status);
         }
         finally { gate.Release(); }
@@ -172,6 +177,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
                 throw new RenameException("RecoveryBlocked", "Recovery evidence is ambiguous, changed or blocked. No files were moved.", 409);
             run = run with { Status = "RecoveryQueued" };
             store.RequeueRecovery(run, key);
+            Notify("Run", id, run.Status);
             return Accepted(id, run.Status);
         }
         finally { gate.Release(); }
@@ -199,15 +205,12 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
                     if (job.Value.Kind == "Prepare")
                     {
                         var plan = store.Get<PlanView>(job.Value.Id, "Plan");
-                        store.Save(plan.Id, "Plan", "Failed", plan with
-                        {
-                            Status = "Failed", Issues = [PublicIssue(exception)]
-                        });
+                        Save(plan with { Status = "Failed", Issues = [PublicIssue(exception)] });
                     }
                     else
                     {
                         var run = store.Get<RunView>(job.Value.Id, "Run");
-                        store.Save(run.Id, "Run", "RecoveryRequired", run with
+                        Save(run with
                         {
                             Status = "RecoveryRequired", Error = PublicIssue(exception).Message,
                             Files = run.Files.Select(f => FailureFile(run, f, exception)).ToArray()
@@ -239,7 +242,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         if (!preview.CanPrepare)
         {
             plan = plan with { Status = "Failed", Issues = preview.Files.SelectMany(f => f.Issues).ToArray() };
-            store.Save(id, "Plan", plan.Status, plan);
+            Save(plan);
             return;
         }
         var files = new List<PlanFile>();
@@ -251,11 +254,11 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
                 ? await fileSystem.Hash(file.SourcePath, cancellationToken) : fileSystem.Stamp(file.SourcePath);
             files.Add(new(file.Id, file.SourcePath, file.TargetPath, snapshot.Hash, snapshot.Size));
             plan = plan with { Files = files.ToArray(), CompletedFiles = files.Count };
-            store.Save(id, "Plan", plan.Status, plan);
+            Save(plan);
         }
         // Metadata confirmation records are durable snapshots; execution uses only these prepared paths and hashes.
         plan = plan with { Status = "Ready" };
-        store.Save(id, "Plan", plan.Status, plan);
+        Save(plan);
     }
 
     private async Task ExecuteJob(string id, CancellationToken cancellationToken)
@@ -282,7 +285,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             run = ChangeFile(run, file.Id, "Completed");
         }
         run = run with { Status = "Completed", Files = run.Files.Select(f => f with { Status = "Completed" }).ToArray() };
-        store.CompleteRun(run, "RolledBack");
+        Complete(run, "RolledBack");
     }
 
     private async Task Preflight(IReadOnlyList<RunFile> files, CancellationToken cancellationToken)
@@ -452,7 +455,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         }
         run = run with { Status = "Recovered", Error = null,
             Files = run.Files.Select(f => f with { Status = "Restored", Error = null, ErrorCode = null }).ToArray() };
-        store.CompleteRun(run, "Completed");
+        Complete(run, "Completed");
     }
 
     private RunView EnsureDirectories(RunView run, string fileId, string target)
@@ -544,7 +547,36 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             throw new RenameException("StorageUnavailable", "Journaling failed. Restart after restoring durable storage; retained jobs require inspection.", 503);
     }
 
-    private void Save(RunView run) => store.Save(run.Id, "Run", run.Status, run);
+    private void Save(RunView run)
+    {
+        store.Save(run.Id, "Run", run.Status, run);
+        Notify("Run", run.Id, run.Status);
+    }
+
+    private void Save(PlanView plan)
+    {
+        store.Save(plan.Id, "Plan", plan.Status, plan);
+        Notify("Plan", plan.Id, plan.Status);
+    }
+
+    private void Complete(RunView run, string parentFileStatus)
+    {
+        store.CompleteRun(run, parentFileStatus);
+        Notify("Run", run.Id, run.Status);
+        // Completing a rollback or recovery also rewrites the parent's file statuses. The run is already final,
+        // so failing to read the parent back must not surface as a job failure.
+        if (run.ParentRunId is null) return;
+        try { Notify("Run", run.ParentRunId, store.Get<RunView>(run.ParentRunId, "Run").Status); }
+        catch (Exception exception) { logger.LogWarning(exception, "Cannot read parent run {Id} for notification", run.ParentRunId); }
+    }
+
+    // Runs after the durable write; a failed push only delays clients until their fallback refresh.
+    private void Notify(string kind, string id, string status)
+    {
+        if (notifier is null) return;
+        try { notifier.Changed(new(kind, id, status)); }
+        catch (Exception exception) { logger.LogWarning(exception, "Rename change notification failed: {Kind} {Id}", kind, id); }
+    }
     private static long NextSequence(RunView run) => run.Journal.Count == 0 ? 1 : run.Journal.Max(j => j.Sequence) + 1;
     private static string NewId() => Guid.NewGuid().ToString("N");
     private static string Staging(string source) => (source.Contains('/') ? source[..(source.LastIndexOf('/') + 1)] : "")

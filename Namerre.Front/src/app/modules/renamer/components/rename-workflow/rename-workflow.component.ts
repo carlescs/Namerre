@@ -14,17 +14,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
-import {
-  catchError,
-  concatMap,
-  exhaustMap,
-  from,
-  of,
-  Subscription,
-  switchMap,
-  tap,
-  timer,
-} from 'rxjs';
+import { catchError, concatMap, from, of, Subscription, switchMap, tap } from 'rxjs';
 import {
   MatchContext,
   MatchSuggestion,
@@ -43,6 +33,7 @@ import {
   renameError,
 } from '../../rename-api';
 import { tmdbOptionsHash } from '../../options-hash';
+import { RenameEvents, refreshOn } from '../../rename-events';
 import { preferredTmdbMatch, tmdbFilename } from '../../tmdb-filename';
 import { RenamerFile } from '../../renamer-file';
 import { PluginConfigurationComponent } from '../plugin-configuration/plugin-configuration.component';
@@ -69,6 +60,7 @@ type WizardStage = 'files' | 'plugins' | 'matching' | 'preview' | 'confirmation'
 export class RenameWorkflowComponent {
   readonly files = input.required<RenamerFile[]>();
   private readonly api = inject(RenameApi);
+  private readonly events = inject(RenameEvents);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
@@ -722,11 +714,8 @@ export class RenameWorkflowComponent {
     this.polling?.unsubscribe();
     this.preparing.set(true);
     this.error.set('');
-    this.polling = timer(0, 750)
-      .pipe(
-        exhaustMap(() => this.api.plan(id)),
-        takeUntilDestroyed(this.destroyRef),
-      )
+    this.polling = refreshOn(this.events.watch('Plan', id), () => this.api.plan(id))
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (plan) => {
           if (revision !== this.revision) return;

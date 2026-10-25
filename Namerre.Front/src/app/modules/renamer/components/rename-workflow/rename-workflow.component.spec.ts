@@ -11,6 +11,8 @@ import {
   PreviewResult,
   TmdbPickerState,
 } from '../../rename-api';
+import { RenameEvents } from '../../rename-events';
+import { FakeRenameEvents } from '../../rename-events.testing';
 import { RenamerFile } from '../../renamer-file';
 import { PluginEditorComponent } from '../plugin-editor/plugin-editor.component';
 import { RenameWorkflowComponent } from './rename-workflow.component';
@@ -18,6 +20,7 @@ import { TmdbPickerComponent } from '../tmdb-picker/tmdb-picker.component';
 
 describe('RenameWorkflowComponent', () => {
   let fixture: ComponentFixture<RenameWorkflowComponent>;
+  let events: FakeRenameEvents;
   let http: HttpTestingController;
   const files: RenamerFile[] = [
     {
@@ -116,9 +119,15 @@ describe('RenameWorkflowComponent', () => {
   };
 
   beforeEach(async () => {
+    events = new FakeRenameEvents();
     await TestBed.configureTestingModule({
       imports: [RenameWorkflowComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        { provide: RenameEvents, useValue: events },
+      ],
     }).compileComponents();
     http = TestBed.inject(HttpTestingController);
     HTMLDialogElement.prototype.showModal = vi.fn();
@@ -278,7 +287,8 @@ describe('RenameWorkflowComponent', () => {
     await fixture.whenStable();
     expect(text()).toContain('hashing 0 / 1');
     expect(button('Confirm and execute').disabled).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 760));
+    events.push('Plan', 'plan-1');
+    await new Promise((resolve) => setTimeout(resolve, 300));
     http.expectOne('/api/rename-plans/plan-1').flush(ready);
     await fixture.whenStable();
     expect(text()).toContain('strong-hash');
