@@ -119,6 +119,19 @@ public sealed class RenameHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task RollbackCheckProgressForwardsOperation()
+    {
+        var expected = new RollbackCheckProgress(1, 2);
+        service.GetRollbackCheckProgress("run", "op", Token).Returns(expected);
+
+        var result = await new GetRollbackCheckProgressQueryHandler(service)
+            .Handle(new GetRollbackCheckProgressQuery("run", "op"), Token);
+
+        Assert.Same(expected, result);
+        await service.Received(1).GetRollbackCheckProgress("run", "op", Token);
+    }
+
+    [Fact]
     public async Task RollbackForwardsSelection()
     {
         var selection = new SelectionRequest(["f1"], "op");

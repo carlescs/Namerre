@@ -134,6 +134,11 @@ public sealed class RenamingWorkflowTests : IDisposable
             var selection = new SelectionRequest(["0"], Guid.NewGuid().ToString());
             using var check = await client.PostAsJsonAsync($"/api/rename-runs/{runId}/rollback-preview", selection);
             Assert.True(Assert.Single((await check.Content.ReadFromJsonAsync<SelectionPreview>())!.Files).Safe);
+            var finished = await client.GetFromJsonAsync<RollbackCheckProgress>(
+                $"/api/rename-runs/{runId}/rollback-preview/{selection.OperationId}");
+            Assert.Equal(new RollbackCheckProgress(0, 0), finished);
+            using var invalidProgress = await client.GetAsync($"/api/rename-runs/{runId}/rollback-preview/not-a-uuid");
+            Assert.Equal(HttpStatusCode.BadRequest, invalidProgress.StatusCode);
             using var rollback = await client.PostAsJsonAsync($"/api/rename-runs/{runId}/rollback", selection);
             Assert.Equal(HttpStatusCode.Accepted, rollback.StatusCode);
             var job = await rollback.Content.ReadFromJsonAsync<JobAccepted>();

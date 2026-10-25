@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Plans;
@@ -13,6 +14,8 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
 {
     private readonly SemaphoreSlim gate = new(1);
     private readonly SemaphoreSlim previews = new(4);
+    // In-flight rollback checks keyed by run and operation, so a polling client can show per-file progress.
+    private readonly ConcurrentDictionary<string, RollbackCheckProgress> rollbackChecks = new();
     private bool persistenceUnavailable;
 
     public async Task<PreviewResult> Preview(PipelineRequest request, CancellationToken cancellationToken)
@@ -96,9 +99,28 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     public async Task<SelectionPreview> RollbackPreview(string id, SelectionRequest request, CancellationToken cancellationToken)
     {
         ValidateSelection(request);
-        await gate.WaitAsync(cancellationToken);
-        try { return await BuildRollback(store.Get<RunView>(id, "Run"), request.FileIds, cancellationToken); }
-        finally { gate.Release(); }
+        var key = RollbackCheckKey(id, request.OperationId);
+        // Only the first in-flight check for an operation reports progress, so a repeated request cannot reset or remove it.
+        var owner = rollbackChecks.TryAdd(key, new(0, request.FileIds.Count));
+        Action<int>? progress = null;
+        if (owner) progress = completed => rollbackChecks[key] = new(completed, request.FileIds.Count);
+        try
+        {
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                return await BuildRollback(store.Get<RunView>(id, "Run"), request.FileIds, cancellationToken, progress);
+            }
+            finally { gate.Release(); }
+        }
+        finally { if (owner) rollbackChecks.TryRemove(key, out _); }
+    }
+
+    public Task<RollbackCheckProgress> GetRollbackCheckProgress(string id, string operationId, CancellationToken cancellationToken)
+    {
+        ValidateOperation(operationId);
+        return Task.FromResult(rollbackChecks.TryGetValue(RollbackCheckKey(id, operationId), out var progress)
+            ? progress : new RollbackCheckProgress(0, 0));
     }
 
     public async Task<JobAccepted> Rollback(string id, SelectionRequest request, CancellationToken cancellationToken)
@@ -285,7 +307,8 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         }
     }
 
-    private async Task<SelectionPreview> BuildRollback(RunView run, IReadOnlyList<string> ids, CancellationToken cancellationToken)
+    private async Task<SelectionPreview> BuildRollback(RunView run, IReadOnlyList<string> ids, CancellationToken cancellationToken,
+        Action<int>? progress = null)
     {
         var selected = ids.ToHashSet();
         var result = new List<SelectionFile>();
@@ -298,6 +321,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             if (file is null)
             {
                 result.Add(new(id, false, "", "", [new("UnknownFile", "This file is not part of the run.")]));
+                progress?.Invoke(result.Count);
                 continue;
             }
             if (run.Status != "Completed" || file.Status != "Completed" || run.Kind != "Rename")
@@ -322,6 +346,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
                 }
             }
             result.Add(new(id, issues.Count == 0, file.TargetPath, file.SourcePath, issues));
+            progress?.Invoke(result.Count);
         }
         // A blocked participant cannot be treated as a source that will vacate another selected destination.
         bool changed;
@@ -564,6 +589,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         ? new(rename.Code, rename.Message) : exception is OperationCanceledException
         ? new("Interrupted", "The job stopped at a journaled boundary. Inspect recovery before continuing.")
         : new("OperationFailed", "A filesystem or durable-storage operation failed. Inspect recovery evidence; no overwrites are allowed.");
+    private static string RollbackCheckKey(string id, string operationId) => id + ":" + operationId;
     private static void ValidateOperation(string value)
     {
         if (!Guid.TryParse(value, out _)) throw new RenameException("InvalidOperationId", "Use a UUID operationId.");

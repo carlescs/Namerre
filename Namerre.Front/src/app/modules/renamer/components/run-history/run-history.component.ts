@@ -14,7 +14,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { catchError, EMPTY, exhaustMap, Subscription, timer } from 'rxjs';
 import {
   RecoveryPreview,
   PlanView,
@@ -66,6 +66,7 @@ export class RunHistoryComponent {
   protected readonly loading = signal(false);
   protected readonly busy = signal(false);
   protected readonly checkingRollback = signal(0);
+  protected readonly checkedFiles = signal(0);
   protected readonly error = signal('');
   protected readonly actionError = signal('');
   protected readonly savedPlan = signal<PlanView | null>(null);
@@ -78,6 +79,7 @@ export class RunHistoryComponent {
   protected readonly trashIcon = faTrashCan;
   private polling?: Subscription;
   private action?: Subscription;
+  private checkProgress?: Subscription;
   private revision = 0;
   private selectionRequest: SelectionRequest | null = null;
   private recoveryOperation = '';
@@ -104,6 +106,7 @@ export class RunHistoryComponent {
     this.destroyRef.onDestroy(() => {
       this.polling?.unsubscribe();
       this.action?.unsubscribe();
+      this.checkProgress?.unsubscribe();
       this.planRequest?.unsubscribe();
       this.deleteRequest?.unsubscribe();
     });
@@ -217,6 +220,7 @@ export class RunHistoryComponent {
     this.selectionRequest = request;
     this.busy.set(true);
     this.checkingRollback.set(request.fileIds.length);
+    this.watchCheckProgress(request.operationId, revision);
     this.action = this.api
       .rollbackPreview(this.runId(), request)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -225,7 +229,7 @@ export class RunHistoryComponent {
           if (revision !== this.revision) return;
           this.rollback.set(preview);
           this.busy.set(false);
-          this.checkingRollback.set(0);
+          this.stopCheckProgress();
         },
         error: (error: unknown) => this.failAction(error, revision),
       });
@@ -344,14 +348,38 @@ export class RunHistoryComponent {
     this.recovery.set(null);
     this.selectionRequest = null;
     this.busy.set(false);
-    this.checkingRollback.set(0);
+    this.stopCheckProgress();
     this.actionError.set('');
   }
 
   private failAction(error: unknown, revision: number): void {
     if (revision !== this.revision) return;
     this.busy.set(false);
-    this.checkingRollback.set(0);
+    this.stopCheckProgress();
     this.actionError.set(renameError(error));
+  }
+
+  private watchCheckProgress(operation: string, revision: number): void {
+    this.checkedFiles.set(0);
+    // Progress is best effort: a missed poll leaves the bar where it was until the check answers.
+    this.checkProgress = timer(250, 500)
+      .pipe(
+        exhaustMap(() =>
+          this.api.rollbackCheckProgress(this.runId(), operation).pipe(catchError(() => EMPTY)),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((progress) => {
+        if (revision !== this.revision || !progress.totalFiles) return;
+        this.checkedFiles.update((checked) =>
+          Math.max(checked, Math.min(progress.completedFiles, this.checkingRollback())),
+        );
+      });
+  }
+
+  private stopCheckProgress(): void {
+    this.checkProgress?.unsubscribe();
+    this.checkingRollback.set(0);
+    this.checkedFiles.set(0);
   }
 }

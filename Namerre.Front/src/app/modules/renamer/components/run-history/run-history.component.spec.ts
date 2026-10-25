@@ -108,7 +108,49 @@ describe('RunHistoryComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/runs', 'rollback-1']);
   });
 
-  it('shows an indeterminate progress indicator while the rollback check runs', async () => {
+  it('fills the rollback check progress from the polled per-file count', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush(run);
+    await fixture.whenStable();
+    (
+      fixture.nativeElement.querySelector('thead input[type="checkbox"]') as HTMLInputElement
+    ).click();
+    await fixture.whenStable();
+    button('Check selected-file').click();
+    await fixture.whenStable();
+    const preview = http.expectOne('/api/rename-runs/run-1/rollback-preview');
+    const operation = preview.request.body.operationId;
+    const progress = () => fixture.nativeElement.querySelector('progress') as HTMLProgressElement;
+    expect(progress().value).toBe(0);
+    expect(progress().max).toBe(2);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    http
+      .expectOne(`/api/rename-runs/run-1/rollback-preview/${operation}`)
+      .flush({ completedFiles: 1, totalFiles: 2 });
+    await fixture.whenStable();
+    expect(progress().value).toBe(1);
+    expect(fixture.nativeElement.textContent).toContain('Checked 1 / 2 selected files');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    http
+      .expectOne(`/api/rename-runs/run-1/rollback-preview/${operation}`)
+      .flush({ completedFiles: 0, totalFiles: 0 });
+    await fixture.whenStable();
+    expect(progress().value).toBe(1);
+    preview.flush({
+      files: ['a', 'b'].map((id) => ({
+        id,
+        safe: true,
+        currentPath: `${id.toUpperCase()}.txt`,
+        destinationPath: `${id}.txt`,
+        issues: [],
+      })),
+    });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('progress')).toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    http.expectNone(`/api/rename-runs/run-1/rollback-preview/${operation}`);
+  });
+
+  it('shows a progress indicator while the rollback check runs', async () => {
     http.expectOne('/api/rename-runs/run-1').flush(run);
     await fixture.whenStable();
     (fixture.nativeElement.querySelector('input.file-select') as HTMLInputElement).click();
@@ -117,9 +159,10 @@ describe('RunHistoryComponent', () => {
     button('Check selected-file').click();
     await fixture.whenStable();
     const progress = fixture.nativeElement.querySelector('progress') as HTMLProgressElement;
-    expect(progress.getAttribute('aria-label')).toBe('Checking selected files for rollback');
-    expect(progress.hasAttribute('value')).toBe(false);
-    expect(fixture.nativeElement.textContent).toContain('Checking 1 selected file for rollback');
+    expect(progress.getAttribute('aria-label')).toBe('Selected files checked for rollback');
+    expect(progress.value).toBe(0);
+    expect(progress.max).toBe(1);
+    expect(fixture.nativeElement.textContent).toContain('Checked 0 / 1 selected file for rollback');
     expect(fixture.nativeElement.textContent).not.toContain('Processing the requested check');
     http
       .expectOne('/api/rename-runs/run-1/rollback-preview')
@@ -150,7 +193,7 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     expect(preview.cancelled).toBe(true);
     expect(fixture.nativeElement.querySelector('progress')).toBeNull();
-    expect(fixture.nativeElement.textContent).not.toContain('Checking 1 selected file');
+    expect(fixture.nativeElement.textContent).not.toContain('Checked 0 / 1 selected file');
     await new Promise((resolve) => setTimeout(resolve, 10));
     http.expectOne('/api/rename-runs/run-2').flush({ ...run, id: 'run-2' });
     await fixture.whenStable();
@@ -531,7 +574,9 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     button('Check selected-file').click();
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Checking 2 selected files for rollback');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Checked 0 / 2 selected files for rollback',
+    );
     http
       .expectOne('/api/rename-runs/run-1/rollback-preview')
       .flush({ title: 'Run changed.' }, { status: 409, statusText: 'Conflict' });

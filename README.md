@@ -250,7 +250,8 @@ cannot prove that a directory at that path is still the one the app created.
 Select individual files in a saved run to preview rollback. Rollback checks the
 expected current path and original content hash, never overwrites an occupied
 original path, and reports unsafe selections. A swap may require selecting all
-participating files. A hash proves content equivalence, not unique physical identity
+participating files. While a check runs, the page shows how many selected files have
+been verified (`GET /api/rename-runs/{id}/rollback-preview/{operationId}`). A hash proves content equivalence, not unique physical identity
 when different files contain identical bytes. Each rollback is saved as its own run:
 its details link back to the original run, and the original run's details list every
 rollback run created from it (`rollbackRuns` on `GET /api/rename-runs/{id}`).
