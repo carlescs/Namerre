@@ -68,10 +68,11 @@ public sealed class AuthController(AdminAccount account, IAntiforgery antiforger
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest request)
     {
-        if (!account.Verify(request.Username, request.Password))
+        var verified = account.Authenticate(request.Username, request.Password);
+        if (verified is null)
             return Unauthorized(new { message = "Invalid username or password." });
 
-        await SignInAsync();
+        await SignInAsync(verified);
         return NoContent();
     }
 
@@ -80,9 +81,10 @@ public sealed class AuthController(AdminAccount account, IAntiforgery antiforger
     public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
     {
         PasswordChangeResult result;
+        AdminCredentials? changed;
         try
         {
-            result = account.ChangePassword(request.CurrentPassword, request.NewPassword);
+            result = account.ChangePassword(request.CurrentPassword, request.NewPassword, out changed);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
             RenameException or AdministratorStorageException)
@@ -92,19 +94,16 @@ public sealed class AuthController(AdminAccount account, IAntiforgery antiforger
                 new { message = "Unable to save the password. Check the database and server permissions, then retry." });
         }
 
-        switch (result)
-        {
-            case PasswordChangeResult.InvalidPassword:
-                return StatusCode(StatusCodes.Status403Forbidden, new { message = "The current password is incorrect." });
-            case PasswordChangeResult.ManagedByConfiguration:
-                return Conflict(new { message = "The administrator is configured on the server. Update Namerre:Authentication:PasswordHash instead." });
-            case PasswordChangeResult.Conflict:
-                return Conflict(new { message = "The stored administrator changed unexpectedly. Restart Namerre and sign in again." });
-        }
+        if (result == PasswordChangeResult.InvalidPassword)
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "The current password is incorrect." });
+        if (result == PasswordChangeResult.ManagedByConfiguration)
+            return Conflict(new { message = "The administrator is configured on the server. Update Namerre:Authentication:PasswordHash instead." });
+        if (result != PasswordChangeResult.Changed || changed is null)
+            return Conflict(new { message = "The stored administrator changed unexpectedly. Restart Namerre and sign in again." });
 
         logger.LogInformation("Administrator password changed.");
         // The credential stamp changed, which signs out every other session; keep this one.
-        await SignInAsync();
+        await SignInAsync(changed);
         return NoContent();
     }
 
@@ -115,13 +114,13 @@ public sealed class AuthController(AdminAccount account, IAntiforgery antiforger
         return NoContent();
     }
 
-    private Task SignInAsync()
+    private Task SignInAsync(AdminCredentials credentials)
     {
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
         [
-            new Claim(ClaimTypes.NameIdentifier, account.Username),
-            new Claim(ClaimTypes.Name, account.Username),
-            new Claim("credential-stamp", account.Stamp)
+            new Claim(ClaimTypes.NameIdentifier, credentials.Username),
+            new Claim(ClaimTypes.Name, credentials.Username),
+            new Claim(AdminAccount.StampClaim, AdminAccount.StampOf(credentials))
         ], CookieAuthenticationDefaults.AuthenticationScheme));
         return HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal,
             new AuthenticationProperties { IsPersistent = false });
