@@ -4,6 +4,7 @@ using Namerre.Infrastructure.Folders;
 using Namerre.Application.Renaming;
 using Namerre.Infrastructure.Renaming;
 using Namerre.Authentication;
+using Namerre.Notifications;
 using Namerre.Telemetry;
 using Microsoft.Extensions.Options;
 using Namerre.Infrastructure.Configuration;
@@ -43,6 +44,8 @@ builder.Services.AddSingleton<ITmdbMetadata>(services => new TmdbMetadata(
     services.GetRequiredService<IHttpClientFactory>().CreateClient("tmdb"),
     services.GetRequiredService<IOptions<NamerreOptions>>(), services.GetRequiredService<RenameStore>()));
 builder.Services.AddSingleton<PipelineEngine>();
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<IRenameNotifier, HubRenameNotifier>();
 builder.Services.AddSingleton<RenameService>();
 builder.Services.AddSingleton<IRenameService>(services => services.GetRequiredService<RenameService>());
 builder.Services.AddHostedService<RenameWorker>();
@@ -101,6 +104,9 @@ app.UseAuthorization();
 app.UseRateLimiter();
 
 app.MapControllers().RequireAuthorization();
+// Closing on cookie expiry keeps a long-lived socket from outliving the session that opened it.
+app.MapHub<RenameHub>(RenameHub.Path, options => options.CloseOnAuthenticationExpiration = true)
+    .RequireAuthorization();
 app.MapFallback("/api/{**path}", () => Results.NotFound());
 app.MapFallbackToFile("index.html");
 

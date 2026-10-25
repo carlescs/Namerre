@@ -70,6 +70,13 @@ must satisfy `Domain/Renaming/RunTransitions.Allows`; naming rules are in `Domai
 the browser. Runs are journaled (with staging paths), not atomic; interrupted mutations are never
 blindly resumed.
 
+**Live updates.** After each durable plan/run write, `RenameService` calls `IRenameNotifier`
+(Application contract, best effort, never throws into the job). `HubRenameNotifier`
+(`Namerre.Api/Notifications`) broadcasts a `RenameChange` nudge as `renameChanged` on the
+authorized `RenameHub` (`/api/hubs/rename`). In the frontend, `rename-events.ts` (`RenameEvents.watch`
+and `refreshOn`) re-reads records over REST on each nudge, falling back to polling while
+disconnected; specs substitute `FakeRenameEvents` from `rename-events.testing.ts`.
+
 **Filesystem safety.** All path access goes through `BoundedFileSystem` (`IRenameFileSystem`) and
 `ServerFolderBrowser` (`IFolderBrowser`), rooted at `Namerre:RootPath`. Never allow escape from
 the root or traversal via symlinks/junctions; unsupported filesystems fail closed; no overwrites

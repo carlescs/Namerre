@@ -10,12 +10,15 @@ import {
 } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 import { RunView } from '../../rename-api';
+import { RenameEvents } from '../../rename-events';
+import { FakeRenameEvents } from '../../rename-events.testing';
 import { RunHistoryComponent } from './run-history.component';
 
 describe('RunHistoryComponent', () => {
   let fixture: ComponentFixture<RunHistoryComponent>;
   let http: HttpTestingController;
   let params: BehaviorSubject<ParamMap>;
+  let events: FakeRenameEvents;
   const run: RunView = {
     id: 'run-1',
     planId: 'plan-1',
@@ -47,6 +50,7 @@ describe('RunHistoryComponent', () => {
 
   beforeEach(async () => {
     params = new BehaviorSubject(convertToParamMap({ id: 'run-1' }));
+    events = new FakeRenameEvents();
     await TestBed.configureTestingModule({
       imports: [RunHistoryComponent],
       providers: [
@@ -54,6 +58,7 @@ describe('RunHistoryComponent', () => {
         provideHttpClientTesting(),
         provideRouter([]),
         { provide: ActivatedRoute, useValue: { paramMap: params.asObservable() } },
+        { provide: RenameEvents, useValue: events },
       ],
     }).compileComponents();
     http = TestBed.inject(HttpTestingController);
@@ -487,16 +492,36 @@ describe('RunHistoryComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Cannot reach the server.');
   });
 
-  it('keeps polling active runs until they settle', async () => {
+  it('re-reads active runs on pushed changes until they settle', async () => {
     http.expectOne('/api/rename-runs/run-1').flush({ ...run, status: 'Running' });
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('Status: Running.');
-    await new Promise((resolve) => setTimeout(resolve, 1050));
+    events.push('Run', 'run-2');
+    events.push('Plan', 'run-1');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    http.expectNone('/api/rename-runs/run-1');
+    events.push('Run', 'run-1');
+    events.push('Run', 'run-1');
+    await new Promise((resolve) => setTimeout(resolve, 10));
     http.expectOne('/api/rename-runs/run-1').flush(run);
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('Status: Completed.');
-    await new Promise((resolve) => setTimeout(resolve, 1050));
+    events.push('Run', 'run-1');
+    await new Promise((resolve) => setTimeout(resolve, 300));
     http.expectNone('/api/rename-runs/run-1');
+  });
+
+  it('refreshes the history page when any run changes', async () => {
+    params.next(convertToParamMap({}));
+    http.expectOne('/api/rename-runs/run-1');
+    const page = { items: [], page: 1, pageSize: 20, hasMore: false };
+    http.expectOne('/api/rename-runs?page=1&pageSize=20').flush(page);
+    await fixture.whenStable();
+    events.push('Run', 'run-9', 'Deleted');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    http.expectOne('/api/rename-runs?page=1&pageSize=20').flush({ ...page, items: [run] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Completed');
   });
 
   it('reports a failed rollback check and allows checking again', async () => {
