@@ -51,4 +51,14 @@ describe('TMDB template preview', () => {
       path: 'A- (B)-.mkv',
     });
   });
+
+  it('rejects empty metadata and prefixes reserved names like the server', () => {
+    const named = (title: string) =>
+      tmdbTemplatePreview({ nameTemplate: '[{title}]' }, { ...sampleMovie, title });
+    expect(named(' . ').error).toBe('TMDB returned text that cannot form a filename.');
+    expect(named('CON')).toEqual({ path: '[_CON].mkv' });
+    expect(named('com1.txt')).toEqual({ path: '[_com1.txt].mkv' });
+    expect(named('.namerre-stage')).toEqual({ path: '[_.namerre-stage].mkv' });
+    expect(named('Console')).toEqual({ path: '[Console].mkv' });
+  });
 });

@@ -87,8 +87,12 @@ function render(template: string, match: TmdbMatch): string {
 }
 
 function metadataText(value: string): string {
-  return [...value]
+  const result = [...value]
     .map((c) => (c === '{' ? '(' : c === '}' ? ')' : c < ' ' || '<>:"/\\|?*'.includes(c) ? '-' : c))
     .join('')
     .replace(/[ .]+$/, '');
+  if (!result) throw new Error('TMDB returned text that cannot form a filename.');
+  return /^\.namerre-/i.test(result) || /^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\.|$)/i.test(result)
+    ? '_' + result
+    : result;
 }
