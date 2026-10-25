@@ -302,6 +302,24 @@ describe('RenameWorkflowComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/runs', 'run-1']);
   });
 
+  it('keeps emptied folders by default', async () => {
+    await showPreview();
+    button('Prepare immutable').click();
+    expect(http.expectOne('/api/rename-plans').request.body.deleteEmptyFolders).toBe(false);
+  });
+
+  it('prepares a plan that deletes emptied folders when requested', async () => {
+    await showPreview();
+    const folders = fixture.nativeElement.querySelector(
+      '#delete-empty-folders',
+    ) as HTMLInputElement;
+    expect(folders.checked).toBe(false);
+    folders.click();
+    await fixture.whenStable();
+    button('Prepare immutable').click();
+    expect(http.expectOne('/api/rename-plans').request.body.deleteEmptyFolders).toBe(true);
+  });
+
   it('prepares a quick-check plan without content hashing when requested', async () => {
     await showPreview();
     const quick = fixture.nativeElement.querySelector('#quick-check') as HTMLInputElement;

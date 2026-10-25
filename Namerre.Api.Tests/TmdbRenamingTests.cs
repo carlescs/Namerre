@@ -94,6 +94,84 @@ public sealed class TmdbRenamingTests : IDisposable
             Assert.DoesNotContain("server-only-secret", Encoding.UTF8.GetString(File.ReadAllBytes(file)));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EmptiedFoldersAreDeletedOnlyWhenRequested(bool deleteEmptyFolders)
+    {
+        Directory.CreateDirectory(Path.Combine(Root, "Downloads", "Release", "Extras"));
+        File.WriteAllText(Path.Combine(Root, "Downloads", "Release", "input.mkv"), "content");
+        File.WriteAllText(Path.Combine(Root, "Downloads", "keep.txt"), "kept");
+        var filesystem = new BoundedFileSystem(Root, workspace);
+        using var store = new RenameStore(filesystem, Data, workspace);
+        using var handler = new StubHandler(_ => Response("""{"id":42,"title":"A Movie","release_date":"2001-02-03"}"""));
+        using var client = new HttpClient(handler);
+        var metadata = new TmdbMetadata(client, Config("secret"), store);
+        var options = JsonSerializer.SerializeToElement(new { nameTemplate = "", changeFolder = true,
+            folderTemplate = "{title} ({year})" });
+        var match = Assert.Single((await metadata.Search(new("movie", "", Id: 42, FileId: "file", InstanceId: "tmdb1",
+            InputPath: "Downloads/Release/input.mkv", OptionsHash: PipelineEngine.OptionsHash(options)), default)).Matches);
+        var service = new RenameService(store, filesystem, new PipelineEngine(metadata, filesystem), NullLogger<RenameService>.Instance);
+        var prepared = await service.Prepare(new([new("file", "Downloads/Release/input.mkv")],
+            [new("tmdb1", "tmdb", 1, true, options)], [new("file", "tmdb1", "Downloads/Release/input.mkv",
+                PipelineEngine.OptionsHash(options), match.ConfirmationToken!)], DeleteEmptyFolders: deleteEmptyFolders), default);
+        await service.ProcessNext(default);
+        var job = await service.Execute(prepared.Id, new(1, Guid.NewGuid().ToString()), default);
+        await service.ProcessNext(default);
+
+        var run = await service.GetRun(job.Id, default);
+        Assert.Equal("Completed", run.Status);
+        Assert.Equal(deleteEmptyFolders, run.DeleteEmptyFolders);
+        Assert.Equal("content", File.ReadAllText(Path.Combine(Root, "A Movie (2001)", "A Movie (2001).mkv")));
+        // A nested folder that was already empty is not something the run emptied.
+        Assert.True(Directory.Exists(Path.Combine(Root, "Downloads", "Release", "Extras")));
+        Assert.True(File.Exists(Path.Combine(Root, "Downloads", "keep.txt")));
+        Assert.DoesNotContain(run.Journal, j => j.Kind == "DeleteDirectory");
+
+        var second = await service.Rollback(job.Id, new(["file"], Guid.NewGuid().ToString()), default);
+        await service.ProcessNext(default);
+        var rollback = await service.GetRun(second.Id, default);
+        Assert.Equal("Completed", rollback.Status);
+        Assert.Equal("content", File.ReadAllText(Path.Combine(Root, "Downloads", "Release", "input.mkv")));
+        Assert.Equal(!deleteEmptyFolders, Directory.Exists(Path.Combine(Root, "A Movie (2001)")));
+        Assert.Equal(deleteEmptyFolders, rollback.Journal.Any(j => j.Kind == "DeleteDirectory"
+            && j.FromPath == "A Movie (2001)" && j.Status == "Completed"));
+    }
+
+    [Fact]
+    public async Task EmptiedSourceFoldersAreDeletedDeepestFirstButNeverTheRootOrOccupiedFolders()
+    {
+        File.WriteAllText(Path.Combine(Root, "input.mkv"), "root file");
+        Directory.CreateDirectory(Path.Combine(Root, "Downloads", "Release"));
+        File.WriteAllText(Path.Combine(Root, "Downloads", "Release", "input.mkv"), "content");
+        var filesystem = new BoundedFileSystem(Root, workspace);
+        using var store = new RenameStore(filesystem, Data, workspace);
+        using var handler = new StubHandler(_ => Response("""{"id":42,"title":"A Movie","release_date":"2001-02-03"}"""));
+        using var client = new HttpClient(handler);
+        var metadata = new TmdbMetadata(client, Config("secret"), store);
+        var options = JsonSerializer.SerializeToElement(new { nameTemplate = "", changeFolder = true,
+            folderTemplate = "{title} ({year})" });
+        var hash = PipelineEngine.OptionsHash(options);
+        var token = Assert.Single((await metadata.Search(new("movie", "", Id: 42, FileId: "file", InstanceId: "tmdb1",
+            InputPath: "Downloads/Release/input.mkv", OptionsHash: hash), default)).Matches).ConfirmationToken!;
+        var service = new RenameService(store, filesystem, new PipelineEngine(metadata, filesystem), NullLogger<RenameService>.Instance);
+        var prepared = await service.Prepare(new([new("file", "Downloads/Release/input.mkv")],
+            [new("tmdb1", "tmdb", 1, true, options)], [new("file", "tmdb1", "Downloads/Release/input.mkv", hash, token)],
+            DeleteEmptyFolders: true), default);
+        await service.ProcessNext(default);
+        var job = await service.Execute(prepared.Id, new(1, Guid.NewGuid().ToString()), default);
+        await service.ProcessNext(default);
+
+        var run = await service.GetRun(job.Id, default);
+        Assert.Equal("Completed", run.Status);
+        Assert.Equal(["Downloads/Release", "Downloads"], run.Journal.Where(j => j.Kind == "DeleteDirectory")
+            .Select(j => j.FromPath));
+        Assert.All(run.Journal, j => Assert.Equal("Completed", j.Status));
+        Assert.False(Directory.Exists(Path.Combine(Root, "Downloads")));
+        Assert.True(Directory.Exists(Root));
+        Assert.Equal("root file", File.ReadAllText(Path.Combine(Root, "input.mkv")));
+    }
+
     [Fact]
     public async Task EpisodeConfirmationUsesExplicitShowSeasonEpisodeAndAppropriateDefaultName()
     {

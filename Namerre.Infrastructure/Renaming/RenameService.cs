@@ -64,7 +64,8 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             if (plan.Status != "Ready")
                 throw new RenameException("PlanNotReady", "The plan is not ready for execution.", 409);
             var run = CreateRun(plan.Id, null, "Rename", plan.Files.Select(f =>
-                new RunFile(f.Id, f.SourcePath, f.TargetPath, Staging(f.SourcePath), f.Hash, "Pending")).ToArray());
+                new RunFile(f.Id, f.SourcePath, f.TargetPath, Staging(f.SourcePath), f.Hash, "Pending")).ToArray(),
+                plan.Pipeline.DeleteEmptyFolders);
             store.Enqueue(run.Id, "Run", run.Status, run, "Execute", operation);
             Notify("Run", run.Id, run.Status);
             return Accepted(run.Id, run.Status);
@@ -142,7 +143,8 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
                 throw new RenameException("RollbackBlocked", "No selected files can safely be rolled back. Inspect the rollback preview.", 409);
             var files = parent.Files.Where(f => safe.Contains(f.Id)).Select(f =>
                 new RunFile(f.Id, f.TargetPath, f.SourcePath, Staging(f.TargetPath), f.Hash, "Pending")).ToArray();
-            var run = CreateRun(parent.PlanId, parent.Id, "Rollback", files);
+            // A rollback inherits the cleanup choice, so folders the rename created and filled are removed again.
+            var run = CreateRun(parent.PlanId, parent.Id, "Rollback", files, parent.DeleteEmptyFolders);
             store.Enqueue(run.Id, "Run", run.Status, run, "Execute", key);
             Notify("Run", run.Id, run.Status);
             return Accepted(run.Id, run.Status);
@@ -284,6 +286,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             run = MoveJournaled(run, file.Id, file.StagingPath, file.TargetPath, "Place");
             run = ChangeFile(run, file.Id, "Completed");
         }
+        if (run.DeleteEmptyFolders) run = DeleteEmptyFolders(run, changed);
         run = run with { Status = "Completed", Files = run.Files.Select(f => f with { Status = "Completed" }).ToArray() };
         Complete(run, "RolledBack");
     }
@@ -376,7 +379,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             var candidates = new List<string>();
             var issues = new List<RenameIssue>();
             var paths = new[] { file.SourcePath, file.StagingPath, file.TargetPath }
-                .Concat(run.Journal.Where(j => j.FileId == file.Id && j.Kind != "CreateDirectory")
+                .Concat(run.Journal.Where(j => j.FileId == file.Id && !IsDirectoryEntry(j.Kind))
                     .SelectMany(j => new[] { j.FromPath, j.ToPath })).Where(p => p.Length > 0).Distinct().ToArray();
             var unique = new List<string>();
             foreach (var path in paths)
@@ -472,6 +475,40 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         return run;
     }
 
+    // Runs once every file is placed. Each folder is checked deepest first, so a parent emptied by removing its
+    // only child folder goes too; the root itself is never a candidate. Cleanup is best effort: a folder that is
+    // not empty or cannot be deleted stays, and the run still completes because every file reached its target.
+    private RunView DeleteEmptyFolders(RunView run, IReadOnlyList<RunFile> moved)
+    {
+        var folders = moved.SelectMany(f => Ancestors(f.SourcePath).Select(folder => (Folder: folder, FileId: f.Id)))
+            .DistinctBy(entry => entry.Folder, StringComparer.Ordinal)
+            .OrderByDescending(entry => entry.Folder.Count(c => c == '/'));
+        foreach (var (folder, fileId) in folders)
+        {
+            try
+            {
+                if (!fileSystem.IsEmptyDirectory(folder)) continue;
+            }
+            catch (Exception exception) when (exception is RenameException or IOException or UnauthorizedAccessException)
+            {
+                logger.LogWarning(exception, "Cannot inspect folder {Folder} for cleanup", folder);
+                continue;
+            }
+            var sequence = NextSequence(run);
+            run = run with { Journal = run.Journal.Append(new JournalEntry(sequence, "DeleteDirectory", fileId, folder, "", "Intent")).ToArray() };
+            Save(run);
+            var status = "Skipped";
+            try { if (fileSystem.DeleteEmptyDirectory(folder)) status = "Completed"; }
+            catch (Exception exception) when (exception is RenameException or IOException or UnauthorizedAccessException)
+            {
+                logger.LogWarning(exception, "Cannot delete empty folder {Folder}", folder);
+                status = "Failed";
+            }
+            run = CompleteJournal(run, sequence, status);
+        }
+        return run;
+    }
+
     private RunView MoveJournaled(RunView run, string fileId, string source, string destination, string kind)
     {
         var sequence = NextSequence(run);
@@ -486,9 +523,9 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         return CompleteJournal(run, sequence);
     }
 
-    private RunView CompleteJournal(RunView run, long sequence)
+    private RunView CompleteJournal(RunView run, long sequence, string status = "Completed")
     {
-        run = run with { Journal = run.Journal.Select(j => j.Sequence == sequence ? j with { Status = "Completed" } : j).ToArray() };
+        run = run with { Journal = run.Journal.Select(j => j.Sequence == sequence ? j with { Status = status } : j).ToArray() };
         Save(run);
         return run;
     }
@@ -524,7 +561,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
 
     private static RunFile FailureFile(RunView run, RunFile file, Exception exception)
     {
-        var last = run.Journal.LastOrDefault(j => j.FileId == file.Id && j.Kind != "CreateDirectory");
+        var last = run.Journal.LastOrDefault(j => j.FileId == file.Id && !IsDirectoryEntry(j.Kind));
         var failedId = (exception as RenameException)?.FileId ?? exception.Data["fileId"] as string;
         var status = last?.Status == "Intent" ? "Uncertain"
             : last?.Kind is "Place" ? "Completed"
@@ -581,8 +618,16 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     private static string NewId() => Guid.NewGuid().ToString("N");
     private static string Staging(string source) => (source.Contains('/') ? source[..(source.LastIndexOf('/') + 1)] : "")
         + ".namerre-stage-" + NewId();
-    private static RunView CreateRun(string planId, string? parent, string kind, IReadOnlyList<RunFile> files)
-        => new(NewId(), planId, parent, kind, "Queued", files, [], DateTimeOffset.UtcNow);
+    private static RunView CreateRun(string planId, string? parent, string kind, IReadOnlyList<RunFile> files,
+        bool deleteEmptyFolders)
+        => new(NewId(), planId, parent, kind, "Queued", files, [], DateTimeOffset.UtcNow, DeleteEmptyFolders: deleteEmptyFolders);
+    /// <summary>Folder journal entries record directory changes, never file locations, so recovery ignores them.</summary>
+    internal static bool IsDirectoryEntry(string kind) => kind is "CreateDirectory" or "DeleteDirectory";
+    private static IEnumerable<string> Ancestors(string path)
+    {
+        for (var end = path.LastIndexOf('/'); end > 0; end = path.LastIndexOf('/', end - 1))
+            yield return path[..end];
+    }
     private static JobAccepted Accepted(string id, string status, bool plan = false)
         => new(id, status, "/api/" + (plan ? "rename-plans/" : "rename-runs/") + id);
     private static RenameIssue PublicIssue(Exception exception) => exception is RenameException rename

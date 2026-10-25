@@ -29,6 +29,13 @@ describe('RenameConfirmationComponent', () => {
     button.click();
     expect(confirm).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('Movie.mkv');
+    expect(fixture.nativeElement.textContent).not.toContain('Folders left empty');
+    fixture.componentRef.setInput('plan', {
+      ...plan,
+      pipeline: { ...plan.pipeline, deleteEmptyFolders: true },
+    });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Folders left empty');
     fixture.componentRef.setInput('canConfirm', true);
     fixture.componentRef.setInput('canRetry', true);
     await fixture.whenStable();

@@ -115,6 +115,7 @@ export class RenameWorkflowComponent {
   protected readonly plugins = signal<PluginInstance[]>([]);
   protected readonly selections = signal<MetadataSelection[]>([]);
   protected readonly verifyContent = signal(true);
+  protected readonly deleteEmptyFolders = signal(false);
   protected readonly preview = signal<PreviewResult | null>(null);
   protected readonly plan = signal<PlanView | null>(null);
   protected readonly matching = signal<MatchContext | null>(null);
@@ -647,6 +648,7 @@ export class RenameWorkflowComponent {
       plugins: this.plugins(),
       selections: this.selections(),
       verifyContent: this.verifyContent(),
+      deleteEmptyFolders: this.deleteEmptyFolders(),
     };
   }
 

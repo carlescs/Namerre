@@ -170,14 +170,20 @@ public sealed class BoundedFileSystem(string? configuredRoot, string basePath) :
         FlushDirectory(parent);
     }
 
-    public void DeleteEmptyDirectory(string path)
+    public bool IsEmptyDirectory(string path)
     {
         var full = Resolve(path);
-        if (Directory.Exists(full) && !Directory.EnumerateFileSystemEntries(full).Any())
-        {
-            Directory.Delete(full, false);
-            FlushDirectory(Path.GetDirectoryName(full)!);
-        }
+        return Directory.Exists(full) && !Directory.EnumerateFileSystemEntries(full).Any();
+    }
+
+    public bool DeleteEmptyDirectory(string path)
+    {
+        if (!IsEmptyDirectory(path)) return false;
+        var full = Resolve(path);
+        // Non-recursive: an entry that appeared since the check makes the delete fail instead of removing it.
+        Directory.Delete(full, false);
+        FlushDirectory(Path.GetDirectoryName(full)!);
+        return true;
     }
 
     public string Resolve(string path, bool allowInternal = false)

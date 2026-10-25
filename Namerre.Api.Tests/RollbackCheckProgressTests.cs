@@ -75,7 +75,8 @@ public sealed class RollbackCheckProgressTests : IDisposable
         public void Move(string source, string destination) => inner.Move(source, destination);
         public IReadOnlyList<string> MissingDirectories(string path) => inner.MissingDirectories(path);
         public void CreateDirectory(string path) => inner.CreateDirectory(path);
-        public void DeleteEmptyDirectory(string path) => inner.DeleteEmptyDirectory(path);
+        public bool IsEmptyDirectory(string path) => inner.IsEmptyDirectory(path);
+        public bool DeleteEmptyDirectory(string path) => inner.DeleteEmptyDirectory(path);
 
         public async Task<(string Hash, long Size)> Hash(string path, CancellationToken cancellationToken)
         {
