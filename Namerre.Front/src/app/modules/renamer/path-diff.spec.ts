@@ -32,6 +32,15 @@ describe('path-diff', () => {
     });
   });
 
+  it('keeps astral characters whole', () => {
+    expect(diffNames('😀.mkv', '😁.mkv')).toEqual({
+      prefix: '',
+      removed: '😀',
+      added: '😁',
+      suffix: '.mkv',
+    });
+  });
+
   it('reports folder and name changes separately', () => {
     const moved = describeChange('a/x.mkv', 'b/x.mkv');
     expect(moved.folderChanged).toBe(true);

@@ -30,6 +30,14 @@ describe('NameChangeComponent', () => {
     fixture.destroy();
   });
 
+  it('renders names exactly, keeping repeated spaces', async () => {
+    const fixture = await render('A  B.mkv', 'A B.mkv', 'from');
+    const name = fixture.nativeElement.querySelector('div') as HTMLElement;
+    expect(name.textContent).toBe('A  B.mkv');
+    expect(name.classList).toContain('whitespace-pre-wrap');
+    fixture.destroy();
+  });
+
   it('does not highlight or mention a folder when nothing changes', async () => {
     const fixture = await render('a.mkv', 'a.mkv', 'to');
     expect(fixture.nativeElement.querySelector('mark')).toBeNull();

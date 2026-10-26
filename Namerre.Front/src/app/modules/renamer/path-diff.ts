@@ -28,23 +28,28 @@ export function splitPath(path: string): SplitPath {
     : { folder: path.slice(0, separator), name: path.slice(separator + 1) };
 }
 
-/** Finds the common start and end of two names; what is left in between is the change. */
+/**
+ * Finds the common start and end of two names; what is left in between is the change. Works on
+ * whole code points so a changed emoji or other astral character is never split in two.
+ */
 export function diffNames(oldName: string, newName: string): NameDiff {
-  const shortest = Math.min(oldName.length, newName.length);
+  const before = Array.from(oldName);
+  const after = Array.from(newName);
+  const shortest = Math.min(before.length, after.length);
   let start = 0;
-  while (start < shortest && oldName[start] === newName[start]) start++;
+  while (start < shortest && before[start] === after[start]) start++;
   let end = 0;
   while (
     end < shortest - start &&
-    oldName[oldName.length - 1 - end] === newName[newName.length - 1 - end]
+    before[before.length - 1 - end] === after[after.length - 1 - end]
   ) {
     end++;
   }
   return {
-    prefix: oldName.slice(0, start),
-    removed: oldName.slice(start, oldName.length - end),
-    added: newName.slice(start, newName.length - end),
-    suffix: oldName.slice(oldName.length - end),
+    prefix: before.slice(0, start).join(''),
+    removed: before.slice(start, before.length - end).join(''),
+    added: after.slice(start, after.length - end).join(''),
+    suffix: before.slice(before.length - end).join(''),
   };
 }
 

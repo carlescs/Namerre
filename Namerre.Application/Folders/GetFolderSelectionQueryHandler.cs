@@ -19,9 +19,14 @@ internal sealed class GetFolderSelectionQueryHandler(IFolderBrowser browser)
             folders.Add(folder);
             if (request.IncludeSubfolders)
             {
+                // Hidden folders are pruned before browsing, so an unreadable one such as
+                // "System Volume Information" cannot fail a selection that would skip it anyway.
                 foreach (var directory in folder.Directories)
                 {
-                    paths.Enqueue(directory.Path);
+                    if (request.IncludeHidden || !HiddenEntries.IsHidden(directory.Name))
+                    {
+                        paths.Enqueue(directory.Path);
+                    }
                 }
             }
         }

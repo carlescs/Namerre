@@ -72,7 +72,11 @@ export class FolderPickerComponent {
     this.selecting.set(true);
     this.request = this.http
       .get<FolderListing[]>('/api/folders/selection', {
-        params: { path: selected.path, includeSubfolders: this.includeSubfolders() },
+        params: {
+          path: selected.path,
+          includeSubfolders: this.includeSubfolders(),
+          includeHidden: this.showHidden(),
+        },
       })
       .pipe(
         takeUntilDestroyed(this.destroyRef),

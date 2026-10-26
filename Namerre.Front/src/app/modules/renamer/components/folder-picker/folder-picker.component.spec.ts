@@ -160,7 +160,7 @@ describe('FolderPickerComponent', () => {
     includeSubfolders().click();
     clickButton('Select folder');
     http
-      .expectOne('/api/folders/selection?path=Show&includeSubfolders=true')
+      .expectOne('/api/folders/selection?path=Show&includeSubfolders=true&includeHidden=false')
       .flush([show, season, metadata]);
     await fixture.whenStable();
     expect(selected).toEqual([[{ ...show, files: [] }, season]]);
@@ -169,7 +169,7 @@ describe('FolderPickerComponent', () => {
     showHidden().click();
     clickButton('Select folder');
     http
-      .expectOne('/api/folders/selection?path=Show&includeSubfolders=true')
+      .expectOne('/api/folders/selection?path=Show&includeSubfolders=true&includeHidden=true')
       .flush([show, season, metadata]);
     await fixture.whenStable();
     expect(selected[1]).toEqual([show, season, metadata]);
@@ -276,7 +276,7 @@ describe('FolderPickerComponent', () => {
     };
     http.expectNone('/api/folders?path=Movies');
     http
-      .expectOne('/api/folders/selection?path=&includeSubfolders=true')
+      .expectOne('/api/folders/selection?path=&includeSubfolders=true&includeHidden=false')
       .flush([root, movies, classics]);
     await fixture.whenStable();
     expect(selected).toEqual([[root, movies, classics]]);
@@ -301,7 +301,7 @@ describe('FolderPickerComponent', () => {
       files: [],
     };
     http
-      .expectOne('/api/folders/selection?path=&includeSubfolders=true')
+      .expectOne('/api/folders/selection?path=&includeSubfolders=true&includeHidden=false')
       .flush([folders, movies, empty]);
     await fixture.whenStable();
     expect(selected).toEqual([[folders, movies, empty]]);
@@ -312,7 +312,7 @@ describe('FolderPickerComponent', () => {
     includeSubfolders().click();
     clickButton('Select folder');
     http
-      .expectOne('/api/folders/selection?path=&includeSubfolders=true')
+      .expectOne('/api/folders/selection?path=&includeSubfolders=true&includeHidden=false')
       .flush({}, { status: 403, statusText: 'Forbidden' });
     await fixture.whenStable();
     expect(dialog.open).toBe(true);
@@ -322,7 +322,9 @@ describe('FolderPickerComponent', () => {
 
     clickButton('Try again');
     const movies: FolderListing = { ...root, path: 'Movies', parentPath: '', directories: [] };
-    http.expectOne('/api/folders/selection?path=&includeSubfolders=true').flush([root, movies]);
+    http
+      .expectOne('/api/folders/selection?path=&includeSubfolders=true&includeHidden=false')
+      .flush([root, movies]);
     await fixture.whenStable();
     expect(selected).toEqual([[root, movies]]);
     expect(dialog.open).toBe(false);
@@ -334,7 +336,9 @@ describe('FolderPickerComponent', () => {
       await openPicker();
       includeSubfolders().click();
       clickButton('Select folder');
-      const request = http.expectOne('/api/folders/selection?path=&includeSubfolders=true');
+      const request = http.expectOne(
+        '/api/folders/selection?path=&includeSubfolders=true&includeHidden=false',
+      );
       if (action === 'Cancel') {
         clickButton('Cancel');
       } else {
@@ -353,7 +357,9 @@ describe('FolderPickerComponent', () => {
     await openPicker();
     includeSubfolders().click();
     clickButton('Select folder');
-    const request = http.expectOne('/api/folders/selection?path=&includeSubfolders=true');
+    const request = http.expectOne(
+      '/api/folders/selection?path=&includeSubfolders=true&includeHidden=false',
+    );
     fixture.destroy();
     expect(request.cancelled).toBe(true);
     expect(selected).toEqual([]);
@@ -376,7 +382,9 @@ describe('FolderPickerComponent', () => {
   function confirmFolder(folder: FolderListing): void {
     clickButton('Select folder');
     http
-      .expectOne(`/api/folders/selection?path=${folder.path}&includeSubfolders=false`)
+      .expectOne(
+        `/api/folders/selection?path=${folder.path}&includeSubfolders=false&includeHidden=false`,
+      )
       .flush([folder]);
   }
 
