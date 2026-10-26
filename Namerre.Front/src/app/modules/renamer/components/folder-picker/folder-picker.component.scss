@@ -126,7 +126,8 @@ td {
   box-shadow: none;
 }
 
-// Anchored to the whole row, so the bubble never runs off the dialog's edges.
+// Anchored to the whole row, so the bubble never runs off the dialog's edges. Visibility comes
+// only from the component's state, so Escape always knows whether a tooltip is showing.
 .tip {
   position: absolute;
   bottom: 100%;
@@ -160,7 +161,6 @@ td {
   }
 }
 
-.tip-row:has(.tip-trigger:hover, .tip-trigger:focus-visible, .tip:hover) .tip,
 .tip.tip-open {
   visibility: visible;
   opacity: 1;

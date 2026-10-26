@@ -42,6 +42,11 @@ export class FolderPickerComponent {
   protected readonly infoIcon = faCircleInfo;
   /** Tooltip opened by a click or tap; hover and keyboard focus open them through CSS. */
   protected readonly openTip = signal<string | null>(null);
+  private tipTimer?: ReturnType<typeof setTimeout>;
+
+  constructor() {
+    this.destroyRef.onDestroy(() => clearTimeout(this.tipTimer));
+  }
   protected readonly directories = computed(() => {
     const directories = this.browsingFolder()?.directories ?? [];
     return this.showHidden()
@@ -62,8 +67,20 @@ export class FolderPickerComponent {
     this.openFolder(this.selectedFolder?.path ?? '');
   }
 
-  protected toggleTip(tip: string): void {
-    this.openTip.update((open) => (open === tip ? null : tip));
+  /** Shows a tooltip on hover, keyboard focus or a click/tap; the component alone decides. */
+  protected showTip(tip: string): void {
+    clearTimeout(this.tipTimer);
+    this.openTip.set(tip);
+  }
+
+  /** Hides a tooltip on blur, or shortly after the pointer leaves so it can reach the bubble. */
+  protected hideTip(tip: string, delayed = false): void {
+    clearTimeout(this.tipTimer);
+    const hide = () => {
+      if (this.openTip() === tip) this.openTip.set(null);
+    };
+    if (delayed) this.tipTimer = setTimeout(hide, 150);
+    else hide();
   }
 
   protected closeTip(event: Event): void {
@@ -71,7 +88,17 @@ export class FolderPickerComponent {
     // Escape closes an open tooltip first, without also closing the dialog.
     event.preventDefault();
     event.stopPropagation();
+    clearTimeout(this.tipTimer);
     this.openTip.set(null);
+  }
+
+  /** The dialog's own Escape handling: an open tooltip is dismissed before the picker closes. */
+  protected onCancel(event: Event): void {
+    if (this.openTip()) {
+      this.closeTip(event);
+      return;
+    }
+    this.cancelPicker();
   }
 
   protected cancelPicker(): void {

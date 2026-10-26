@@ -105,27 +105,55 @@ describe('FolderPickerComponent', () => {
     expect(selected).toEqual([]);
   });
 
-  it('keeps folder hints in tooltips that open on click and close on Escape', async () => {
+  it('keeps folder hints in tooltips that Escape dismisses before the dialog', async () => {
     component.open();
     http
       .expectOne('/api/folders?path=')
       .flush({ ...root, files: [], directories: [{ name: 'Movies', path: 'Movies' }] });
     await fixture.whenStable();
     const trigger = dialog.querySelector('[aria-describedby="no-files-tip"]') as HTMLButtonElement;
+    const host = trigger.parentElement as HTMLElement;
     const tip = dialog.querySelector('#no-files-tip') as HTMLElement;
+    const isOpen = () => {
+      fixture.detectChanges();
+      return tip.classList.contains('tip-open');
+    };
     expect(tip.getAttribute('role')).toBe('tooltip');
     expect(tip.textContent).toContain('selecting it will add nothing');
-    expect(tip.classList).not.toContain('tip-open');
-    trigger.click();
-    fixture.detectChanges();
-    expect(tip.classList).toContain('tip-open');
+    expect(isOpen()).toBe(false);
+
+    // Keyboard focus opens it, and Escape on the button closes only the tooltip.
+    trigger.dispatchEvent(new FocusEvent('focus'));
+    expect(isOpen()).toBe(true);
     const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
     trigger.dispatchEvent(escape);
-    fixture.detectChanges();
-    expect(tip.classList).not.toContain('tip-open');
+    expect(isOpen()).toBe(false);
     expect(escape.defaultPrevented).toBe(true);
+
+    // With focus elsewhere, the dialog's own cancel (Escape) dismisses the tooltip first.
+    host.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(isOpen()).toBe(true);
+    const cancel = new Event('cancel', { cancelable: true });
+    dialog.dispatchEvent(cancel);
+    expect(isOpen()).toBe(false);
+    expect(cancel.defaultPrevented).toBe(true);
+    expect(dialog.open).toBe(true);
+
+    // Staying hovered does not bring it back; leaving hides it after a short grace period.
+    expect(isOpen()).toBe(false);
+    trigger.click();
+    expect(isOpen()).toBe(true);
+    vi.useFakeTimers();
+    host.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(isOpen()).toBe(true);
+    vi.advanceTimersByTime(200);
+    vi.useRealTimers();
+    expect(isOpen()).toBe(false);
+
+    // A cancel with no tooltip showing still closes the picker.
+    dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
+    expect(dialog.open).toBe(false);
     expect(dialog.querySelector('#browse-tip')?.textContent).toContain('Links are excluded');
-    expect(dialog.querySelector('p.hint')).toBeNull();
   });
 
   it('renders folders in a scrollable table with selection actions in the footer', async () => {

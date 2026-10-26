@@ -2,7 +2,7 @@
   #folderPicker
   aria-labelledby="picker-heading"
   aria-describedby="picker-description"
-  (cancel)="cancelPicker()"
+  (cancel)="onCancel($event)"
 >
   <header>
     <p class="eyebrow">Server library</p>
@@ -53,24 +53,32 @@
             {{ fileCount() }} {{ fileCount() === 1 ? 'file' : 'files' }} in this folder.
           </p>
           @if (!fileCount() && directories().length && !includeSubfolders()) {
-            <button
-              type="button"
-              class="tip-trigger text-amber-700 dark:text-amber-300"
-              aria-label="Why selecting this folder adds nothing"
-              aria-describedby="no-files-tip"
-              (click)="toggleTip('no-files')"
-              (keydown.escape)="closeTip($event)"
-            >
-              <fa-icon [icon]="infoIcon" aria-hidden="true" />
-            </button>
             <span
-              id="no-files-tip"
-              role="tooltip"
-              class="tip"
-              [class.tip-open]="openTip() === 'no-files'"
+              class="inline-flex"
+              (mouseenter)="showTip('no-files')"
+              (mouseleave)="hideTip('no-files', true)"
             >
-              This folder has no files of its own, so selecting it will add nothing. Tick "Include
-              subfolders" to add the files inside its subfolders.
+              <button
+                type="button"
+                class="tip-trigger text-amber-700 dark:text-amber-300"
+                aria-label="Why selecting this folder adds nothing"
+                aria-describedby="no-files-tip"
+                (click)="showTip('no-files')"
+                (focus)="showTip('no-files')"
+                (blur)="hideTip('no-files')"
+                (keydown.escape)="closeTip($event)"
+              >
+                <fa-icon [icon]="infoIcon" aria-hidden="true" />
+              </button>
+              <span
+                id="no-files-tip"
+                role="tooltip"
+                class="tip"
+                [class.tip-open]="openTip() === 'no-files'"
+              >
+                This folder has no files of its own, so selecting it will add nothing. Tick "Include
+                subfolders" to add the files inside its subfolders.
+              </span>
             </span>
           }
         </div>
@@ -144,20 +152,33 @@
           />
           Show hidden files and folders
         </label>
-        <button
-          type="button"
-          class="tip-trigger text-slate-500 dark:text-slate-400"
-          aria-label="About hidden files and folder access"
-          aria-describedby="browse-tip"
-          (click)="toggleTip('browse')"
-          (keydown.escape)="closeTip($event)"
+        <span
+          class="inline-flex"
+          (mouseenter)="showTip('browse')"
+          (mouseleave)="hideTip('browse', true)"
         >
-          <fa-icon [icon]="infoIcon" aria-hidden="true" />
-        </button>
-        <span id="browse-tip" role="tooltip" class="tip" [class.tip-open]="openTip() === 'browse'">
-          Only folders within the configured server root are available. Links are excluded. Hidden
-          and system entries such as <code>.DS_Store</code> or <code>&#64;eaDir</code> are skipped
-          unless shown.
+          <button
+            type="button"
+            class="tip-trigger text-slate-500 dark:text-slate-400"
+            aria-label="About hidden files and folder access"
+            aria-describedby="browse-tip"
+            (click)="showTip('browse')"
+            (focus)="showTip('browse')"
+            (blur)="hideTip('browse')"
+            (keydown.escape)="closeTip($event)"
+          >
+            <fa-icon [icon]="infoIcon" aria-hidden="true" />
+          </button>
+          <span
+            id="browse-tip"
+            role="tooltip"
+            class="tip"
+            [class.tip-open]="openTip() === 'browse'"
+          >
+            Only folders within the configured server root are available. Links are excluded. Hidden
+            and system entries such as <code>.DS_Store</code> or <code>&#64;eaDir</code> are skipped
+            unless shown.
+          </span>
         </span>
       </div>
     }
