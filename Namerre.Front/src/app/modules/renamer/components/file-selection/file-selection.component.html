@@ -19,13 +19,34 @@
       </button>
     </div>
   </div>
+  <p class="m-0 mt-3 text-sm text-slate-600 dark:text-slate-300 empty:hidden" role="status">
+    {{ notice() }}
+  </p>
   @if (files().length > 200) {
     <p class="error" role="alert">
       A workflow supports at most 200 files. Remove files before previewing.
     </p>
   }
   @if (files().length) {
-    <div class="my-5 flex flex-wrap items-center justify-between gap-3">
+    <div
+      class="mt-5 flex flex-wrap items-center gap-2"
+      role="group"
+      aria-label="Filter by file type"
+    >
+      <span class="text-xs text-slate-500 dark:text-slate-400">File types</span>
+      @for (entry of fileTypes(); track entry.type) {
+        <button
+          type="button"
+          class="type-chip"
+          [class.active]="activeType() === entry.type"
+          [attr.aria-pressed]="activeType() === entry.type"
+          (click)="toggleType(entry.type)"
+        >
+          {{ entry.label }} · {{ entry.count }}
+        </button>
+      }
+    </div>
+    <div class="my-4 flex flex-wrap items-center justify-between gap-3">
       <label for="file-search" class="sr-only">Filter files by name or folder</label>
       <input
         id="file-search"
@@ -41,6 +62,20 @@
         change your collection.
       </p>
     </div>
+    @if (filtering() && filteredFiles().length) {
+      <div class="mb-4 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          class="text-rose-700 dark:text-rose-400"
+          (click)="removeShown(); chooseFolder.focus()"
+        >
+          <fa-icon [icon]="trashIcon" aria-hidden="true" /> {{ removeShownLabel() }}
+        </button>
+        <span class="text-xs text-slate-500 dark:text-slate-400"
+          >Files hidden by the filter stay in your collection.</span
+        >
+      </div>
+    }
     <div class="file-list" tabindex="0" role="region" aria-label="Files added for renaming">
       <table id="collection-table">
         <caption class="sr-only">
@@ -49,8 +84,7 @@
         <thead>
           <tr>
             <th scope="col">Name</th>
-            <th scope="col">Folder</th>
-            <th scope="col">Size (bytes)</th>
+            <th scope="col">Size</th>
             <th scope="col">Last modified</th>
             <th scope="col">Actions</th>
           </tr>
@@ -58,13 +92,22 @@
         <tbody>
           @for (file of filteredFiles(); track file.path) {
             <tr>
-              <td class="font-medium text-slate-900 dark:text-slate-100">{{ file.name }}</td>
-              <td class="text-slate-500 dark:text-slate-400">
-                {{ file.folderPath || 'Server root' }}
+              <td>
+                <span class="block font-medium text-slate-900 dark:text-slate-100">{{
+                  file.name
+                }}</span>
+                <span class="block text-xs text-slate-500 dark:text-slate-400">{{
+                  file.folderPath || 'Server root'
+                }}</span>
               </td>
-              <td class="tabular-nums">{{ file.length | number }}</td>
-              <td class="text-xs text-slate-500 dark:text-slate-400">
-                {{ file.lastModifiedUtc | date: 'medium' }}
+              <td
+                class="whitespace-nowrap tabular-nums"
+                [title]="(file.length | number) + ' bytes'"
+              >
+                {{ formatSize(file.length) }}
+              </td>
+              <td class="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
+                {{ file.lastModifiedUtc | date: 'mediumDate' }}
               </td>
               <td>
                 <button
@@ -87,7 +130,7 @@
     @if (!filteredFiles().length) {
       <div class="py-8 text-center">
         <p class="font-medium text-slate-900 dark:text-slate-100">No files match your filter.</p>
-        <button type="button" (click)="search.set('')">Clear filter</button>
+        <button type="button" (click)="resetFilters()">Clear filter</button>
       </div>
     }
   } @else {

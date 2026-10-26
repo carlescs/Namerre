@@ -46,7 +46,17 @@
         </button>
       </nav>
 
-      <h3 id="subfolders-heading" class="mb-3 mt-5">Subfolders</h3>
+      <p class="mb-0 mt-3 text-sm text-slate-600 dark:text-slate-300">
+        {{ fileCount() }} {{ fileCount() === 1 ? 'file' : 'files' }} in this folder.
+      </p>
+      @if (!fileCount() && directories().length && !includeSubfolders()) {
+        <p class="mb-0 mt-1 text-sm text-amber-800 dark:text-amber-300">
+          This folder has no files of its own, so selecting it will add nothing. Tick "Include
+          subfolders" to add the files inside its subfolders.
+        </p>
+      }
+
+      <h3 id="subfolders-heading" class="mb-3 mt-4">Subfolders</h3>
       <div class="folder-table" role="region" aria-labelledby="subfolders-heading" tabindex="0">
         <table aria-labelledby="subfolders-heading">
           <thead>

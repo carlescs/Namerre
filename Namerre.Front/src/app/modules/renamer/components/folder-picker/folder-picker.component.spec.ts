@@ -49,6 +49,42 @@ describe('FolderPickerComponent', () => {
     expect(selected).toEqual([[root]]);
   });
 
+  it('counts the visible files directly in the folder', async () => {
+    component.open();
+    http.expectOne('/api/folders?path=').flush({
+      ...root,
+      files: [
+        { name: 'a.mkv', length: 1, lastModifiedUtc: '2026-10-18T07:00:00Z' },
+        { name: 'b.mkv', length: 1, lastModifiedUtc: '2026-10-18T07:00:00Z' },
+        { name: '.DS_Store', length: 1, lastModifiedUtc: '2026-10-18T07:00:00Z' },
+      ],
+    });
+    await fixture.whenStable();
+    expect(dialog.textContent).toContain('2 files in this folder.');
+    expect(dialog.textContent).not.toContain('will add nothing');
+    showHidden().click();
+    fixture.detectChanges();
+    expect(dialog.textContent).toContain('3 files in this folder.');
+  });
+
+  it('warns that a folder with only subfolders adds nothing until subfolders are included', async () => {
+    component.open();
+    http.expectOne('/api/folders?path=').flush({ ...root, files: [] });
+    await fixture.whenStable();
+    expect(dialog.textContent).toContain('0 files in this folder.');
+    expect(dialog.textContent).toContain('selecting it will add nothing');
+    includeSubfolders().click();
+    fixture.detectChanges();
+    expect(dialog.textContent).not.toContain('will add nothing');
+  });
+
+  it('does not warn about an empty folder without subfolders', async () => {
+    component.open();
+    http.expectOne('/api/folders?path=').flush({ ...root, directories: [], files: [] });
+    await fixture.whenStable();
+    expect(dialog.textContent).not.toContain('will add nothing');
+  });
+
   it('navigates to subfolders and back to the parent without emitting a selection', async () => {
     await openPicker();
     clickButton('Movies');

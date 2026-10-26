@@ -42,6 +42,12 @@ export class FolderPickerComponent {
       ? directories
       : directories.filter((directory) => !isHiddenEntry(directory.name));
   });
+  protected readonly fileCount = computed(() => {
+    const files = this.browsingFolder()?.files ?? [];
+    return this.showHidden()
+      ? files.length
+      : files.filter((file) => !isHiddenEntry(file.name)).length;
+  });
   protected readonly selecting = signal(false);
 
   open(): void {

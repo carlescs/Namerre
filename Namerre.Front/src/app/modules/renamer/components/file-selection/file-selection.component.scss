@@ -13,18 +13,34 @@ section.collection {
 }
 
 table {
-  min-width: 52rem;
+  min-width: 30rem;
   table-layout: fixed;
 }
 
 th:first-child {
-  width: 28%;
+  width: 55%;
 }
 
 th:nth-child(2) {
-  width: 24%;
+  width: 15%;
 }
 
-th:nth-child(4) {
-  width: 22%;
+th:nth-child(3) {
+  width: 20%;
+}
+
+th:last-child {
+  width: 10%;
+}
+
+.type-chip {
+  padding: 0.15rem 0.7rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+
+  &.active {
+    border-color: #4f46e5;
+    background: #4f46e5;
+    color: #fff;
+  }
 }
