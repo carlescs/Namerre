@@ -1,0 +1,27 @@
+<div class="font-medium break-all">
+  @for (segment of segments(); track $index) {
+    @if (segment.changed) {
+      <mark
+        class="rounded-sm px-0.5"
+        [class]="
+          side() === 'from'
+            ? 'bg-rose-100 text-rose-900 dark:bg-rose-500/20 dark:text-rose-200'
+            : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-200'
+        "
+        >{{ segment.text }}</mark
+      >
+    } @else {
+      <span>{{ segment.text }}</span>
+    }
+  }
+</div>
+@if (side() === 'from' && change().from.folder) {
+  <div class="text-xs break-all text-slate-500 dark:text-slate-400">
+    in {{ change().from.folder }}
+  </div>
+}
+@if (side() === 'to' && change().folderChanged) {
+  <div class="text-xs break-all text-slate-500 dark:text-slate-400">
+    moves to {{ change().to.folder || 'the top folder' }}
+  </div>
+}
