@@ -1,37 +1,48 @@
 <section aria-labelledby="matching-heading">
   <h3 id="matching-heading">TMDB matching</h3>
-  <p>
-    Choose what to search for. Titles, years and S01E02 / 1x02 episode numbers are inferred from
-    filenames. Review the proposals and accept them individually or all at once, or search again to
-    correct a match.
-  </p>
-  <div class="actions" aria-label="Automatic TMDB search type">
+  <p>Find the movie or episode behind each file, then check the matches and accept them.</p>
+  <div class="actions" aria-label="Find TMDB matches automatically">
     <button
       type="button"
-      [attr.aria-pressed]="searchType() === 'movie'"
-      [disabled]="suggesting() || disabled()"
+      [class.btn-primary]="!likelyEpisodes()"
+      [disabled]="busy()"
       (click)="searchRequested.emit('movie')"
     >
-      Match movies automatically
+      Find movie matches
     </button>
     <button
       type="button"
-      [attr.aria-pressed]="searchType() === 'tv'"
-      [disabled]="suggesting() || disabled()"
+      [class.btn-primary]="likelyEpisodes()"
+      [disabled]="busy()"
       (click)="searchRequested.emit('tv')"
     >
-      Match episodes automatically
+      Find episode matches
     </button>
     <button
       type="button"
+      [class.btn-primary]="canAcceptAll() && !busy()"
       (click)="allAccepted.emit()"
-      [disabled]="!canAcceptAll() || loadingPreview() || suggesting() || disabled()"
+      [disabled]="!canAcceptAll() || busy()"
     >
       Accept all matches
     </button>
   </div>
   @if (suggesting()) {
-    <p role="status">Searching and verifying per-file TMDB suggestions…</p>
+    <div class="mt-4" role="status">
+      <p class="mb-2 text-sm">
+        @if (suggestProgress().total) {
+          Matching {{ suggestProgress().done }} of {{ suggestProgress().total }}
+          {{ suggestProgress().total === 1 ? 'file' : 'files' }}…
+        } @else {
+          Matching files…
+        }
+      </p>
+      <progress
+        aria-label="Matching progress"
+        [max]="suggestProgress().total || 1"
+        [value]="suggestProgress().done"
+      ></progress>
+    </div>
   } @else if (hasPreview() && !loadingPreview() && unmatchedFiles(); as count) {
     <div
       class="unmatched-summary my-4 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 text-amber-900 dark:text-amber-200"
@@ -47,84 +58,90 @@
       </button>
     </div>
   }
-  @for (row of rows(); track row.fileId + ':' + row.plugin.instanceId) {
-    <article
-      tabindex="-1"
-      class="focus:outline-2 focus:outline-offset-2 focus:outline-indigo-600 dark:focus:outline-indigo-400"
-      [attr.data-unmatched]="needsMatch(row) ? '' : null"
-    >
-      <h4>{{ row.fileId }} — step {{ row.position }}</h4>
-      @if (row.step; as step) {
-        <p>
-          Step input: <code>{{ step.inputPath }}</code>
-        </p>
-        @if (row.suggestion; as suggestion) {
-          @if (suggestion.match; as match) {
-            <section aria-label="TMDB file information">
-              <p>
-                <strong>{{ match.title }}</strong> ({{ match.year ?? 'Year unknown' }}) — TMDB
-                {{ match.id }}
-              </p>
-              @if (match.mediaType === 'tv') {
-                <p>
-                  Season {{ match.season }}, episode {{ match.episode }}: {{ match.episodeTitle }}
-                </p>
-              } @else {
-                <p>Movie</p>
+  <div class="mt-4 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+    @for (view of views(); track view.key) {
+      <article
+        tabindex="-1"
+        class="mt-0 rounded-none border-0 border-b border-b-slate-200 dark:border-b-slate-800 p-3 sm:p-3 last:border-b-0 focus:outline-2 focus:outline-offset-[-2px] focus:outline-indigo-600 dark:focus:outline-indigo-400"
+        [attr.data-unmatched]="needsMatch(view.row) ? '' : null"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <div class="min-w-0 flex-1 basis-64">
+            <p class="m-0 font-medium">
+              {{ view.name }}
+              @if (showSteps()) {
+                <span class="text-sm font-normal text-slate-500 dark:text-slate-400">
+                  · step {{ view.row.position }}
+                </span>
               }
-            </section>
-            @if (step.error && isMatchingIssue(step.error.code)) {
-              <p>Proposed match — review before accepting.</p>
+            </p>
+            @if (view.folder) {
+              <p class="m-0 text-xs text-slate-500 dark:text-slate-400">{{ view.folder }}</p>
+            }
+            @if (view.summary) {
+              <p class="m-0 mt-1 text-sm">{{ view.summary }}</p>
+            }
+          </div>
+          <span
+            class="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium"
+            [class]="statusClasses[view.status]"
+            >{{ statusLabels[view.status] }}</span
+          >
+        </div>
+        @if (view.problem) {
+          <p class="error my-2 px-3 py-2 text-sm" role="alert">
+            {{ view.problem }}
+            @if (view.code) {
+              <span class="text-xs opacity-70"> ({{ view.code }})</span>
+            }
+          </p>
+        }
+        @if (view.row.step; as step) {
+          <div class="actions mt-2 gap-2">
+            @if (view.proposal; as proposal) {
               <button
                 type="button"
-                (click)="suggestionAccepted.emit(suggestion)"
-                [disabled]="loadingPreview() || suggesting() || disabled()"
+                class="btn-primary"
+                (click)="suggestionAccepted.emit(proposal)"
+                [disabled]="busy()"
+                [attr.aria-label]="'Accept match: ' + view.row.fileId"
               >
-                Accept proposed match
+                Accept
               </button>
             }
-          }
-          @if (suggestion.error) {
-            <p class="error" role="alert">{{ suggestion.error }}</p>
-          }
-        }
-        @if (step.error && isMatchingIssue(step.error.code)) {
-          <p>Match required.</p>
-        } @else if (!step.error) {
-          <p>Metadata confirmed for this step.</p>
-        } @else {
-          <p class="error">{{ step.error.message }}</p>
-        }
-        <div class="actions">
-          <button
-            type="button"
-            (click)="matchRequested.emit({ fileId: row.fileId, step })"
-            [disabled]="loadingPreview() || suggesting() || disabled()"
-          >
-            Choose / change TMDB match — search again
-          </button>
-          @if (step.error) {
             <button
               type="button"
-              (click)="fileRemoved.emit(row.fileId)"
-              [disabled]="loadingPreview() || suggesting() || disabled()"
-              [attr.aria-label]="'Remove from collection: ' + row.fileId"
+              (click)="matchRequested.emit({ fileId: view.row.fileId, step })"
+              [disabled]="busy()"
+              [attr.aria-label]="
+                (view.summary ? 'Change match: ' : 'Find match: ') + view.row.fileId
+              "
             >
-              Remove from collection
+              {{ view.summary ? 'Change' : 'Find match' }}
             </button>
-          }
-        </div>
-      } @else {
-        <p>
-          {{
-            loadingPreview() || !hasPreview()
-              ? 'Evaluating step input…'
-              : 'Complete or correct the preceding steps first.'
-          }}
-        </p>
-      }
-    </article>
-  }
+            @if (step.error) {
+              <button
+                type="button"
+                (click)="fileRemoved.emit(view.row.fileId)"
+                [disabled]="busy()"
+                [attr.aria-label]="'Remove from collection: ' + view.row.fileId"
+              >
+                Remove from collection
+              </button>
+            }
+          </div>
+        } @else {
+          <p class="m-0 mt-1 text-sm text-slate-500 dark:text-slate-400">
+            {{
+              loadingPreview() || !hasPreview()
+                ? 'Checking this file…'
+                : 'Complete or correct the preceding steps first.'
+            }}
+          </p>
+        }
+      </article>
+    }
+  </div>
 </section>
 <div class="actions">
   <button type="button" (click)="previewRequested.emit()" [disabled]="suggesting() || disabled()">
@@ -134,16 +151,21 @@
 @if (loadingPreview()) {
   <p role="status">Evaluating ordered plugins…</p>
 }
-<aside aria-label="About and credits">
-  <h3>About / Credits</h3>
+<aside aria-label="About and credits" class="mt-8 text-xs text-slate-500 dark:text-slate-400">
   <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer">
-    <img src="/tmdb-logo.svg" alt="The Movie Database (TMDB)" width="100" height="72" />
+    <img
+      class="opacity-70"
+      src="/tmdb-logo.svg"
+      alt="The Movie Database (TMDB)"
+      width="64"
+      height="46"
+    />
   </a>
-  <p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
-  <p>
-    Metadata matching is explicit. TMDB credentials stay on the server.
+  <p class="mt-2">
+    This product uses the TMDB API but is not endorsed or certified by TMDB. TMDB credentials stay
+    on the server.
     <a href="https://developer.themoviedb.org/docs/faq" target="_blank" rel="noopener noreferrer"
-      >TMDB attribution and commercial licensing</a
+      >TMDB attribution and licensing</a
     >
   </p>
 </aside>

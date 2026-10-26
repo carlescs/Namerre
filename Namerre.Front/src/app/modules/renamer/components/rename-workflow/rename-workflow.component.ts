@@ -15,7 +15,17 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
-import { catchError, concatMap, from, of, Subscription, switchMap, tap } from 'rxjs';
+import {
+  catchError,
+  concatMap,
+  defer,
+  finalize,
+  from,
+  of,
+  Subscription,
+  switchMap,
+  tap,
+} from 'rxjs';
 import {
   MatchContext,
   MatchSuggestion,
@@ -27,6 +37,8 @@ import {
   PreviewResult,
   RenameApi,
   StepTrace,
+  TmdbMatch,
+  TmdbMatchRow,
   TmdbPickerState,
   operationId,
   awaitingMetadata,
@@ -129,6 +141,7 @@ export class RenameWorkflowComponent {
   protected readonly planId = signal('');
   protected readonly suggesting = signal(false);
   protected readonly searchType = signal('movie');
+  protected readonly suggestProgress = signal({ done: 0, total: 0 });
   private readonly suggestions = signal<MatchSuggestion[]>([]);
   protected readonly tmdbPlugins = computed(() =>
     this.plugins().filter((plugin) => plugin.enabled && plugin.typeId === 'tmdb'),
@@ -503,98 +516,110 @@ export class RenameWorkflowComponent {
         ),
     );
     this.suggesting.set(true);
+    this.suggestProgress.set({ done: 0, total: rows.length });
+    // First-stage searches repeat for every episode of a show; reuse them within this run.
+    const searches = new Map<string, TmdbMatch[]>();
     this.suggestionRequest = from(rows)
       .pipe(
-        concatMap((row) => {
-          const step = row.step!;
-          const inferred = tmdbFilename(step.inputPath, mediaType);
-          const binding = {
-            fileId: row.fileId,
-            instanceId: row.plugin.instanceId,
-            inputPath: step.inputPath,
-            optionsHash: tmdbOptionsHash(row.plugin.options),
-          };
-          const state: TmdbPickerState = {
-            query: inferred.query,
-            mediaType,
-            language: row.plugin.options.language ?? 'en-US',
-            season: inferred.season ?? 1,
-            episode: inferred.episode ?? 1,
-            matches: [],
-            selected: null,
-          };
-          let states = this.pickerStates.get(row.plugin.instanceId);
-          if (!states) {
-            states = new Map();
-            this.pickerStates.set(row.plugin.instanceId, states);
-          }
-          states.set(row.fileId, state);
-          this.setSuggestion({ ...binding, match: null, error: '' });
-          if (
-            !inferred.query ||
-            (mediaType === 'tv' && (inferred.season === undefined || !inferred.episode))
-          ) {
+        concatMap((row) =>
+          this.suggestFor(row, mediaType, searches).pipe(
+            finalize(() => this.suggestProgress.update((p) => ({ ...p, done: p.done + 1 }))),
+          ),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({ complete: () => this.suggesting.set(false) });
+  }
+
+  private suggestFor(row: TmdbMatchRow, mediaType: string, searches: Map<string, TmdbMatch[]>) {
+    return defer(() => {
+      const step = row.step!;
+      const inferred = tmdbFilename(step.inputPath, mediaType);
+      const binding = {
+        fileId: row.fileId,
+        instanceId: row.plugin.instanceId,
+        inputPath: step.inputPath,
+        optionsHash: tmdbOptionsHash(row.plugin.options),
+      };
+      const state: TmdbPickerState = {
+        query: inferred.query,
+        mediaType,
+        language: row.plugin.options.language ?? 'en-US',
+        season: inferred.season ?? 1,
+        episode: inferred.episode ?? 1,
+        matches: [],
+        selected: null,
+      };
+      let states = this.pickerStates.get(row.plugin.instanceId);
+      if (!states) {
+        states = new Map();
+        this.pickerStates.set(row.plugin.instanceId, states);
+      }
+      states.set(row.fileId, state);
+      this.setSuggestion({ ...binding, match: null, error: '' });
+      if (
+        !inferred.query ||
+        (mediaType === 'tv' && (inferred.season === undefined || !inferred.episode))
+      ) {
+        this.setSuggestion({
+          ...binding,
+          match: null,
+          error:
+            'Could not infer the title or episode numbers. Search again and enter them manually.',
+        });
+        return of(null);
+      }
+      const searchKey = `${mediaType}|${state.query}|${state.language}`;
+      const cached = searches.get(searchKey);
+      const search = cached
+        ? of({ matches: cached })
+        : this.api
+            .tmdb({ mediaType, query: state.query, language: state.language })
+            .pipe(tap((result) => searches.set(searchKey, result.matches)));
+      return search.pipe(
+        switchMap((result) => {
+          state.matches = result.matches;
+          const candidate = preferredTmdbMatch(result.matches, inferred);
+          state.selected = candidate ?? null;
+          if (!candidate) {
             this.setSuggestion({
               ...binding,
               match: null,
-              error:
-                'Could not infer the title or episode numbers. Search again and enter them manually.',
+              error: 'No TMDB matches. Search again with a different title.',
             });
             return of(null);
           }
           return this.api
             .tmdb({
+              ...binding,
               mediaType,
               query: state.query,
               language: state.language,
+              id: candidate.id,
+              ...(mediaType === 'tv' ? { season: state.season, episode: state.episode } : {}),
             })
             .pipe(
-              switchMap((result) => {
-                state.matches = result.matches;
-                const candidate = preferredTmdbMatch(result.matches, inferred);
-                state.selected = candidate ?? null;
-                if (!candidate) {
-                  this.setSuggestion({
-                    ...binding,
-                    match: null,
-                    error: 'No TMDB matches. Search again with a different title.',
-                  });
-                  return of(null);
-                }
-                return this.api
-                  .tmdb({
-                    ...binding,
-                    mediaType,
-                    query: state.query,
-                    language: state.language,
-                    id: candidate.id,
-                    ...(mediaType === 'tv' ? { season: state.season, episode: state.episode } : {}),
-                  })
-                  .pipe(
-                    tap((verified) => {
-                      const match = verified.matches.find(
-                        (entry) => entry.id === candidate.id && entry.confirmationToken,
-                      );
-                      if (match) state.selected = match;
-                      this.setSuggestion({
-                        ...binding,
-                        match: match ?? null,
-                        error: match
-                          ? ''
-                          : 'TMDB could not verify this match. Search again to correct it.',
-                      });
-                    }),
-                  );
-              }),
-              catchError((error: unknown) => {
-                this.setSuggestion({ ...binding, match: null, error: renameError(error) });
-                return of(null);
+              tap((verified) => {
+                const match = verified.matches.find(
+                  (entry) => entry.id === candidate.id && entry.confirmationToken,
+                );
+                if (match) state.selected = match;
+                this.setSuggestion({
+                  ...binding,
+                  match: match ?? null,
+                  error: match
+                    ? ''
+                    : 'TMDB could not verify this match. Search again to correct it.',
+                });
               }),
             );
         }),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe({ complete: () => this.suggesting.set(false) });
+        catchError((error: unknown) => {
+          this.setSuggestion({ ...binding, match: null, error: renameError(error) });
+          return of(null);
+        }),
+      );
+    });
   }
 
   protected acceptSuggestion(suggestion: MatchSuggestion): void {
