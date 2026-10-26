@@ -4,48 +4,69 @@
   class="workflow-content mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-10"
 >
   <nav class="mb-6 flex gap-3 text-xs" aria-label="Rename navigation">
-    <a routerLink="/">Workspace</a> <span aria-hidden="true">/</span>
-    <a routerLink="/runs">Saved runs</a>
+    <a routerLink="/">Renamer</a> <span aria-hidden="true">/</span>
+    <a routerLink="/runs">History</a>
   </nav>
   <p class="eyebrow">A record of every change</p>
-  <h1 #pageHeading tabindex="-1">{{ runId() ? 'Saved run details' : 'Rename history' }}</h1>
+  <h1 #pageHeading tabindex="-1" class="focus-visible:outline-none">
+    {{ runId() ? 'Run details' : 'Rename history' }}
+  </h1>
   <p class="mb-6 text-slate-500 dark:text-slate-400">
-    Inspect past operations, review file outcomes, and recover with confidence.
+    Look back at past renames, see what happened to each file, and undo or recover when needed.
   </p>
-  <button class="mb-5" type="button" (click)="refresh()" [disabled]="loading() || busy()">
-    Refresh / retry
-  </button>
   @if (loading()) {
-    <p role="status">Loading saved status…</p>
+    <p role="status">Loading history…</p>
   }
   @if (error()) {
     <p class="error" role="alert">{{ error() }}</p>
+    <button class="mb-5" type="button" (click)="refresh()" [disabled]="loading() || busy()">
+      Try again
+    </button>
   }
   @if (history(); as list) {
     @if (!list.items.length) {
       <div class="surface my-6 p-10 text-center">
         <h2 class="text-lg">A fresh start</h2>
-        <p class="text-slate-500 dark:text-slate-400">No saved runs yet.</p>
+        <p class="text-slate-500 dark:text-slate-400">Nothing has been renamed yet.</p>
         <a routerLink="/" class="font-medium"
-          >Start in the workspace <span aria-hidden="true">&rarr;</span></a
+          >Start renaming <span aria-hidden="true">&rarr;</span></a
         >
       </div>
     }
     <ul class="my-4 space-y-3">
-      @for (item of list.items; track item.id) {
-        <li class="surface p-5">
+      @for (entry of entries(); track entry.run.id) {
+        <li class="surface p-5" [class]="entry.nested ? 'ml-6 sm:ml-10' : ''">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
-              <a [routerLink]="['/runs', item.id]">{{ item.kind }} {{ item.id }}</a> —
-              <span class="badge">{{ item.status }}</span>
-              <p class="mb-0 text-xs text-slate-500 dark:text-slate-400">
-                {{ item.createdAt | date: 'medium' }} — {{ item.files.length }} files
+              <p class="mb-1 flex flex-wrap items-center gap-2">
+                <span
+                  class="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
+                  >{{ kindLabel(entry.run.kind) }}</span
+                >
+                <span
+                  class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                  [class]="statusClasses(entry.run.status)"
+                  >{{ statusLabel(entry.run.status) }}</span
+                >
               </p>
+              <a class="font-medium" [routerLink]="['/runs', entry.run.id]">{{
+                runTitle(entry.run)
+              }}</a>
+              <p class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
+                {{ fileCount(entry.run.files.length) }} · {{ entry.run.createdAt | date: 'medium' }}
+              </p>
+              @if (entry.run.kind === 'Rollback') {
+                <p class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
+                  Undo of {{ entry.parentTitle || 'an earlier rename' }}
+                </p>
+              }
             </div>
-            <ng-container *ngTemplateOutlet="deleteButton; context: { $implicit: item }" />
+            <ng-container *ngTemplateOutlet="deleteButton; context: { $implicit: entry.run }" />
           </div>
-          @if (pendingDelete() === item.id) {
-            <ng-container *ngTemplateOutlet="deleteConfirmation; context: { $implicit: item }" />
+          @if (pendingDelete() === entry.run.id) {
+            <ng-container
+              *ngTemplateOutlet="deleteConfirmation; context: { $implicit: entry.run }"
+            />
           }
         </li>
       }
@@ -62,45 +83,72 @@
   }
   @if (run(); as current) {
     <div class="flex items-start justify-between gap-3">
-      <h2 class="min-w-0">{{ current.kind }} {{ current.id }}</h2>
+      <div class="min-w-0">
+        <p
+          class="mb-1 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
+        >
+          {{ kindLabel(current.kind) }}
+        </p>
+        <h2 class="mt-0">{{ runTitle(current) }}</h2>
+      </div>
       <ng-container *ngTemplateOutlet="deleteButton; context: { $implicit: current }" />
     </div>
     @if (pendingDelete() === current.id) {
       <ng-container *ngTemplateOutlet="deleteConfirmation; context: { $implicit: current }" />
     }
-    <p role="status">
-      Status: {{ current.status }}. This run is durable and can be reopened after a reload.
+    <p role="status" class="flex flex-wrap items-center gap-2">
+      <span
+        class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+        [class]="statusClasses(current.status)"
+        >{{ statusLabel(current.status) }}</span
+      >
+      <span
+        >· {{ fileCount(current.files.length) }} ·
+        {{ current.createdAt | date: 'MMM d, h:mm a' }}</span
+      >
     </p>
-    <p>Created {{ current.createdAt | date: 'medium' }}. Prepared plan: {{ current.planId }}</p>
+    <p class="text-xs text-slate-500 dark:text-slate-400">
+      Run {{ current.id }} · Plan {{ current.planId }}
+    </p>
     <details #approvedPlan (toggle)="approvedPlan.open && inspectPlan()">
-      <summary>Inspect saved immutable configuration and hashes</summary>
+      <summary>Show saved settings and file fingerprints</summary>
       @if (loadingPlan()) {
-        <p role="status">Loading saved plan…</p>
+        <p role="status">Loading saved settings…</p>
       }
       @if (planError()) {
         <p class="error" role="alert">{{ planError() }}</p>
-        <button type="button" (click)="inspectPlan()">Retry saved plan</button>
+        <button type="button" (click)="inspectPlan()">Try again</button>
       }
       @if (savedPlan(); as snapshot) {
-        <p>Plan {{ snapshot.id }}, version {{ snapshot.version }} — {{ snapshot.status }}</p>
-        <ol>
+        <p class="text-xs text-slate-500 dark:text-slate-400">
+          Plan {{ snapshot.id }}, version {{ snapshot.version }} · {{ snapshot.status }}
+        </p>
+        <ol class="space-y-3">
           @for (plugin of snapshot.pipeline.plugins; track plugin.instanceId) {
             <li>
-              {{ plugin.typeId }} — instance {{ plugin.instanceId }}, configuration version
-              {{ plugin.version }},
-              {{ plugin.enabled ? 'Enabled' : 'Disabled' }}
-              <pre>{{ plugin.options | json }}</pre>
+              <strong>{{ pluginName(plugin.typeId) }}</strong>
+              @if (!plugin.enabled) {
+                <span class="text-xs text-slate-500 dark:text-slate-400"> (Disabled)</span>
+              }
+              <dl class="mt-1 mb-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5 text-xs">
+                @for (option of optionEntries(plugin.options); track option.label) {
+                  <dt class="text-slate-500 dark:text-slate-400">{{ option.label }}</dt>
+                  <dd class="m-0">{{ option.value }}</dd>
+                }
+              </dl>
             </li>
           }
         </ol>
         @if (!snapshot.pipeline.plugins.length) {
-          <p>Empty pipeline.</p>
+          <p>No rename steps were used.</p>
         }
-        <ul>
+        <ul class="space-y-2">
           @for (file of snapshot.files; track file.id) {
             <li>
-              <code>{{ file.sourcePath }}</code> → <code>{{ file.targetPath }}</code> — SHA256
-              <code>{{ file.hash }}</code>
+              <code>{{ file.sourcePath }}</code> → <code>{{ file.targetPath }}</code>
+              <span class="block text-xs text-slate-500 dark:text-slate-400"
+                >Fingerprint (SHA-256): <code>{{ file.hash }}</code></span
+              >
             </li>
           }
         </ul>
@@ -108,17 +156,22 @@
     </details>
     @if (current.parentRunId) {
       <p>
-        Original run: <a [routerLink]="['/runs', current.parentRunId]">{{ current.parentRunId }}</a>
+        This undoes an earlier rename.
+        <a [routerLink]="['/runs', current.parentRunId]">View the original rename</a>
       </p>
     }
     @if (current.rollbackRuns?.length) {
       <section aria-labelledby="rollback-runs-heading">
-        <h3 id="rollback-runs-heading">Rollback runs</h3>
+        <h3 id="rollback-runs-heading">Undos of this rename</h3>
         <ul>
           @for (child of current.rollbackRuns; track child.id) {
-            <li>
-              <a [routerLink]="['/runs', child.id]">{{ child.kind }} {{ child.id }}</a> —
-              <span class="badge">{{ child.status }}</span>
+            <li class="flex flex-wrap items-center gap-2">
+              <a [routerLink]="['/runs', child.id]">{{ kindLabel(child.kind) }}</a>
+              <span
+                class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                [class]="statusClasses(child.status)"
+                >{{ statusLabel(child.status) }}</span
+              >
               <span class="text-xs text-slate-500 dark:text-slate-400">{{
                 child.createdAt | date: 'medium'
               }}</span>
@@ -132,71 +185,102 @@
     }
     @if (current.status === 'RecoveryRequired') {
       <section aria-labelledby="recovery-heading">
-        <h3 id="recovery-heading">Partial operation — explicit recovery required</h3>
+        <h3 id="recovery-heading">This run stopped part-way and needs recovery</h3>
         <p>
-          Files may be completed, pending, staged, or uncertain. No automatic rollback is performed.
-          Inspect every root-relative location and the journal below. Ambiguous or changed content
-          remains blocked.
+          Some files may be renamed, some not, and some may be sitting in a temporary location.
+          Nothing is restored automatically. Look at where each file is below and in the operation
+          log, then check the recovery evidence. Files whose location or content is unclear stay
+          blocked.
         </p>
         <button type="button" (click)="previewRecovery()" [disabled]="busy()">
-          Inspect recovery evidence
+          Check recovery evidence
         </button>
       </section>
     }
-    <div class="table-scroll" tabindex="0" role="region" aria-label="Per-file outcomes">
+    <div
+      class="mt-5 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800"
+      tabindex="0"
+      role="region"
+      aria-label="Per-file outcomes"
+    >
       <table>
-        <caption>
-          Per-file outcome and selected rollback
+        <caption class="sr-only">
+          What happened to each file, with the option to select files to undo
         </caption>
-        <thead>
-          <tr>
-            <th scope="col">
+        <thead class="max-sm:block">
+          <tr class="max-sm:block">
+            <th scope="col" class="max-sm:block">
               <span class="sr-only">Select</span>
               <input
                 type="checkbox"
-                aria-label="Select all completed files for rollback"
+                aria-label="Select all completed files to undo"
                 [checked]="allSelected()"
                 [indeterminate]="someSelected() && !allSelected()"
                 (change)="toggleAll()"
                 [disabled]="busy() || !selectableIds().length"
               />
             </th>
-            <th scope="col">Original</th>
-            <th scope="col">Target</th>
-            <th scope="col">Staging location</th>
-            <th scope="col">Outcome</th>
+            <th scope="col" class="max-sm:hidden">Original</th>
+            <th scope="col" class="max-sm:hidden">Renamed to</th>
+            @if (stagingVisible()) {
+              <th scope="col" class="max-sm:hidden">Temporary location</th>
+            }
+            <th scope="col" class="max-sm:hidden">Result</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody class="max-sm:block">
           @for (file of current.files; track file.id) {
-            <tr>
-              <td>
+            <tr
+              class="max-sm:block max-sm:border-t max-sm:border-slate-200 max-sm:p-3 dark:max-sm:border-slate-800"
+            >
+              <td class="max-sm:block max-sm:p-0">
                 <input
                   type="checkbox"
                   class="file-select"
-                  [attr.aria-label]="'Select ' + file.sourcePath + ' for rollback'"
+                  [attr.aria-label]="'Select ' + file.sourcePath + ' to undo'"
                   [checked]="selected().has(file.id)"
                   (change)="toggle(file.id)"
                   [disabled]="busy() || !selectableIds().includes(file.id)"
                 />
               </td>
-              <td>
-                <code>{{ file.sourcePath }}</code>
+              <td class="max-sm:block max-sm:px-0 max-sm:py-1">
+                <span class="text-xs text-slate-500 sm:hidden dark:text-slate-400">Original</span>
+                <ng-container
+                  *ngTemplateOutlet="pathCell; context: { $implicit: file.sourcePath }"
+                />
               </td>
-              <td>
-                <code>{{ file.targetPath }}</code>
+              <td class="max-sm:block max-sm:px-0 max-sm:py-1">
+                <span class="text-xs text-slate-500 sm:hidden dark:text-slate-400">Renamed to</span>
+                <ng-container
+                  *ngTemplateOutlet="pathCell; context: { $implicit: file.targetPath }"
+                />
               </td>
-              <td>
-                <code>{{ file.stagingPath || 'Not staged' }}</code>
-              </td>
-              <td>
-                {{ file.status }}
+              @if (stagingVisible()) {
+                <td class="max-sm:block max-sm:px-0 max-sm:py-1">
+                  <span class="text-xs text-slate-500 sm:hidden dark:text-slate-400"
+                    >Temporary location</span
+                  >
+                  @if (file.stagingPath) {
+                    <ng-container
+                      *ngTemplateOutlet="pathCell; context: { $implicit: file.stagingPath }"
+                    />
+                  } @else {
+                    <span class="block text-slate-500 dark:text-slate-400">Not moved yet</span>
+                  }
+                </td>
+              }
+              <td class="max-sm:block max-sm:px-0 max-sm:py-1">
+                <span
+                  class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                  [class]="statusClasses(file.status)"
+                  >{{ statusLabel(file.status) }}</span
+                >
                 @if (file.error) {
                   <p class="error">
-                    @if (file.errorCode) {
-                      <strong>{{ file.errorCode }}: </strong>
-                    }
                     {{ file.error }}
+                    @if (file.errorCode) {
+                      <span class="text-xs opacity-70"> ({{ file.errorCode }})</span>
+                    }
                   </p>
                 }
               </td>
@@ -205,49 +289,55 @@
         </tbody>
       </table>
     </div>
-    <p>
-      {{ selected().size }} files explicitly selected. Dependency groups are never included
-      silently.
-    </p>
+    @if (current.kind === 'Rename' && current.status === 'Completed') {
+      <p>
+        {{ fileCount(selected().size) }} selected.
+        <span class="text-slate-500 dark:text-slate-400"
+          >Tick the files you want to put back. Only the files you tick are touched.</span
+        >
+      </p>
+    }
     <button
       type="button"
       (click)="previewRollback()"
       [disabled]="!selected().size || busy() || current.status !== 'Completed'"
     >
-      Check selected-file rollback
+      Check undo for selected files
     </button>
     @if (checkingRollback(); as count) {
       <p role="status">
         Checked {{ checkedFiles() }} / {{ count }} selected {{ count === 1 ? 'file' : 'files' }} for
-        rollback — verifying content hashes and original locations…
+        undo — verifying file contents and original locations…
       </p>
       <progress
         [value]="checkedFiles()"
         [max]="count"
-        aria-label="Selected files checked for rollback"
+        aria-label="Selected files checked for undo"
       ></progress>
     }
     @if (rollback(); as checked) {
       <section aria-labelledby="rollback-heading">
-        <h3 id="rollback-heading">Rollback review — {{ safeCount() }} safe files</h3>
+        <h3 id="rollback-heading">Undo review — {{ fileCount(safeCount()) }} can be undone</h3>
         @for (file of checked.files; track file.id) {
           <article>
             <p>
               <code>{{ file.currentPath }}</code> → <code>{{ file.destinationPath }}</code>
             </p>
-            <strong>{{ file.safe ? 'Safe to roll back' : 'Blocked — left untouched' }}</strong>
+            <strong>{{ file.safe ? 'Safe to undo' : 'Blocked — left untouched' }}</strong>
             @for (issue of file.issues; track $index) {
-              <p class="error">{{ issue.code }}: {{ issue.message }}</p>
+              <p class="error">
+                {{ issue.message }} <span class="text-xs opacity-70">({{ issue.code }})</span>
+              </p>
             }
           </article>
         }
         <p>
-          Only the safe files shown here will be submitted. Blocked selections remain untouched. For
-          dependency conflicts, select the required participants and check again. Hashes and
-          destinations are revalidated during execution.
+          Only the safe files shown here will be undone. Blocked files stay untouched. If a file is
+          blocked because it depends on others, select those files too and check again. Everything
+          is checked once more just before it runs.
         </p>
         <button type="button" (click)="confirmRollback()" [disabled]="!safeCount() || busy()">
-          Confirm rollback of {{ safeCount() }} safe selected files
+          Undo {{ fileCount(safeCount()) }}
         </button>
       </section>
     }
@@ -258,21 +348,23 @@
           <article>
             <strong>{{ file.id }} — {{ file.state }}</strong>
             <p>
-              Verified location: <code>{{ file.locatedPath ?? 'Unknown / ambiguous' }}</code>
+              Found at: <code>{{ file.locatedPath ?? 'Unknown or unclear' }}</code>
             </p>
             @for (issue of file.issues; track $index) {
-              <p class="error">{{ issue.code }}: {{ issue.message }}</p>
+              <p class="error">
+                {{ issue.message }} <span class="text-xs opacity-70">({{ issue.code }})</span>
+              </p>
             }
           </article>
         }
         <p>
-          Explicitly restore pre-operation locations only when evidence is unambiguous. Content
-          hashes prove equivalent content, not unique physical identity of identical copies.
+          Files are only moved back to where they started when the evidence is clear. Matching
+          content shows files are identical, but cannot tell identical copies apart.
         </p>
         @if (!evidence.canRecover) {
           <p class="error">
-            Recovery is blocked. Preserve the files and journal; resolve the reported conflicts
-            before retrying.
+            Recovery is blocked. Leave the files and the operation log as they are, and resolve the
+            problems above before trying again.
           </p>
         }
         <button
@@ -280,36 +372,46 @@
           (click)="confirmRecovery()"
           [disabled]="!evidence.canRecover || busy()"
         >
-          Confirm explicit restoration
+          Move files back to where they started
         </button>
       </section>
     }
     @if (busy() && !checkingRollback()) {
-      <p role="status">Processing the requested check / durable operation…</p>
+      <p role="status">Working on it…</p>
     }
     @if (actionError()) {
       <p class="error" role="alert">{{ actionError() }}</p>
     }
     <details>
-      <summary>Durable operation journal ({{ current.journal.length }} entries)</summary>
+      <summary>Operation log ({{ current.journal.length }} entries)</summary>
       <ol>
         @for (entry of current.journal; track entry.sequence) {
           <li>
-            {{ entry.sequence }}. {{ entry.kind }} — {{ entry.status }}:
+            {{ entry.sequence }}. {{ entry.kind }} — {{ statusLabel(entry.status) }}:
             <code>{{ entry.fromPath }}</code> → <code>{{ entry.toPath }}</code>
           </li>
         }
       </ol>
     </details>
   }
+  <ng-template #pathCell let-path>
+    <span class="block font-medium break-all">{{ splitPath(path).name }}</span>
+    @if (splitPath(path).folder) {
+      <span class="block text-xs break-all text-slate-500 dark:text-slate-400">{{
+        splitPath(path).folder
+      }}</span>
+    }
+  </ng-template>
   <ng-template #deleteButton let-target>
     <button
       type="button"
       class="shrink-0 text-slate-500 dark:text-slate-400 hover:text-rose-700 dark:hover:text-rose-400 disabled:hover:text-slate-500 dark:disabled:hover:text-slate-400"
-      [attr.aria-label]="'Delete saved run ' + target.id"
+      [attr.aria-label]="
+        'Delete ' + (kindLabel(target.kind) | lowercase) + ' record: ' + runTitle(target)
+      "
       [title]="
         isSettledRun(target)
-          ? 'Delete saved run'
+          ? 'Delete this record'
           : 'Only completed or recovered runs can be deleted'
       "
       (click)="requestDelete(target.id)"
@@ -321,9 +423,9 @@
   <ng-template #deleteConfirmation let-target>
     <section class="mt-3" role="group" aria-label="Confirm deletion">
       <p>
-        Delete this {{ target.kind | lowercase }} record{{
-          target.kind === 'Rename' ? ', its rollback records and its prepared plan' : ''
-        }}? Files on disk are not touched, but the history can no longer be used for rollback.
+        Delete this {{ kindLabel(target.kind) | lowercase }} record{{
+          target.kind === 'Rename' ? ', its undo records and its saved settings' : ''
+        }}? Files on disk are not touched, but you will no longer be able to undo this from here.
       </p>
       <div class="actions">
         <button type="button" (click)="confirmDelete()" [disabled]="deleting()">
@@ -332,7 +434,7 @@
         <button type="button" (click)="cancelDelete()" [disabled]="deleting()">Cancel</button>
       </div>
       @if (deleting()) {
-        <p role="status">Deleting saved run…</p>
+        <p role="status">Deleting…</p>
       }
       @if (deleteError()) {
         <p class="error" role="alert">{{ deleteError() }}</p>
