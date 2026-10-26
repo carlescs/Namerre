@@ -1,19 +1,9 @@
-<main id="main-content" tabindex="-1" class="mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-10">
-  <div class="mb-8 flex flex-wrap items-end justify-between gap-4">
-    <div>
-      <p class="eyebrow mt-0">Your files, in order</p>
-      <h1>Renamer</h1>
-      <p class="mb-0 max-w-xl text-slate-500 dark:text-slate-400">
-        Bring clarity to your filenames. Collect, configure, and review every change before it
-        happens.
-      </p>
-    </div>
-    <span
-      class="badge border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
-    >
-      <span class="size-1.5 rounded-full bg-emerald-600" aria-hidden="true"></span>
-      Self-hosted workspace
-    </span>
+<main id="main-content" tabindex="-1" class="mx-auto max-w-7xl px-4 py-6 sm:px-8 sm:py-8">
+  <div class="mb-6">
+    <h1 class="mb-1">Renamer</h1>
+    <p class="m-0 text-slate-500 dark:text-slate-400">
+      Pick files, set up renaming rules and review every change before anything is renamed.
+    </p>
   </div>
   <app-rename-workflow [files]="files()" (fileRemoved)="removeFile($event)">
     <app-file-selection [files]="files()" (filesChanged)="files.set($event)" />
