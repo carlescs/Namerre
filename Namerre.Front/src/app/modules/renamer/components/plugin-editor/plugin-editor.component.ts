@@ -5,6 +5,7 @@ import {
   inject,
   Injector,
   input,
+  OnInit,
   output,
   signal,
   viewChild,
@@ -135,8 +136,10 @@ interface Card {
   styleUrl: './plugin-editor.component.scss',
   templateUrl: './plugin-editor.component.html',
 })
-export class PluginEditorComponent {
+export class PluginEditorComponent implements OnInit {
   readonly catalog = input.required<PluginDescriptor[]>();
+  /** Plugins restored from a saved draft; read once when the editor is created. */
+  readonly initialPlugins = input<PluginInstance[]>([]);
   readonly pluginsChanged = output<PluginInstance[]>();
   protected readonly maxPlugins = 32;
   protected readonly locales = locales;
@@ -153,30 +156,26 @@ export class PluginEditorComponent {
   private readonly headings = viewChildren<ElementRef<HTMLElement>>('cardHeading');
   private readonly firstAddButton = viewChild<ElementRef<HTMLButtonElement>>('addButton');
 
+  ngOnInit(): void {
+    const restored = this.initialPlugins().filter((plugin) =>
+      this.catalog().some((descriptor) => descriptor.typeId === plugin.typeId),
+    );
+    if (!restored.length) {
+      if (this.initialPlugins().length) this.emit();
+      return;
+    }
+    this.cards.set(restored.slice(0, this.maxPlugins).map((plugin) => this.card(plugin)));
+    if (restored.length !== this.initialPlugins().length) this.emit();
+  }
+
   protected add(descriptor: PluginDescriptor): void {
     if (this.cards().length >= this.maxPlugins) return;
-    const plugin: PluginInstance = {
+    const card = this.card({
       instanceId: operationId(),
       typeId: descriptor.typeId,
       version: descriptor.version,
       enabled: true,
       options: { ...descriptor.defaultOptions },
-    };
-    const optionFields = fields[plugin.typeId] ?? [];
-    const controls: Record<string, FormControl<string | boolean>> = {};
-    for (const field of optionFields) {
-      controls[field.key] = new FormControl<string | boolean>(
-        plugin.options[field.key] ?? (field.checkbox ? false : ''),
-        { nonNullable: true },
-      );
-    }
-    const form = new FormGroup(controls);
-    const values = signal<Record<string, string | boolean>>(form.getRawValue());
-    const card: Card = { plugin, fields: optionFields, form, values };
-    form.valueChanges.subscribe(() => {
-      values.set(form.getRawValue());
-      card.plugin = { ...card.plugin, options: form.getRawValue() as PluginOptions };
-      this.emit();
     });
     this.cards.update((cards) => [...cards, card]);
     this.emit();
@@ -217,6 +216,26 @@ export class PluginEditorComponent {
   protected visible(card: Card, field: OptionField): boolean {
     const values = card.values();
     return (field.requires ?? []).every((key) => values[key] === true);
+  }
+
+  private card(plugin: PluginInstance): Card {
+    const optionFields = fields[plugin.typeId] ?? [];
+    const controls: Record<string, FormControl<string | boolean>> = {};
+    for (const field of optionFields) {
+      controls[field.key] = new FormControl<string | boolean>(
+        plugin.options[field.key] ?? (field.checkbox ? false : ''),
+        { nonNullable: true },
+      );
+    }
+    const form = new FormGroup(controls);
+    const values = signal<Record<string, string | boolean>>(form.getRawValue());
+    const card: Card = { plugin, fields: optionFields, form, values };
+    form.valueChanges.subscribe(() => {
+      values.set(form.getRawValue());
+      card.plugin = { ...card.plugin, options: form.getRawValue() as PluginOptions };
+      this.emit();
+    });
+    return card;
   }
 
   private emit(): void {

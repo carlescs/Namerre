@@ -3,7 +3,11 @@
   <button type="button" (click)="retryRequested.emit()">Retry plugin catalog</button>
 }
 @if (loaded()) {
-  <app-plugin-editor [catalog]="catalog()" (pluginsChanged)="pluginsChanged.emit($event)" />
+  <app-plugin-editor
+    [catalog]="catalog()"
+    [initialPlugins]="initialPlugins()"
+    (pluginsChanged)="pluginsChanged.emit($event)"
+  />
 } @else if (!error()) {
   <p role="status">Loading plugin catalog…</p>
 }

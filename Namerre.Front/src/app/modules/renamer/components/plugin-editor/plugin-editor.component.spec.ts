@@ -39,6 +39,31 @@ describe('PluginEditorComponent', () => {
     await fixture.whenStable();
   });
 
+  it('restores saved plugins without focusing them and drops unknown types', async () => {
+    const saved: PluginInstance = {
+      instanceId: 'saved-case',
+      typeId: 'case',
+      version: 1,
+      enabled: false,
+      options: { mode: 'lower' },
+    };
+    const restored = TestBed.createComponent(PluginEditorComponent);
+    restored.componentRef.setInput('catalog', testCatalog);
+    restored.componentRef.setInput('initialPlugins', [
+      saved,
+      { ...saved, instanceId: 'gone', typeId: 'removed-type' },
+    ]);
+    let emitted: PluginInstance[] | undefined;
+    restored.componentInstance.pluginsChanged.subscribe((value) => (emitted = value));
+    await restored.whenStable();
+    const element: HTMLElement = restored.nativeElement;
+    expect(element.querySelectorAll('article')).toHaveLength(1);
+    expect((element.querySelector('article select') as HTMLSelectElement).value).toBe('lower');
+    expect(emitted).toEqual([saved]);
+    expect(element.contains(document.activeElement)).toBe(false);
+    restored.destroy();
+  });
+
   it('starts empty and allows repeated types with independently configured options', async () => {
     expect(fixture.nativeElement.textContent).toContain('No plugins selected');
     expect(plugins).toEqual([]);

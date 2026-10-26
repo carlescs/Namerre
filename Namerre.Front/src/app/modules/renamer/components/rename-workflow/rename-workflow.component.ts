@@ -49,6 +49,7 @@ import { tmdbOptionsHash } from '../../options-hash';
 import { RenameEvents, refreshOn } from '../../rename-events';
 import { preferredTmdbMatch, tmdbFilename } from '../../tmdb-filename';
 import { RenamerFile } from '../../renamer-file';
+import { loadPipelineDraft, saveFilesDraft, savePipelineDraft } from '../../draft-storage';
 import { PluginConfigurationComponent } from '../plugin-configuration/plugin-configuration.component';
 import { RenameConfirmationComponent } from '../rename-confirmation/rename-confirmation.component';
 import { RenamePreviewComponent } from '../rename-preview/rename-preview.component';
@@ -125,10 +126,12 @@ export class RenameWorkflowComponent {
   protected readonly catalog = signal<PluginDescriptor[]>([]);
   protected readonly catalogLoaded = signal(false);
   private catalogLoading = false;
-  protected readonly plugins = signal<PluginInstance[]>([]);
+  private readonly draft = loadPipelineDraft();
+  protected readonly restoredPlugins = this.draft?.plugins ?? [];
+  protected readonly plugins = signal<PluginInstance[]>(this.restoredPlugins);
   protected readonly selections = signal<MetadataSelection[]>([]);
-  protected readonly verifyContent = signal(false);
-  protected readonly deleteEmptyFolders = signal(false);
+  protected readonly verifyContent = signal(this.draft?.verifyContent ?? false);
+  protected readonly deleteEmptyFolders = signal(this.draft?.deleteEmptyFolders ?? false);
   protected readonly preview = signal<PreviewResult | null>(null);
   protected readonly plan = signal<PlanView | null>(null);
   protected readonly matching = signal<MatchContext | null>(null);
@@ -204,6 +207,13 @@ export class RenameWorkflowComponent {
       this.files();
       untracked(() => this.invalidate());
     });
+    effect(() =>
+      savePipelineDraft({
+        plugins: this.plugins(),
+        verifyContent: this.verifyContent(),
+        deleteEmptyFolders: this.deleteEmptyFolders(),
+      }),
+    );
     this.destroyRef.onDestroy(() => {
       clearTimeout(this.debounce);
       this.request?.unsubscribe();
@@ -415,7 +425,9 @@ export class RenameWorkflowComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (accepted) => {
-          // Accepted jobs are durable even if the user has changed the editor.
+          // Accepted jobs are durable even if the user has changed the editor. The renamed
+          // paths no longer exist, so the saved collection is dropped; the rules are kept.
+          saveFilesDraft([]);
           void this.router.navigate(['/runs', accepted.id]);
         },
         error: (error: unknown) => {

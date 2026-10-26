@@ -14,6 +14,7 @@ describe('App', () => {
   const logout = vi.fn<() => Promise<void>>();
 
   beforeEach(async () => {
+    localStorage.clear();
     username.set(null);
     requiresSetup.set(false);
     refresh.mockReset().mockResolvedValue();

@@ -297,7 +297,10 @@ dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https
 Open the folder picker and confirm a folder to add its immediate files to the
 renaming collection. Subsequent selections add files without duplicating
 server-relative paths. The collection displays source folders, sizes and
-modification dates and remains in memory while the renamer is open.
+modification dates. The collection, the renaming rules and the run options are kept in
+the browser's local storage, so a reload picks up where you left off; confirmed TMDB
+matches are not kept and are matched again. The saved collection is dropped once a rename
+starts.
 Navigation stays within the configured root; symbolic links
 and junctions are excluded. `GET /api/folders?path=Movies` accepts a relative
 folder path; omit `path` to list the root. This endpoint lists metadata only,

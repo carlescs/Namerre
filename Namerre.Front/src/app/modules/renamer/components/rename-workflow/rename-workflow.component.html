@@ -49,6 +49,7 @@
       [catalog]="catalog()"
       [loaded]="catalogLoaded()"
       [error]="catalogError()"
+      [initialPlugins]="restoredPlugins"
       (retryRequested)="loadCatalog()"
       (pluginsChanged)="changePlugins($event)"
     />

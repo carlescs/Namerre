@@ -119,6 +119,7 @@ describe('RenameWorkflowComponent', () => {
   };
 
   beforeEach(async () => {
+    localStorage.clear();
     events = new FakeRenameEvents();
     await TestBed.configureTestingModule({
       imports: [RenameWorkflowComponent],
@@ -296,8 +297,21 @@ describe('RenameWorkflowComponent', () => {
     expect(execute.request.body.version).toBe(1);
     expect(execute.request.body.operationId).toBeTruthy();
     expect(execute.request.body.targetPath).toBeUndefined();
+    localStorage.setItem('namerre.draft.files.v1', JSON.stringify(files));
     execute.flush({ id: 'run-1', status: 'Queued', location: '/api/rename-runs/run-1' });
     expect(navigate).toHaveBeenCalledWith(['/runs', 'run-1']);
+    expect(localStorage.getItem('namerre.draft.files.v1')).toBeNull();
+  });
+
+  it('saves the rules and run options as a draft for the next visit', async () => {
+    changePlugins([tmdb]);
+    await fixture.whenStable();
+    expect(JSON.parse(localStorage.getItem('namerre.draft.pipeline.v1') ?? 'null')).toEqual({
+      plugins: [tmdb],
+      verifyContent: false,
+      deleteEmptyFolders: false,
+    });
+    http.match('/api/rename-previews').forEach((request) => request.flush(tmdbPreview));
   });
 
   it('keeps emptied folders by default', async () => {

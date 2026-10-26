@@ -4,6 +4,12 @@
     <p class="m-0 text-slate-500 dark:text-slate-400">
       Pick files, set up renaming rules and review every change before anything is renamed.
     </p>
+    @if (restoredCount) {
+      <p class="mb-0 mt-2 text-xs text-slate-500 dark:text-slate-400" role="status">
+        Restored {{ restoredCount }} {{ restoredCount === 1 ? 'file' : 'files' }} from your last
+        visit in this browser. Use Clear collection to start over.
+      </p>
+    }
   </div>
   <app-rename-workflow [files]="files()" (fileRemoved)="removeFile($event)">
     <app-file-selection [files]="files()" (filesChanged)="files.set($event)" />

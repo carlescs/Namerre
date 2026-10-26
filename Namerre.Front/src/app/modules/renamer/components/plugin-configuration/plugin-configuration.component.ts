@@ -12,6 +12,7 @@ export class PluginConfigurationComponent {
   readonly catalog = input<PluginDescriptor[]>([]);
   readonly loaded = input(false);
   readonly error = input('');
+  readonly initialPlugins = input<PluginInstance[]>([]);
   readonly retryRequested = output<void>();
   readonly pluginsChanged = output<PluginInstance[]>();
 }
