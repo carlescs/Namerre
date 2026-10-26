@@ -295,6 +295,96 @@ public sealed class RenamingWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task BulkDeletionRemovesEverySelectedRunAndItsRollbacksAndSkipsMissingOnes()
+    {
+        Write("alpha.txt", "A");
+        Write("bravo.txt", "B");
+        var notifier = new RecordingNotifier();
+        using var harness = Harness(notifier: notifier);
+        var first = await harness.Service.Execute((await Prepare(harness, UpperRequest(["alpha.txt"]))).Id,
+            new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        var rollback = await harness.Service.Rollback(first.Id, new(["0"], Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        var second = await harness.Service.Execute((await Prepare(harness, UpperRequest(["bravo.txt"]))).Id,
+            new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        notifier.Changes.Clear();
+
+        // The rollback is selected as well as its parent; it must only be deleted once.
+        var deleted = await harness.Service.DeleteRuns(new([first.Id, rollback.Id, second.Id, "gone"]), default);
+
+        Assert.Equal([first.Id, rollback.Id, second.Id], deleted);
+        Assert.Equal(deleted.Select(id => new RenameChange("Run", id, "Deleted")), notifier.Changes);
+        Assert.Empty((await harness.Service.GetRuns(1, 20, default)).Items);
+        Assert.Equal("A", Read("alpha.txt"));
+        Assert.Equal("B", Read("BRAVO.txt"));
+    }
+
+    [Fact]
+    public async Task BulkDeletionIsRefusedAsAWholeWhenAnySelectedRunIsUnsettled()
+    {
+        Write("alpha.txt", "A");
+        Write("bravo.txt", "before");
+        using var harness = Harness();
+        var settled = await harness.Service.Execute((await Prepare(harness, UpperRequest(["alpha.txt"]))).Id,
+            new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        var plan = await Prepare(harness, UpperRequest(["bravo.txt"]));
+        Write("bravo.txt", "after!");
+        var failed = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+
+        var blocked = await Assert.ThrowsAsync<RenameException>(
+            () => harness.Service.DeleteRuns(new([settled.Id, failed.Id]), default));
+
+        Assert.Equal(("RunNotSettled", 409), (blocked.Code, blocked.Status));
+        Assert.Equal("Completed", (await harness.Service.GetRun(settled.Id, default)).Status);
+        Assert.Equal("RecoveryRequired", (await harness.Service.GetRun(failed.Id, default)).Status);
+    }
+
+    [Fact]
+    public async Task DeletionCandidatesListOnlyDeletableRunsNewestFirst()
+    {
+        Write("alpha.txt", "A");
+        Write("charlie.txt", "C");
+        using var harness = Harness();
+        var settled = await harness.Service.Execute((await Prepare(harness, UpperRequest(["alpha.txt"]))).Id,
+            new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        var rollback = await harness.Service.Rollback(settled.Id, new(["0"], Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        // A completed rename whose rollback is still queued cannot be deleted, so neither is a candidate.
+        var pending = await harness.Service.Execute((await Prepare(harness, UpperRequest(["charlie.txt"]))).Id,
+            new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        await harness.Service.Rollback(pending.Id, new(["0"], Guid.NewGuid().ToString()), default);
+
+        var candidates = await harness.Service.GetDeletableRuns(default);
+        Assert.Equal([rollback.Id, settled.Id], candidates.Ids);
+        Assert.False(candidates.HasMore);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(RenameService.MaxRunsPerDeletion + 1)]
+    public async Task BulkDeletionRequiresBetweenOneAndTheMaximumRuns(int count)
+    {
+        using var harness = Harness();
+        var ids = Enumerable.Range(0, count).Select(i => "run-" + i).ToArray();
+        Assert.Equal("InvalidSelection",
+            (await Assert.ThrowsAsync<RenameException>(() => harness.Service.DeleteRuns(new(ids), default))).Code);
+    }
+
+    [Fact]
+    public async Task BulkDeletionRejectsDuplicateRuns()
+    {
+        using var harness = Harness();
+        Assert.Equal("InvalidSelection",
+            (await Assert.ThrowsAsync<RenameException>(() => harness.Service.DeleteRuns(new(["a", "a"]), default))).Code);
+    }
+
+    [Fact]
     public async Task SwapsAndCyclesUseNoOverwriteStagingAndRequireCompleteRollbackDependencyGroup()
     {
         Write("a.txt", "content-a");

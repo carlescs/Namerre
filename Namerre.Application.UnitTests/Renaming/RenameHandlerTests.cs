@@ -105,6 +105,30 @@ public sealed class RenameHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task GetDeletableRunsReturnsServiceCandidates()
+    {
+        var expected = new DeletableRuns(["run"], true);
+        service.GetDeletableRuns(Token).Returns(expected);
+
+        var result = await new GetDeletableRenameRunsQueryHandler(service).Handle(new GetDeletableRenameRunsQuery(), Token);
+
+        Assert.Same(expected, result);
+    }
+
+    [Fact]
+    public async Task DeleteRunsForwardsRequestAndReturnsDeletedIds()
+    {
+        var request = new DeleteRunsRequest(["run", "other"]);
+        IReadOnlyList<string> deleted = ["run", "child", "other"];
+        service.DeleteRuns(request, Token).Returns(deleted);
+
+        var result = await new DeleteRenameRunsCommandHandler(service).Handle(new DeleteRenameRunsCommand(request), Token);
+
+        Assert.Same(deleted, result);
+        await service.Received(1).DeleteRuns(request, Token);
+    }
+
+    [Fact]
     public async Task RollbackPreviewForwardsSelection()
     {
         var selection = new SelectionRequest(["f1"], "op");

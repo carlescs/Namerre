@@ -57,6 +57,14 @@ public sealed class RenamingController(ISender sender) : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("api/rename-run-deletions/candidates")]
+    public async Task<IActionResult> DeletableRuns(CancellationToken cancellationToken)
+        => Ok(await sender.Send(new GetDeletableRenameRunsQuery(), cancellationToken));
+
+    [HttpPost("api/rename-run-deletions")]
+    public async Task<IActionResult> DeleteRuns(DeleteRunsRequest request, CancellationToken cancellationToken)
+        => Ok(await sender.Send(new DeleteRenameRunsCommand(request), cancellationToken));
+
     [HttpPost("api/rename-runs/{id}/rollback-preview")]
     public async Task<IActionResult> RollbackPreview(string id, SelectionRequest request, CancellationToken cancellationToken)
         => Ok(await sender.Send(new PreviewRollbackQuery(id, request), cancellationToken));

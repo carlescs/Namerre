@@ -127,6 +127,13 @@ export interface RunPage {
   pageSize: number;
   hasMore: boolean;
 }
+/** Most runs one bulk deletion accepts (`MaxRunsPerDeletion` on the server). */
+export const MAX_RUNS_PER_DELETION = 1000;
+/** Settled run ids on every page, newest first; `hasMore` means more exist than one deletion takes. */
+export interface DeletableRuns {
+  ids: string[];
+  hasMore: boolean;
+}
 export interface SelectionRequest {
   fileIds: string[];
   operationId: string;
@@ -238,6 +245,13 @@ export class RenameApi {
   }
   deleteRun(id: string) {
     return this.http.delete<void>(`/api/rename-runs/${encodeURIComponent(id)}`);
+  }
+  deletableRuns() {
+    return this.http.get<DeletableRuns>('/api/rename-run-deletions/candidates');
+  }
+  /** Deletes the runs (and their undo records) together; resolves to every deleted run id. */
+  deleteRuns(runIds: string[]) {
+    return this.http.post<string[]>('/api/rename-run-deletions', { runIds });
   }
   rollbackPreview(id: string, request: SelectionRequest) {
     return this.http.post<SelectionPreview>(

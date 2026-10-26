@@ -12,6 +12,8 @@ namespace Namerre.Infrastructure.Renaming;
 public sealed class RenameService(RenameStore store, IRenameFileSystem fileSystem, PipelineEngine pipeline,
     ILogger<RenameService> logger, IRenameNotifier? notifier = null) : IRenameService
 {
+    /// <summary>Most runs one bulk deletion accepts; also caps the "select all pages" candidate list.</summary>
+    public const int MaxRunsPerDeletion = 1000;
     private readonly SemaphoreSlim gate = new(1);
     private readonly SemaphoreSlim previews = new(4);
     // In-flight rollback checks keyed by run and operation, so a polling client can show per-file progress.
@@ -91,6 +93,28 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         {
             EnsureOperational();
             var deleted = store.DeleteRun(id);
+            foreach (var run in deleted) Notify("Run", run, "Deleted");
+            return deleted;
+        }
+        finally { gate.Release(); }
+    }
+
+    public Task<DeletableRuns> GetDeletableRuns(CancellationToken cancellationToken)
+    {
+        var ids = store.DeletableRunIds(take: MaxRunsPerDeletion + 1);
+        return Task.FromResult(new DeletableRuns(ids.Take(MaxRunsPerDeletion).ToArray(), ids.Count > MaxRunsPerDeletion));
+    }
+
+    public async Task<IReadOnlyList<string>> DeleteRuns(DeleteRunsRequest request, CancellationToken cancellationToken)
+    {
+        if (request.RunIds is null || request.RunIds.Count is < 1 or > MaxRunsPerDeletion
+            || request.RunIds.Any(string.IsNullOrWhiteSpace) || request.RunIds.Distinct().Count() != request.RunIds.Count)
+            throw new RenameException("InvalidSelection", $"Select 1–{MaxRunsPerDeletion} distinct run IDs.");
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            EnsureOperational();
+            var deleted = store.DeleteRuns(request.RunIds);
             foreach (var run in deleted) Notify("Run", run, "Deleted");
             return deleted;
         }
