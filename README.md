@@ -349,11 +349,14 @@ rollback run keeps the original run. Files on disk are never touched, but delete
 history can no longer be used for rollback. Runs awaiting recovery, or with a queued or
 unrecovered rollback, cannot be deleted.
 
-To delete several records at once, tick them in the history list (or **Select all on this
-page**) and choose **Delete selected** (`POST /api/rename-run-deletions` with
-`{ "runIds": [...] }`, 1–100 distinct IDs; returns every deleted run ID, rollbacks included).
-The batch is all-or-nothing: if any selected run cannot be deleted, nothing is. Runs that
-were already deleted, for example from another tab, are skipped.
+To delete several records at once, tick them in the history list and choose **Delete
+selected**. The selection is kept while moving between pages. Once every deletable run on
+a page is ticked, **Select all deletable runs on every page** selects the newest 1000
+settled runs (`GET /api/rename-run-deletions/candidates`, which returns `ids` and `hasMore`).
+Deletion uses `POST /api/rename-run-deletions` with `{ "runIds": [...] }` (1–1000 distinct
+IDs) and returns every deleted run ID, rollbacks included. The batch is all-or-nothing: if
+any selected run cannot be deleted, nothing is. Runs that were already deleted, for example
+from another tab, are skipped.
 
 Runs are journaled, not whole-batch atomic: a failure can leave some files renamed
 or in recorded temporary staging paths. Inspect the run and use explicit recovery.

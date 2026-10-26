@@ -15,6 +15,7 @@ public interface IRenameService
     Task<RunPage> GetRuns(int page, int pageSize, CancellationToken cancellationToken);
     Task<RunView> GetRun(string id, CancellationToken cancellationToken);
     Task<IReadOnlyList<string>> DeleteRun(string id, CancellationToken cancellationToken);
+    Task<DeletableRuns> GetDeletableRuns(CancellationToken cancellationToken);
     Task<IReadOnlyList<string>> DeleteRuns(DeleteRunsRequest request, CancellationToken cancellationToken);
     Task<SelectionPreview> RollbackPreview(string id, SelectionRequest request, CancellationToken cancellationToken);
     Task<RollbackCheckProgress> GetRollbackCheckProgress(string id, string operationId, CancellationToken cancellationToken);

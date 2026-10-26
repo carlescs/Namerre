@@ -343,10 +343,31 @@ public sealed class RenamingWorkflowTests : IDisposable
         Assert.Equal("RecoveryRequired", (await harness.Service.GetRun(failed.Id, default)).Status);
     }
 
+    [Fact]
+    public async Task DeletionCandidatesListOnlySettledRunsNewestFirst()
+    {
+        Write("alpha.txt", "A");
+        Write("bravo.txt", "before");
+        using var harness = Harness();
+        var settled = await harness.Service.Execute((await Prepare(harness, UpperRequest(["alpha.txt"]))).Id,
+            new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        var rollback = await harness.Service.Rollback(settled.Id, new(["0"], Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        var plan = await Prepare(harness, UpperRequest(["bravo.txt"]));
+        Write("bravo.txt", "after!");
+        await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+
+        var candidates = await harness.Service.GetDeletableRuns(default);
+        Assert.Equal([rollback.Id, settled.Id], candidates.Ids);
+        Assert.False(candidates.HasMore);
+    }
+
     [Theory]
     [InlineData(0)]
-    [InlineData(101)]
-    public async Task BulkDeletionRequiresBetweenOneAndAHundredRuns(int count)
+    [InlineData(RenameService.MaxRunsPerDeletion + 1)]
+    public async Task BulkDeletionRequiresBetweenOneAndTheMaximumRuns(int count)
     {
         using var harness = Harness();
         var ids = Enumerable.Range(0, count).Select(i => "run-" + i).ToArray();

@@ -120,6 +120,18 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         }
     }
 
+    /// <summary>Lists the IDs of runs in one of <paramref name="statuses"/>, newest first, without reading their JSON.</summary>
+    public IReadOnlyList<string> RunIds(string[] statuses, int take)
+    {
+        Initialize();
+        lock (gate)
+        {
+            using var db = Open();
+            return db.Documents.AsNoTracking().Where(d => d.Kind == "Run" && statuses.Contains(d.Status))
+                .OrderByDescending(d => d.Order).ThenBy(d => d.Id).Take(take).Select(d => d.Id).ToArray();
+        }
+    }
+
     /// <summary>Lists the runs created from <paramref name="parentId"/> (rollbacks), oldest first.</summary>
     public IReadOnlyList<RunReference> ChildRuns(string parentId)
     {

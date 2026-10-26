@@ -120,6 +120,15 @@ public sealed class RenamingControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task DeletableRunsReturnsCandidates()
+    {
+        var candidates = new DeletableRuns(["run", "other"], false);
+        sender.Send(Arg.Any<GetDeletableRenameRunsQuery>(), Token).Returns(candidates);
+
+        Assert.Same(candidates, Assert.IsType<OkObjectResult>(await controller.DeletableRuns(Token)).Value);
+    }
+
+    [Fact]
     public async Task DeleteRunsReturnsDeletedIds()
     {
         var request = new DeleteRunsRequest(["run", "other"]);

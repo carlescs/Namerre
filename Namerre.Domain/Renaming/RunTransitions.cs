@@ -14,5 +14,7 @@ public static class RunTransitions
     };
 
     /// <summary>Settled runs have no pending mutation or recovery, so their records may be deleted.</summary>
-    public static bool IsSettled(string status) => status is "Completed" or "Recovered";
+    public static readonly IReadOnlyList<string> SettledStatuses = ["Completed", "Recovered"];
+
+    public static bool IsSettled(string status) => SettledStatuses.Contains(status);
 }

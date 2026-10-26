@@ -48,6 +48,11 @@
         <span class="text-sm text-slate-500 dark:text-slate-400"
           >{{ chosenRuns().size }} selected</span
         >
+        @if (chosenRuns().size) {
+          <button type="button" class="text-sm" (click)="clearRuns()" [disabled]="deleting()">
+            Clear selection
+          </button>
+        }
         <button
           type="button"
           class="ml-auto"
@@ -57,6 +62,34 @@
           <fa-icon [icon]="trashIcon" aria-hidden="true" /> Delete selected
         </button>
       </div>
+      @if (everyPage(); as every) {
+        <p class="mt-2 text-sm" role="status">
+          @if (every.hasMore) {
+            The newest {{ every.ids.length }} deletable runs are selected, the most one deletion
+            takes. Delete them, then select again for the rest.
+          } @else {
+            Every deletable run on every page is selected.
+          }
+        </p>
+      } @else if (allRunsChosen() && (list.hasMore || list.page > 1)) {
+        <p class="mt-2 text-sm">
+          All deletable runs on this page are selected.
+          <button
+            type="button"
+            class="text-sm"
+            (click)="selectEveryPage()"
+            [disabled]="deleting() || selectingEveryPage()"
+          >
+            Select all deletable runs on every page
+          </button>
+        </p>
+      }
+      @if (selectingEveryPage()) {
+        <p class="text-sm" role="status">Selecting runs on every page…</p>
+      }
+      @if (selectionError()) {
+        <p class="error" role="alert">{{ selectionError() }}</p>
+      }
       @if (pendingBulkDelete() && chosenRuns().size) {
         <section class="surface mt-3 p-5" role="group" aria-label="Confirm bulk deletion">
           <p>

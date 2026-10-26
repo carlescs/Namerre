@@ -16,6 +16,7 @@ import { faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { BehaviorSubject, catchError, EMPTY, exhaustMap, Subscription, timer } from 'rxjs';
 import {
+  DeletableRuns,
   RecoveryPreview,
   PlanView,
   RenameApi,
@@ -87,9 +88,13 @@ export class RunHistoryComponent {
   protected readonly pendingDelete = signal('');
   protected readonly deleting = signal(false);
   protected readonly deleteError = signal('');
-  /** Runs ticked in the history list for bulk deletion; only settled runs on the current page. */
+  /** Runs ticked in the history list for bulk deletion, kept across pages. */
   protected readonly chosenRuns = signal<Set<string>>(new Set());
   protected readonly pendingBulkDelete = signal(false);
+  /** Set while the choice holds every deletable run, as last read from the server. */
+  protected readonly everyPage = signal<DeletableRuns | null>(null);
+  protected readonly selectingEveryPage = signal(false);
+  protected readonly selectionError = signal('');
   protected readonly deletableRunIds = computed(() =>
     (this.history()?.items ?? []).filter(isSettledRun).map((run) => run.id),
   );
@@ -126,6 +131,7 @@ export class RunHistoryComponent {
   private planRequest?: Subscription;
   private loadRevision = 0;
   private deleteRequest?: Subscription;
+  private candidatesRequest?: Subscription;
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
@@ -133,7 +139,7 @@ export class RunHistoryComponent {
       this.run.set(null);
       this.history.set(null);
       this.selected.set(new Set());
-      this.chosenRuns.set(new Set());
+      this.clearRuns();
       this.planRequest?.unsubscribe();
       this.savedPlan.set(null);
       this.planError.set('');
@@ -149,6 +155,7 @@ export class RunHistoryComponent {
       this.checkProgress?.unsubscribe();
       this.planRequest?.unsubscribe();
       this.deleteRequest?.unsubscribe();
+      this.candidatesRequest?.unsubscribe();
     });
   }
 
@@ -173,7 +180,8 @@ export class RunHistoryComponent {
               this.invalidateApproval();
             }
             this.run.set(run);
-            this.selected.update((selection) => retain(selection, this.selectableIds()));
+            const selectable = new Set(this.selectableIds());
+            this.selected.update((selection) => retain(selection, (id) => selectable.has(id)));
             this.loading.set(false);
             active.next(['Queued', 'Running', 'RecoveryQueued', 'Recovering'].includes(run.status));
           },
@@ -193,7 +201,9 @@ export class RunHistoryComponent {
           next: (history) => {
             if (revision !== this.loadRevision) return;
             this.history.set(history);
-            this.chosenRuns.update((chosen) => retain(chosen, this.deletableRunIds()));
+            // Choices from other pages are kept; only runs seen here as no longer deletable drop out.
+            const blocked = new Set(history.items.filter((r) => !isSettledRun(r)).map((r) => r.id));
+            this.chosenRuns.update((chosen) => retain(chosen, (id) => !blocked.has(id)));
             this.loading.set(false);
           },
           error: (error: unknown) => {
@@ -230,7 +240,6 @@ export class RunHistoryComponent {
 
   protected changePage(direction: number): void {
     this.page.update((page) => Math.max(1, page + direction));
-    this.chosenRuns.set(new Set());
     this.cancelDelete();
     this.refresh();
   }
@@ -342,6 +351,7 @@ export class RunHistoryComponent {
 
   protected toggleRun(id: string): void {
     if (this.deleting()) return;
+    this.everyPage.set(null);
     this.chosenRuns.update((chosen) => {
       const next = new Set(chosen);
       if (next.has(id)) next.delete(id);
@@ -350,9 +360,48 @@ export class RunHistoryComponent {
     });
   }
 
+  /** Ticks or unticks every deletable run on this page, leaving choices on other pages alone. */
   protected toggleAllRuns(): void {
     if (this.deleting()) return;
-    this.chosenRuns.set(this.allRunsChosen() ? new Set() : new Set(this.deletableRunIds()));
+    const ids = this.deletableRunIds();
+    const select = !this.allRunsChosen();
+    if (!select) this.everyPage.set(null);
+    this.chosenRuns.update((chosen) => {
+      const next = new Set(chosen);
+      for (const id of ids) {
+        if (select) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  protected selectEveryPage(): void {
+    if (this.deleting() || this.selectingEveryPage()) return;
+    this.selectingEveryPage.set(true);
+    this.selectionError.set('');
+    this.candidatesRequest = this.api
+      .deletableRuns()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (candidates) => {
+          this.selectingEveryPage.set(false);
+          this.chosenRuns.set(new Set(candidates.ids));
+          this.everyPage.set(candidates);
+        },
+        error: (error: unknown) => {
+          this.selectingEveryPage.set(false);
+          this.selectionError.set(renameError(error));
+        },
+      });
+  }
+
+  protected clearRuns(): void {
+    this.candidatesRequest?.unsubscribe();
+    this.selectingEveryPage.set(false);
+    this.selectionError.set('');
+    this.everyPage.set(null);
+    this.chosenRuns.set(new Set());
   }
 
   protected requestDelete(id: string): void {
@@ -414,7 +463,7 @@ export class RunHistoryComponent {
         next: (deleted) => {
           this.pendingBulkDelete.set(false);
           this.deleting.set(false);
-          this.chosenRuns.set(new Set());
+          this.clearRuns();
           this.reloadAfterDeletion(deleted);
         },
         error: (error: unknown) => {
@@ -427,6 +476,7 @@ export class RunHistoryComponent {
   /** Re-reads the list, stepping back a page when the deletion emptied the current one. */
   private reloadAfterDeletion(deleted: string[]): void {
     const removed = new Set(deleted);
+    this.chosenRuns.update((chosen) => retain(chosen, (id) => !removed.has(id)));
     if (this.page() > 1 && this.history()?.items.every((item) => removed.has(item.id)))
       this.page.update((page) => page - 1);
     this.refresh();
@@ -475,10 +525,7 @@ export class RunHistoryComponent {
   }
 }
 
-/** Keeps only the still-allowed ids, returning the same set when nothing was dropped. */
-function retain(selection: Set<string>, allowed: string[]): Set<string> {
-  const keep = new Set(allowed);
-  return [...selection].every((id) => keep.has(id))
-    ? selection
-    : new Set([...selection].filter((id) => keep.has(id)));
+/** Keeps only the ids that pass `keep`, returning the same set when nothing was dropped. */
+function retain(selection: Set<string>, keep: (id: string) => boolean): Set<string> {
+  return [...selection].every(keep) ? selection : new Set([...selection].filter(keep));
 }

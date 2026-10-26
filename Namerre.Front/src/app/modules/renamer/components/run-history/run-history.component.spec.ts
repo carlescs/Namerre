@@ -741,7 +741,7 @@ describe('RunHistoryComponent', () => {
     expect(runCheckbox(0).checked).toBe(true);
   });
 
-  it('drops chosen runs that stop being deletable and clears the choice on another page', async () => {
+  it('drops chosen runs that stop being deletable but keeps choices across pages', async () => {
     params.next(convertToParamMap({}));
     http.expectOne('/api/rename-runs/run-1');
     const page = { items: [run], page: 1, pageSize: 20, hasMore: true };
@@ -763,14 +763,91 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     runCheckbox(0).click();
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('1 selected');
-    await fixture.whenStable();
     button('Next page').click();
     http
       .expectOne('/api/rename-runs?page=2&pageSize=20')
       .flush({ items: [{ ...run, id: 'run-2' }], page: 2, pageSize: 20, hasMore: false });
     await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('1 selected');
+    expect(runCheckbox(0).checked).toBe(false);
+    selectAllRuns().click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('2 selected');
+    // Unticking this page's header leaves the choice from page 1 alone.
+    selectAllRuns().click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('1 selected');
+
+    button('Previous page').click();
+    http.expectOne('/api/rename-runs?page=1&pageSize=20').flush(page);
+    await fixture.whenStable();
+    expect(runCheckbox(0).checked).toBe(true);
+    button('Clear selection').click();
+    await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('0 selected');
+  });
+
+  it('offers to select deletable runs on every page once the whole page is selected', async () => {
+    params.next(convertToParamMap({}));
+    http.expectOne('/api/rename-runs/run-1');
+    http
+      .expectOne('/api/rename-runs?page=1&pageSize=20')
+      .flush({ items: [run], page: 1, pageSize: 20, hasMore: true });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('on every page');
+    selectAllRuns().click();
+    await fixture.whenStable();
+
+    button('Select all deletable runs on every page').click();
+    http
+      .expectOne('/api/rename-run-deletions/candidates')
+      .flush({ title: 'Unavailable.' }, { status: 503, statusText: 'Unavailable' });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('1 selected');
+
+    button('Select all deletable runs on every page').click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Selecting runs on every page…');
+    http
+      .expectOne('/api/rename-run-deletions/candidates')
+      .flush({ ids: ['run-1', 'run-2', 'run-3'], hasMore: false });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('3 selected');
+    expect(fixture.nativeElement.textContent).toContain('Every deletable run on every page');
+
+    button('Delete selected').click();
+    await fixture.whenStable();
+    button('Confirm deletion of 3').click();
+    const request = http.expectOne('/api/rename-run-deletions');
+    expect(request.request.body).toEqual({ runIds: ['run-1', 'run-2', 'run-3'] });
+    request.flush(['run-1', 'run-2', 'run-3']);
+    http
+      .expectOne('/api/rename-runs?page=1&pageSize=20')
+      .flush({ items: [], page: 1, pageSize: 20, hasMore: false });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Nothing has been renamed yet.');
+  });
+
+  it('says when more deletable runs exist than one deletion takes', async () => {
+    params.next(convertToParamMap({}));
+    http.expectOne('/api/rename-runs/run-1');
+    http
+      .expectOne('/api/rename-runs?page=1&pageSize=20')
+      .flush({ items: [run], page: 1, pageSize: 20, hasMore: true });
+    await fixture.whenStable();
+    selectAllRuns().click();
+    await fixture.whenStable();
+    button('Select all deletable runs on every page').click();
+    http
+      .expectOne('/api/rename-run-deletions/candidates')
+      .flush({ ids: ['run-1', 'run-2'], hasMore: true });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('The newest 2 deletable runs are selected');
+    runCheckbox(0).click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('The newest 2');
+    expect(fixture.nativeElement.textContent).toContain('1 selected');
   });
 
   it('describes rollback records without mentioning a prepared plan', async () => {

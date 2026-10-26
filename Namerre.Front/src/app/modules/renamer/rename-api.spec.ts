@@ -56,6 +56,11 @@ describe('RenameApi', () => {
     expect(http.expectOne('/api/rename-runs/run%232').request.method).toBe('DELETE');
   });
 
+  it('reads the deletion candidates from every page', () => {
+    api.deletableRuns().subscribe();
+    expect(http.expectOne('/api/rename-run-deletions/candidates').request.method).toBe('GET');
+  });
+
   it('deletes several runs in one request', () => {
     api.deleteRuns(['run-1', 'run-2']).subscribe();
     const request = http.expectOne('/api/rename-run-deletions');

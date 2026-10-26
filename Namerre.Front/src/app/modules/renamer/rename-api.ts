@@ -127,6 +127,11 @@ export interface RunPage {
   pageSize: number;
   hasMore: boolean;
 }
+/** Settled run ids on every page, newest first; `hasMore` means more exist than one deletion takes. */
+export interface DeletableRuns {
+  ids: string[];
+  hasMore: boolean;
+}
 export interface SelectionRequest {
   fileIds: string[];
   operationId: string;
@@ -238,6 +243,9 @@ export class RenameApi {
   }
   deleteRun(id: string) {
     return this.http.delete<void>(`/api/rename-runs/${encodeURIComponent(id)}`);
+  }
+  deletableRuns() {
+    return this.http.get<DeletableRuns>('/api/rename-run-deletions/candidates');
   }
   /** Deletes the runs (and their undo records) together; resolves to every deleted run id. */
   deleteRuns(runIds: string[]) {
