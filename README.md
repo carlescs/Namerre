@@ -281,6 +281,9 @@ startup; an unreachable provider shows an error on the login page.
 ## Renaming workflow
 
 Add files using the existing folder picker, optionally including subfolders.
+Hidden and system entries (names starting with `.` or `@`, such as `.DS_Store` and
+Synology's `@eaDir`, plus `Thumbs.db`, `desktop.ini` and recycle-bin folders) are
+skipped unless **Show hidden files and folders** is ticked in the picker.
 The collection can contain files from multiple folders. Start with an empty plugin
 stack and add as many independently configured instances as needed: text replacement,
 regular-expression replacement, case change, or TMDB resolution. Repeated plugin
@@ -366,7 +369,10 @@ dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https
 Open the folder picker and confirm a folder to add its immediate files to the
 renaming collection. Subsequent selections add files without duplicating
 server-relative paths. The collection displays source folders, sizes and
-modification dates and remains in memory while the renamer is open.
+modification dates. The collection, the renaming rules and the run options are kept in
+the browser's local storage, so a reload picks up where you left off; confirmed TMDB
+matches are not kept and are matched again. The saved collection is dropped once a rename
+starts.
 Navigation stays within the configured root; symbolic links
 and junctions are excluded. `GET /api/folders?path=Movies` accepts a relative
 folder path; omit `path` to list the root. This endpoint lists metadata only,
@@ -489,6 +495,9 @@ Existing matches survive unrelated plugin edits and collection additions; change
 step inputs or TMDB options require confirmation again. Reopening a picker restores
 its search and episode fields. A previous show choice can be reused for another file,
 but its exact season and episode must still be verified and confirmed separately.
+While any file still needs a confirmed match, the stage says how many and can jump to
+the first one; a file that should not be renamed can be removed from the collection
+from its matching row.
 
 When rendering metadata fields, filesystem-invalid characters become hyphens,
 braces become parentheses, and trailing spaces and periods are removed. Reserved

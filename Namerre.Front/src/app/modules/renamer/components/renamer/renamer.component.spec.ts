@@ -19,6 +19,7 @@ describe('RenamerComponent', () => {
   };
 
   beforeEach(async () => {
+    localStorage.clear();
     await TestBed.configureTestingModule({
       imports: [RenamerComponent],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
@@ -34,6 +35,20 @@ describe('RenamerComponent', () => {
   afterEach(() => {
     fixture.destroy();
     http.verify();
+  });
+
+  it('restores the collection saved in this browser and keeps it in sync', async () => {
+    await select(root);
+    expect(JSON.parse(localStorage.getItem('namerre.draft.files.v1') ?? '[]')).toHaveLength(1);
+    const restored = TestBed.createComponent(RenamerComponent);
+    await restored.whenStable();
+    const element: HTMLElement = restored.nativeElement;
+    expect(element.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(element.textContent).toContain('Restored 1 file from your last visit');
+    restored.destroy();
+    clearButton().click();
+    await fixture.whenStable();
+    expect(localStorage.getItem('namerre.draft.files.v1')).toBeNull();
   });
 
   it('starts with an empty renaming collection', () => {

@@ -72,13 +72,22 @@ describe('TmdbPickerComponent', () => {
     search.flush({ matches: [show] });
     await fixture.whenStable();
     expect(confirmed).not.toHaveBeenCalled();
-    expect(button('Verify chosen').disabled).toBe(true);
+    expect(fixture.nativeElement.textContent).not.toContain('Verify');
     (fixture.nativeElement.querySelector('input[type="radio"]') as HTMLInputElement).click();
     await fixture.whenStable();
+    // Choosing a candidate verifies it automatically for the entered season and episode.
+    const first = http.expectOne('/api/metadata/tmdb/search');
+    expect(first.request.body).toMatchObject({ id: 42, season: 2, episode: 3 });
+    first.flush({ matches: [{ ...show, season: 2, episode: 3, confirmationToken: 'stale' }] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Use this match');
+    // Editing the episode discards the verification; verifying again is a manual step.
     field('episode', '4');
     await fixture.whenStable();
-    expect(button('Verify chosen').disabled).toBe(false);
-    button('Verify chosen').click();
+    expect(fixture.nativeElement.textContent).not.toContain('Use this match');
+    http.expectNone('/api/metadata/tmdb/search');
+    expect(button('Verify again').disabled).toBe(false);
+    button('Verify again').click();
     const verify = http.expectOne('/api/metadata/tmdb/search');
     expect(verify.request.body).toMatchObject({
       id: 42,
@@ -103,7 +112,7 @@ describe('TmdbPickerComponent', () => {
     await fixture.whenStable();
     expect(confirmed).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('Exact Episode');
-    button('Confirm this match').click();
+    button('Use this match').click();
     expect(confirmed).toHaveBeenCalledWith({
       fileId: 'file-1',
       instanceId: 'tmdb-2',
@@ -121,7 +130,7 @@ describe('TmdbPickerComponent', () => {
     field('query', 'Corrected title');
     await fixture.whenStable();
     expect(pending.cancelled).toBe(true);
-    expect(fixture.nativeElement.textContent).not.toContain('Confirm this match');
+    expect(fixture.nativeElement.textContent).not.toContain('Use this match');
   });
 
   it('restores the show and episode without restoring approval for the file', async () => {
@@ -148,9 +157,9 @@ describe('TmdbPickerComponent', () => {
     expect(control('season').value).toBe('2');
     expect(control('episode').value).toBe('4');
     expect(fixture.nativeElement.querySelector('input[type="radio"]').checked).toBe(true);
-    expect(fixture.nativeElement.textContent).not.toContain('Confirm this match');
+    expect(fixture.nativeElement.textContent).not.toContain('Use this match');
     http.expectNone('/api/metadata/tmdb/search');
-    button('Verify chosen').click();
+    button('Verify match').click();
     const verify = http.expectOne('/api/metadata/tmdb/search');
     expect(verify.request.body).toMatchObject({
       id: 42,
@@ -174,7 +183,7 @@ describe('TmdbPickerComponent', () => {
     field('season', '3');
     field('episode', '7');
     await fixture.whenStable();
-    button('Cancel matching').click();
+    button('Cancel').click();
     expect(remembered).toHaveBeenCalledWith({
       query: 'A Show',
       mediaType: 'tv',
@@ -202,14 +211,17 @@ describe('TmdbPickerComponent', () => {
     await fixture.whenStable();
     (fixture.nativeElement.querySelector('input[type="radio"]') as HTMLInputElement).click();
     await fixture.whenStable();
-    expect(button('Verify chosen').disabled).toBe(true);
+    http.expectNone('/api/metadata/tmdb/search');
+    expect(button('Verify match').disabled).toBe(true);
     field('season', '1000');
     field('episode', '1');
     await fixture.whenStable();
-    expect(button('Verify chosen').disabled).toBe(true);
+    expect(button('Verify match').disabled).toBe(true);
     field('season', '0');
     await fixture.whenStable();
-    expect(button('Verify chosen').disabled).toBe(false);
+    expect(button('Verify match').disabled).toBe(false);
+    button('Verify match').click();
+    http.expectOne('/api/metadata/tmdb/search').flush({ matches: [] });
   });
 
   it('reports search failures and empty results', async () => {
@@ -255,7 +267,6 @@ describe('TmdbPickerComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('A Movie (Year unknown) — TMDB 7');
     (fixture.nativeElement.querySelector('input[type="radio"]') as HTMLInputElement).click();
     await fixture.whenStable();
-    button('Verify chosen').click();
     const verify = http.expectOne('/api/metadata/tmdb/search');
     expect(verify.request.body.id).toBe(7);
     expect(verify.request.body.season).toBeUndefined();
@@ -270,19 +281,17 @@ describe('TmdbPickerComponent', () => {
     const confirmed = vi.fn();
     fixture.componentInstance.confirmed.subscribe(confirmed);
     await searchAndChoose();
-    button('Verify chosen').click();
     http
       .expectOne('/api/metadata/tmdb/search')
       .flush({ matches: [{ ...show, id: 99, confirmationToken: 'other' }, show] });
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('TMDB did not validate this match.');
-    expect(fixture.nativeElement.textContent).not.toContain('Confirm this match');
+    expect(fixture.nativeElement.textContent).not.toContain('Use this match');
     expect(confirmed).not.toHaveBeenCalled();
   });
 
   it('reports verification failures and allows retrying', async () => {
     await searchAndChoose();
-    button('Verify chosen').click();
     http
       .expectOne('/api/metadata/tmdb/search')
       .flush(
@@ -291,14 +300,13 @@ describe('TmdbPickerComponent', () => {
       );
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('That TMDB movie does not exist.');
-    expect(button('Verify chosen').disabled).toBe(false);
+    expect(button('Verify again').disabled).toBe(false);
   });
 
   it('ignores a verification that completes after the picker was dismissed', async () => {
     const dismissed = vi.fn();
     fixture.componentInstance.dismissed.subscribe(dismissed);
     await searchAndChoose();
-    button('Verify chosen').click();
     const verify = http.expectOne('/api/metadata/tmdb/search');
     const dialog = fixture.nativeElement.querySelector('dialog') as HTMLDialogElement;
     dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
@@ -311,11 +319,10 @@ describe('TmdbPickerComponent', () => {
     const remembered = vi.fn<(state: TmdbPickerState) => void>();
     fixture.componentInstance.stateChanged.subscribe(remembered);
     await searchAndChoose();
-    button('Verify chosen').click();
     const verified = { ...show, confirmationToken: 'token' };
     http.expectOne('/api/metadata/tmdb/search').flush({ matches: [verified] });
     await fixture.whenStable();
-    button('Confirm this match').click();
+    button('Use this match').click();
     expect(remembered).toHaveBeenCalledWith(
       expect.objectContaining({ matches: [show], selected: verified }),
     );
@@ -357,6 +364,17 @@ describe('TmdbPickerComponent', () => {
     await fixture.whenStable();
     expect(control('language').value).toBe('en-US');
     expect(control('query').value).toBe('Alien');
+  });
+
+  it('offers common locales while keeping the language free text', () => {
+    const input = control('language');
+    expect(input.getAttribute('list')).toBe('tmdb-locales');
+    const options = Array.from(
+      fixture.nativeElement.querySelectorAll('datalist#tmdb-locales option'),
+    ).map((option) => (option as HTMLOptionElement).value);
+    expect(options).toEqual(expect.arrayContaining(['en-US', 'ca-ES', 'pt-BR', 'zh-CN']));
+    field('language', 'sv-SE');
+    expect(control('language').value).toBe('sv-SE');
   });
 
   async function searchAndChoose(): Promise<void> {

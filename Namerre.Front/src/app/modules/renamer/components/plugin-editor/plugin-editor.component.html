@@ -1,29 +1,28 @@
-<h3>Ordered plugins ({{ cards().length }}/32)</h3>
-<p class="text-slate-500 dark:text-slate-400">
-  Add up to 32 plugins, including repeated types, and arrange them in order. Text transformations
-  preserve the extension.
+<h3 class="mb-1">Your renaming steps ({{ cards().length }}/{{ maxPlugins }})</h3>
+<p class="mt-0 text-slate-500 dark:text-slate-400">
+  Rules run top to bottom; each works on the previous result. File extensions are kept.
 </p>
 <div
-  class="actions rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-4"
+  class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-4"
 >
-  <label
-    >Plugin type
-    <select [formControl]="type">
-      <option value="">Choose a plugin</option>
-      @for (plugin of catalog(); track plugin.typeId) {
-        <option [value]="plugin.typeId">{{ plugin.name }}</option>
-      }
-    </select>
-  </label>
-  <button
-    #addButton
-    class="btn-primary"
-    type="button"
-    (click)="add()"
-    [disabled]="!type.value || cards().length >= 32"
-  >
-    Add plugin
-  </button>
+  <p class="m-0 mb-3 font-medium text-slate-700 dark:text-slate-300">Add a step</p>
+  <div class="grid gap-3 sm:grid-cols-2">
+    @for (plugin of catalog(); track plugin.typeId) {
+      <button
+        #addButton
+        type="button"
+        class="flex-col !items-start !justify-start !gap-0 text-left"
+        [attr.data-plugin-type]="plugin.typeId"
+        (click)="add(plugin)"
+        [disabled]="cards().length >= maxPlugins"
+      >
+        <span class="font-semibold text-slate-900 dark:text-slate-100">{{ plugin.name }}</span>
+        <span class="text-xs font-normal text-slate-500 dark:text-slate-400">{{
+          description(plugin.typeId)
+        }}</span>
+      </button>
+    }
+  </div>
 </div>
 @if (!cards().length) {
   <div
@@ -35,55 +34,110 @@
     </p>
   </div>
 }
+<datalist id="tmdb-languages">
+  @for (locale of locales; track locale) {
+    <option [value]="locale"></option>
+  }
+</datalist>
 @for (card of cards(); track card.plugin.instanceId; let i = $index) {
   <article [attr.aria-labelledby]="'plugin-' + card.plugin.instanceId">
-    <h4 #cardHeading tabindex="-1" [id]="'plugin-' + card.plugin.instanceId">
-      {{ i + 1 }}. {{ name(card.plugin.typeId) }}
-    </h4>
-    <div class="actions">
-      <label
-        ><input type="checkbox" [checked]="card.plugin.enabled" (change)="enable(i)" />
-        Enabled</label
-      >
+    <header class="flex flex-wrap items-center gap-2">
+      <h4 #cardHeading tabindex="-1" class="m-0 mr-auto" [id]="'plugin-' + card.plugin.instanceId">
+        {{ i + 1 }}. {{ name(card.plugin.typeId) }}
+      </h4>
+      <label class="m-0 flex cursor-pointer items-center gap-2 text-xs">
+        <input
+          type="checkbox"
+          class="peer sr-only"
+          [checked]="card.plugin.enabled"
+          (change)="enable(i)"
+        />
+        <span
+          aria-hidden="true"
+          class="relative h-5 w-9 rounded-full bg-slate-300 transition-colors after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:transition-transform peer-checked:bg-indigo-600 peer-checked:after:translate-x-4 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-indigo-600 dark:bg-slate-700"
+        ></span>
+        Enabled
+      </label>
       <button
         type="button"
+        class="!min-h-8 !px-2.5 !py-1"
+        title="Move up"
         (click)="move(i, -1)"
         [disabled]="i === 0"
         [attr.aria-label]="'Move plugin ' + (i + 1) + ' up'"
       >
-        Move up
+        <fa-icon [icon]="upIcon" aria-hidden="true" />
       </button>
       <button
         type="button"
+        class="!min-h-8 !px-2.5 !py-1"
+        title="Move down"
         (click)="move(i, 1)"
         [disabled]="i === cards().length - 1"
         [attr.aria-label]="'Move plugin ' + (i + 1) + ' down'"
       >
-        Move down
+        <fa-icon [icon]="downIcon" aria-hidden="true" />
       </button>
-      <button type="button" (click)="remove(i)" [attr.aria-label]="'Remove plugin ' + (i + 1)">
-        Remove
+      <button
+        type="button"
+        class="!min-h-8 !px-2.5 !py-1 text-slate-500 hover:text-rose-700 dark:text-slate-400 dark:hover:text-rose-400"
+        title="Remove"
+        (click)="remove(i)"
+        [attr.aria-label]="'Remove plugin ' + (i + 1)"
+      >
+        <fa-icon [icon]="trashIcon" aria-hidden="true" />
       </button>
-    </div>
-    <div class="mt-4 grid gap-x-6 sm:grid-cols-2" [formGroup]="card.form">
+    </header>
+    <div class="mt-3 grid gap-x-6 sm:grid-cols-2" [formGroup]="card.form">
       @for (field of card.fields; track field.key) {
-        <label
-          >{{ field.label }}
-          @if (field.checkbox) {
-            <input type="checkbox" [formControlName]="field.key" />
-          } @else if (field.choices) {
-            <select [formControlName]="field.key">
-              @for (choice of field.choices; track choice) {
-                <option [value]="choice">{{ choice }}</option>
+        @if (visible(card, field)) {
+          <div class="min-w-0">
+            @let fieldId = 'f-' + card.plugin.instanceId + '-' + field.key;
+            <label [class.flex]="field.checkbox" [class.items-center]="field.checkbox">
+              @if (field.checkbox) {
+                <input type="checkbox" [formControlName]="field.key" />
+                {{ field.label }}
+              } @else {
+                {{ field.label }}
+                @if (field.choices) {
+                  <select [formControlName]="field.key">
+                    @for (choice of field.choices; track choice.value) {
+                      <option [value]="choice.value">{{ choice.label }}</option>
+                    }
+                  </select>
+                } @else {
+                  <input
+                    type="text"
+                    [formControlName]="field.key"
+                    [attr.list]="field.list ?? null"
+                    [attr.placeholder]="field.placeholder ?? null"
+                    [attr.aria-describedby]="field.hint ? fieldId : null"
+                  />
+                }
               }
-            </select>
-          } @else {
-            <input type="text" [formControlName]="field.key" />
-          }
-        </label>
+            </label>
+            @if (field.hint) {
+              <p [id]="fieldId" class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400">
+                {{ field.hint }}
+              </p>
+            }
+          </div>
+        }
       }
     </div>
     @if (card.plugin.typeId === 'tmdb') {
+      <details class="mt-0">
+        <summary>Template fields</summary>
+        <p class="mb-0">
+          Use these in templates, wrapped in braces: <code>{{ '{title}' }}</code
+          >, <code>{{ '{year}' }}</code
+          >, <code>{{ '{season}' }}</code
+          >, <code>{{ '{seasonNumber}' }}</code
+          >, <code>{{ '{episode}' }}</code
+          >, <code>{{ '{episodeTitle}' }}</code
+          >. Season and episode need a TV match.
+        </p>
+      </details>
       <section
         class="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-4"
         [attr.aria-labelledby]="'preview-' + card.plugin.instanceId"
@@ -95,7 +149,8 @@
           Template preview
         </h5>
         <p class="mt-1 text-slate-500 dark:text-slate-400">
-          Rendered with sample metadata, not a real TMDB match.
+          Rendered with sample metadata, not a real TMDB match. Match each file in the TMDB matching
+          step.
         </p>
         <dl class="m-0 grid gap-2" aria-live="polite">
           @for (sample of samples; track sample.label) {
@@ -120,20 +175,6 @@
           }
         </dl>
       </section>
-      <p>
-        Use the TMDB matching stage to explicitly match each file for this instance. Leave the
-        filename template empty to use the media-specific default. Movie default:
-        <code>{{ '{title} ({year})' }}</code
-        >. Episode template: <code>{{ '{title} - S{season}E{episode} - {episodeTitle}' }}</code
-        >. Folder changes are off by default. The base folder is relative to the configured server
-        root. Use forward slashes without a trailing slash, for example <code>Movies/Archive</code>,
-        or leave it empty to start at the server root. The folder template creates a folder inside
-        that base folder. With folder changes enabled, episodes can also be placed in a season
-        folder inside it, for example <code>{{ 'Season {season}' }}</code> (Season 01),
-        <code>{{ 'Season {seasonNumber}' }}</code> (Season 1) or <code>{{ 'S{season}' }}</code>
-        (S01); movies ignore it. Template fields: title, year, season, seasonNumber, episode,
-        episodeTitle.
-      </p>
     }
   </article>
 }

@@ -3,17 +3,3 @@
 :host {
   margin-bottom: 1rem;
 }
-
-.actions {
-  align-items: flex-end;
-
-  > label {
-    margin: 0;
-
-    &:has(input[type='checkbox']) {
-      display: flex;
-      align-items: center;
-      align-self: center;
-    }
-  }
-}

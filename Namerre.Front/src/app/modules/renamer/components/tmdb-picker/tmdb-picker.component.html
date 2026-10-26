@@ -1,27 +1,49 @@
 <dialog #dialog aria-labelledby="tmdb-heading" (cancel)="$event.preventDefault(); cancel()">
-  <h2 id="tmdb-heading">Search / correct TMDB match</h2>
-  <p>
-    Current step input: <code>{{ context().inputPath }}</code>
+  <h2 id="tmdb-heading">Find TMDB match</h2>
+  <p class="text-sm">
+    File: <code>{{ context().inputPath }}</code>
   </p>
   @if (context().reusedShow) {
-    <p>Reusing your previous show choice. Set the season and episode for this file, then verify.</p>
+    <p class="text-sm">
+      Reusing your previous show choice. Set the season and episode for this file, then verify.
+    </p>
   }
-  <form [formGroup]="form" (ngSubmit)="search()">
-    <label
+  <form [formGroup]="form" (ngSubmit)="search()" class="mt-4 grid gap-3 sm:grid-cols-2">
+    <label class="flex flex-col gap-1 text-sm font-medium"
       >Media type
       <select formControlName="mediaType">
         <option value="movie">Movie</option>
         <option value="tv">TV episode</option>
       </select>
     </label>
-    <label>Search text <input formControlName="query" autofocus /></label>
-    <label>Language <input formControlName="language" /></label>
+    <label class="flex flex-col gap-1 text-sm font-medium"
+      >Language
+      <input formControlName="language" list="tmdb-locales" />
+      <datalist id="tmdb-locales">
+        @for (locale of locales; track locale) {
+          <option [value]="locale"></option>
+        }
+      </datalist>
+    </label>
+    <label class="flex flex-col gap-1 text-sm font-medium sm:col-span-2"
+      >Search text <input formControlName="query" autofocus />
+    </label>
     @if (form.controls.mediaType.value === 'tv') {
-      <p>Search for a show, select it, then verify the exact season and episode.</p>
-      <label>Season <input type="number" formControlName="season" min="0" max="999" /></label>
-      <label>Episode <input type="number" formControlName="episode" min="1" max="9999" /></label>
+      <p class="m-0 text-sm text-slate-600 sm:col-span-2 dark:text-slate-400">
+        Search for a show, pick it, then check the season and episode.
+      </p>
+      <label class="flex flex-col gap-1 text-sm font-medium"
+        >Season <input type="number" formControlName="season" min="0" max="999" />
+      </label>
+      <label class="flex flex-col gap-1 text-sm font-medium"
+        >Episode <input type="number" formControlName="episode" min="1" max="9999" />
+      </label>
     }
-    <button type="submit" [disabled]="!validSearch() || busy()">Search TMDB</button>
+    <div class="sm:col-span-2">
+      <button type="submit" class="btn-primary" [disabled]="!validSearch() || busy()">
+        Search TMDB
+      </button>
+    </div>
   </form>
   @if (busy()) {
     <p role="status">Looking up TMDB metadata…</p>
@@ -33,10 +55,10 @@
     <p role="status">No matches. Correct the search text and retry.</p>
   }
   @if (matches().length) {
-    <fieldset>
-      <legend>Choose a candidate — restored choices still require verification</legend>
+    <fieldset class="mt-4 grid gap-1">
+      <legend class="mb-1 text-sm font-medium">Pick the right one</legend>
       @for (match of matches(); track match.id) {
-        <label
+        <label class="flex items-center gap-2 text-sm"
           ><input
             type="radio"
             name="candidate"
@@ -48,19 +70,30 @@
         >
       }
     </fieldset>
-    <button type="button" (click)="verify()" [disabled]="!selected() || busy() || !validRequest()">
-      Verify chosen movie / episode
-    </button>
+    @if (selected() && !resolved() && !busy()) {
+      <div class="mt-3">
+        <button type="button" (click)="verify()" [disabled]="!validRequest()">
+          {{ attempted() ? 'Verify again' : 'Verify match' }}
+        </button>
+      </div>
+    }
   }
   @if (resolved(); as match) {
-    <section aria-label="Verified metadata">
-      <h3>{{ match.title }} ({{ match.year }})</h3>
+    <section
+      aria-label="Verified metadata"
+      class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+    >
+      <h3 class="mt-0">{{ match.title }} ({{ match.year }})</h3>
       @if (match.mediaType === 'tv') {
         <p>Season {{ match.season }}, episode {{ match.episode }}: {{ match.episodeTitle }}</p>
       }
-      <p>Confirm this metadata snapshot for this file and plugin instance only.</p>
-      <button type="button" (click)="confirm()" [disabled]="busy()">Confirm this match</button>
+      <p class="text-sm">This match applies to this file only.</p>
+      <button type="button" class="btn-primary" (click)="confirm()" [disabled]="busy()">
+        Use this match
+      </button>
     </section>
   }
-  <button type="button" (click)="cancel()">Cancel matching</button>
+  <div class="mt-4">
+    <button type="button" (click)="cancel()">Cancel</button>
+  </div>
 </dialog>

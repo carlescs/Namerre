@@ -1,4 +1,4 @@
-import { DatePipe, JsonPipe, LowerCasePipe, NgTemplateOutlet } from '@angular/common';
+import { DatePipe, LowerCasePipe, NgTemplateOutlet } from '@angular/common';
 import {
   afterNextRender,
   Component,
@@ -28,9 +28,21 @@ import {
   renameError,
 } from '../../rename-api';
 import { RenameEvents, refreshOn } from '../../rename-events';
+import {
+  fileCount,
+  historyEntries,
+  kindLabel,
+  optionEntries,
+  pluginName,
+  runTitle,
+  showsStaging,
+  splitPath,
+  statusClasses,
+  statusLabel,
+} from './run-display';
 
 @Component({
-  imports: [RouterLink, DatePipe, FaIconComponent, JsonPipe, LowerCasePipe, NgTemplateOutlet],
+  imports: [RouterLink, DatePipe, FaIconComponent, LowerCasePipe, NgTemplateOutlet],
   selector: 'app-run-history',
   styleUrl: './run-history.component.scss',
   templateUrl: './run-history.component.html',
@@ -75,7 +87,20 @@ export class RunHistoryComponent {
   protected readonly pendingDelete = signal('');
   protected readonly deleting = signal(false);
   protected readonly deleteError = signal('');
+  protected readonly entries = computed(() => historyEntries(this.history()?.items ?? []));
+  protected readonly stagingVisible = computed(() => {
+    const run = this.run();
+    return !!run && showsStaging(run);
+  });
   protected readonly isSettledRun = isSettledRun;
+  protected readonly fileCount = fileCount;
+  protected readonly kindLabel = kindLabel;
+  protected readonly optionEntries = optionEntries;
+  protected readonly pluginName = pluginName;
+  protected readonly runTitle = runTitle;
+  protected readonly splitPath = splitPath;
+  protected readonly statusClasses = statusClasses;
+  protected readonly statusLabel = statusLabel;
   protected readonly trashIcon = faTrashCan;
   private polling?: Subscription;
   private action?: Subscription;

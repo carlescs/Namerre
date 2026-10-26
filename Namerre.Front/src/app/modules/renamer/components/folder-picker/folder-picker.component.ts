@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import {
   Component,
+  computed,
   DestroyRef,
   ElementRef,
   inject,
@@ -11,6 +12,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, Subscription } from 'rxjs';
 import { FolderListing } from '../../folder-listing';
+import { isHiddenEntry, isInsideHiddenFolder } from '../../hidden-entries';
 
 @Component({
   selector: 'app-folder-picker',
@@ -33,6 +35,19 @@ export class FolderPickerComponent {
   protected readonly loading = signal(false);
   protected readonly error = signal('');
   protected readonly includeSubfolders = signal(false);
+  protected readonly showHidden = signal(false);
+  protected readonly directories = computed(() => {
+    const directories = this.browsingFolder()?.directories ?? [];
+    return this.showHidden()
+      ? directories
+      : directories.filter((directory) => !isHiddenEntry(directory.name));
+  });
+  protected readonly fileCount = computed(() => {
+    const files = this.browsingFolder()?.files ?? [];
+    return this.showHidden()
+      ? files.length
+      : files.filter((file) => !isHiddenEntry(file.name)).length;
+  });
   protected readonly selecting = signal(false);
 
   open(): void {
@@ -57,7 +72,11 @@ export class FolderPickerComponent {
     this.selecting.set(true);
     this.request = this.http
       .get<FolderListing[]>('/api/folders/selection', {
-        params: { path: selected.path, includeSubfolders: this.includeSubfolders() },
+        params: {
+          path: selected.path,
+          includeSubfolders: this.includeSubfolders(),
+          includeHidden: this.showHidden(),
+        },
       })
       .pipe(
         takeUntilDestroyed(this.destroyRef),
@@ -108,7 +127,16 @@ export class FolderPickerComponent {
   private confirmSelection(selected: FolderListing, folders: FolderListing[]): void {
     this.selectedFolder = selected;
     this.picker().nativeElement.close();
-    this.folderSelected.emit(folders);
+    this.folderSelected.emit(
+      this.showHidden()
+        ? folders
+        : folders
+            .filter((folder) => !isInsideHiddenFolder(folder.path, selected.path))
+            .map((folder) => ({
+              ...folder,
+              files: folder.files.filter((file) => !isHiddenEntry(file.name)),
+            })),
+    );
   }
 
   private showError(error: HttpErrorResponse): void {

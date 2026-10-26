@@ -1,9 +1,11 @@
 @use '../../workflow';
 
-th:first-child {
-  width: 3.5rem;
-}
+@media (min-width: 40rem) {
+  th:first-child {
+    width: 3.5rem;
+  }
 
-th:last-child {
-  width: 8rem;
+  th:last-child {
+    width: 9rem;
+  }
 }

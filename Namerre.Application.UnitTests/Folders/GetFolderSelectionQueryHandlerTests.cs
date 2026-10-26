@@ -48,6 +48,37 @@ public sealed class GetFolderSelectionQueryHandlerTests
     }
 
     [Fact]
+    public async Task SkipsHiddenFoldersBeforeBrowsingThemUnlessIncluded()
+    {
+        var browser = Substitute.For<IFolderBrowser>();
+        var root = new FolderListing("", null,
+        [
+            new FolderEntry("@eaDir", "@eaDir"),
+            new FolderEntry("System Volume Information", "System Volume Information"),
+            new FolderEntry("Movies", "Movies"),
+        ], []);
+        var movies = new FolderListing("Movies", "", [new FolderEntry(".cache", "Movies/.cache")], []);
+        var error = new FolderBrowserException(FolderBrowserError.Forbidden, "Cannot browse.");
+        browser.Browse("", Arg.Any<CancellationToken>()).Returns(Task.FromResult(root));
+        browser.Browse("Movies", Arg.Any<CancellationToken>()).Returns(Task.FromResult(movies));
+        browser.Browse("@eaDir", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new FolderListing("@eaDir", "", [], [])));
+        browser.Browse("System Volume Information", Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<FolderListing>(error));
+        var handler = new GetFolderSelectionQueryHandler(browser);
+
+        var result = await handler.Handle(
+            new GetFolderSelectionQuery("", true, IncludeHidden: false), CancellationToken.None);
+
+        Assert.Equal([root, movies], result);
+        await browser.DidNotReceive().Browse("@eaDir", Arg.Any<CancellationToken>());
+        await browser.DidNotReceive().Browse("System Volume Information", Arg.Any<CancellationToken>());
+        await browser.DidNotReceive().Browse("Movies/.cache", Arg.Any<CancellationToken>());
+        await Assert.ThrowsAsync<FolderBrowserException>(
+            () => handler.Handle(new GetFolderSelectionQuery("", true), CancellationToken.None));
+    }
+
+    [Fact]
     public async Task PropagatesSubfolderErrorsWithoutReturningPartialResults()
     {
         var browser = Substitute.For<IFolderBrowser>();

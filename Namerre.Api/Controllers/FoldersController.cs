@@ -27,12 +27,14 @@ public sealed class FoldersController(ISender sender, ILogger<FoldersController>
     public async Task<ActionResult<IReadOnlyList<FolderListing>>> GetSelection(
         CancellationToken cancellationToken,
         [FromQuery] string path = "",
-        [FromQuery] bool includeSubfolders = false)
+        [FromQuery] bool includeSubfolders = false,
+        [FromQuery] bool includeHidden = true)
     {
         try
         {
             return Ok(await sender.Send(
-                new GetFolderSelectionQuery(path, includeSubfolders), cancellationToken));
+                new GetFolderSelectionQuery(path, includeSubfolders, includeHidden),
+                cancellationToken));
         }
         catch (FolderBrowserException exception)
         {
