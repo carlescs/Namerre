@@ -105,12 +105,35 @@ describe('FolderPickerComponent', () => {
     expect(selected).toEqual([]);
   });
 
+  it('keeps folder hints in tooltips that open on click and close on Escape', async () => {
+    component.open();
+    http
+      .expectOne('/api/folders?path=')
+      .flush({ ...root, files: [], directories: [{ name: 'Movies', path: 'Movies' }] });
+    await fixture.whenStable();
+    const trigger = dialog.querySelector('[aria-describedby="no-files-tip"]') as HTMLButtonElement;
+    const tip = dialog.querySelector('#no-files-tip') as HTMLElement;
+    expect(tip.getAttribute('role')).toBe('tooltip');
+    expect(tip.textContent).toContain('selecting it will add nothing');
+    expect(tip.classList).not.toContain('tip-open');
+    trigger.click();
+    fixture.detectChanges();
+    expect(tip.classList).toContain('tip-open');
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+    trigger.dispatchEvent(escape);
+    fixture.detectChanges();
+    expect(tip.classList).not.toContain('tip-open');
+    expect(escape.defaultPrevented).toBe(true);
+    expect(dialog.querySelector('#browse-tip')?.textContent).toContain('Links are excluded');
+    expect(dialog.querySelector('p.hint')).toBeNull();
+  });
+
   it('renders folders in a scrollable table with selection actions in the footer', async () => {
     await openPicker();
     const region = dialog.querySelector('.folder-table');
     expect(region?.getAttribute('tabindex')).toBe('0');
     expect(region?.getAttribute('aria-labelledby')).toBe('subfolders-heading');
-    expect(region?.querySelector('th')?.textContent).toBe('Folder name');
+    expect(region?.querySelector('th')?.textContent).toBe('Subfolders');
     expect(region?.querySelectorAll('tbody tr')).toHaveLength(1);
     expect(region?.querySelector('tbody button')?.textContent?.trim()).toBe('Movies');
     expect(region?.nextElementSibling).toBe(includeSubfolders().closest('label'));

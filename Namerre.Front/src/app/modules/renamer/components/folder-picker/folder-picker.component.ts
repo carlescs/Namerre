@@ -10,11 +10,14 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FaIconComponent } from '@fortawesome/angular-fontawesome';
+import { faCircleInfo } from '@fortawesome/free-solid-svg-icons';
 import { finalize, Subscription } from 'rxjs';
 import { FolderListing } from '../../folder-listing';
 import { isHiddenEntry, isInsideHiddenFolder } from '../../hidden-entries';
 
 @Component({
+  imports: [FaIconComponent],
   selector: 'app-folder-picker',
   styleUrl: './folder-picker.component.scss',
   templateUrl: './folder-picker.component.html',
@@ -36,6 +39,9 @@ export class FolderPickerComponent {
   protected readonly error = signal('');
   protected readonly includeSubfolders = signal(false);
   protected readonly showHidden = signal(false);
+  protected readonly infoIcon = faCircleInfo;
+  /** Tooltip opened by a click or tap; hover and keyboard focus open them through CSS. */
+  protected readonly openTip = signal<string | null>(null);
   protected readonly directories = computed(() => {
     const directories = this.browsingFolder()?.directories ?? [];
     return this.showHidden()
@@ -54,6 +60,18 @@ export class FolderPickerComponent {
     this.browsingFolder.set(this.selectedFolder);
     this.picker().nativeElement.showModal();
     this.openFolder(this.selectedFolder?.path ?? '');
+  }
+
+  protected toggleTip(tip: string): void {
+    this.openTip.update((open) => (open === tip ? null : tip));
+  }
+
+  protected closeTip(event: Event): void {
+    if (!this.openTip()) return;
+    // Escape closes an open tooltip first, without also closing the dialog.
+    event.preventDefault();
+    event.stopPropagation();
+    this.openTip.set(null);
   }
 
   protected cancelPicker(): void {
@@ -98,6 +116,7 @@ export class FolderPickerComponent {
 
     this.requestedPath = path;
     this.retrySelection = false;
+    this.openTip.set(null);
     this.error.set('');
     this.loading.set(true);
     this.request = this.http
