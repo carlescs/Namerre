@@ -97,6 +97,22 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         finally { gate.Release(); }
     }
 
+    public async Task<IReadOnlyList<string>> DeleteRuns(DeleteRunsRequest request, CancellationToken cancellationToken)
+    {
+        if (request.RunIds is null || request.RunIds.Count is < 1 or > 100
+            || request.RunIds.Any(string.IsNullOrWhiteSpace) || request.RunIds.Distinct().Count() != request.RunIds.Count)
+            throw new RenameException("InvalidSelection", "Select 1–100 distinct run IDs.");
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            EnsureOperational();
+            var deleted = store.DeleteRuns(request.RunIds);
+            foreach (var run in deleted) Notify("Run", run, "Deleted");
+            return deleted;
+        }
+        finally { gate.Release(); }
+    }
+
     public async Task<SelectionPreview> RollbackPreview(string id, SelectionRequest request, CancellationToken cancellationToken)
     {
         ValidateSelection(request);

@@ -56,6 +56,13 @@ describe('RenameApi', () => {
     expect(http.expectOne('/api/rename-runs/run%232').request.method).toBe('DELETE');
   });
 
+  it('deletes several runs in one request', () => {
+    api.deleteRuns(['run-1', 'run-2']).subscribe();
+    const request = http.expectOne('/api/rename-run-deletions');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ runIds: ['run-1', 'run-2'] });
+  });
+
   it('executes a reviewed plan version with an idempotent operation id', () => {
     api.execute('plan-1', 3, 'op-1').subscribe();
     const request = http.expectOne('/api/rename-plans/plan-1/execute');

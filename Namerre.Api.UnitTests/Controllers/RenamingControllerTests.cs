@@ -120,6 +120,18 @@ public sealed class RenamingControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task DeleteRunsReturnsDeletedIds()
+    {
+        var request = new DeleteRunsRequest(["run", "other"]);
+        IReadOnlyList<string> deleted = ["run", "child", "other"];
+        sender.Send(Arg.Is<DeleteRenameRunsCommand>(c => c.Request == request), Token).Returns(deleted);
+
+        var result = await controller.DeleteRuns(request, Token);
+
+        Assert.Same(deleted, Assert.IsType<OkObjectResult>(result).Value);
+    }
+
+    [Fact]
     public async Task RollbackPreviewSendsSelection()
     {
         var selection = new SelectionRequest(["f1"], "op");

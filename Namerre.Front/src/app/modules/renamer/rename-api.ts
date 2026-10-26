@@ -239,6 +239,10 @@ export class RenameApi {
   deleteRun(id: string) {
     return this.http.delete<void>(`/api/rename-runs/${encodeURIComponent(id)}`);
   }
+  /** Deletes the runs (and their undo records) together; resolves to every deleted run id. */
+  deleteRuns(runIds: string[]) {
+    return this.http.post<string[]>('/api/rename-run-deletions', { runIds });
+  }
   rollbackPreview(id: string, request: SelectionRequest) {
     return this.http.post<SelectionPreview>(
       `/api/rename-runs/${encodeURIComponent(id)}/rollback-preview`,

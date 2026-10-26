@@ -669,6 +669,110 @@ describe('RunHistoryComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Page 1');
   });
 
+  it('deletes the selected settled runs together after an explicit confirmation', async () => {
+    params.next(convertToParamMap({}));
+    http.expectOne('/api/rename-runs/run-1');
+    const busy = { ...run, id: 'run-3', status: 'Running' };
+    const page = {
+      items: [run, { ...run, id: 'run-2' }, busy],
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    };
+    http.expectOne('/api/rename-runs?page=1&pageSize=20').flush(page);
+    await fixture.whenStable();
+    expect(runCheckbox(2).disabled).toBe(true);
+    expect(button('Delete selected').disabled).toBe(true);
+
+    selectAllRuns().click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('2 selected');
+    runCheckbox(1).click();
+    await fixture.whenStable();
+    expect(selectAllRuns().indeterminate).toBe(true);
+    runCheckbox(1).click();
+    await fixture.whenStable();
+    expect(selectAllRuns().checked).toBe(true);
+
+    button('Delete selected').click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Delete 2 records?');
+    button('Cancel').click();
+    await fixture.whenStable();
+    http.expectNone('/api/rename-run-deletions');
+    expect(fixture.nativeElement.textContent).toContain('2 selected');
+
+    button('Delete selected').click();
+    await fixture.whenStable();
+    button('Confirm deletion of 2').click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Deleting…');
+    const request = http.expectOne('/api/rename-run-deletions');
+    expect(request.request.method).toBe('POST');
+    expect(new Set(request.request.body.runIds)).toEqual(new Set(['run-1', 'run-2']));
+    request.flush(['run-1', 'run-2']);
+    http.expectOne('/api/rename-runs?page=1&pageSize=20').flush({ ...page, items: [busy] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('0 selected');
+    expect(fixture.nativeElement.textContent).not.toContain('Delete 2 records?');
+  });
+
+  it('keeps the selection and reports a refused bulk deletion', async () => {
+    params.next(convertToParamMap({}));
+    http.expectOne('/api/rename-runs/run-1');
+    http
+      .expectOne('/api/rename-runs?page=1&pageSize=20')
+      .flush({ items: [run], page: 1, pageSize: 20, hasMore: false });
+    await fixture.whenStable();
+    runCheckbox(0).click();
+    await fixture.whenStable();
+    button('Delete selected').click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Delete 1 record?');
+    button('Confirm deletion of 1').click();
+    http
+      .expectOne('/api/rename-run-deletions')
+      .flush(
+        { title: 'Only completed or recovered runs can be deleted.', code: 'RunNotSettled' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Only completed or recovered runs');
+    expect(runCheckbox(0).checked).toBe(true);
+  });
+
+  it('drops chosen runs that stop being deletable and clears the choice on another page', async () => {
+    params.next(convertToParamMap({}));
+    http.expectOne('/api/rename-runs/run-1');
+    const page = { items: [run], page: 1, pageSize: 20, hasMore: true };
+    http.expectOne('/api/rename-runs?page=1&pageSize=20').flush(page);
+    await fixture.whenStable();
+    runCheckbox(0).click();
+    await fixture.whenStable();
+    events.push('Run', 'run-1');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    http
+      .expectOne('/api/rename-runs?page=1&pageSize=20')
+      .flush({ ...page, items: [{ ...run, status: 'RecoveryRequired' }] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('0 selected');
+
+    events.push('Run', 'run-1');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    http.expectOne('/api/rename-runs?page=1&pageSize=20').flush(page);
+    await fixture.whenStable();
+    runCheckbox(0).click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('1 selected');
+    await fixture.whenStable();
+    button('Next page').click();
+    http
+      .expectOne('/api/rename-runs?page=2&pageSize=20')
+      .flush({ items: [{ ...run, id: 'run-2' }], page: 2, pageSize: 20, hasMore: false });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('0 selected');
+  });
+
   it('describes rollback records without mentioning a prepared plan', async () => {
     http.expectOne('/api/rename-runs/run-1').flush({ ...run, kind: 'Rollback' });
     await fixture.whenStable();
@@ -754,6 +858,20 @@ describe('RunHistoryComponent', () => {
     ) as HTMLButtonElement | null;
     if (!result) throw new Error('Delete button not found');
     return result;
+  }
+
+  function runCheckbox(index: number): HTMLInputElement {
+    const result = fixture.nativeElement.querySelectorAll('ul > li input[type="checkbox"]')[
+      index
+    ] as HTMLInputElement | undefined;
+    if (!result) throw new Error(`Run checkbox ${index} not found`);
+    return result;
+  }
+
+  function selectAllRuns(): HTMLInputElement {
+    return fixture.nativeElement.querySelector(
+      '[aria-label="Bulk actions"] input[type="checkbox"]',
+    ) as HTMLInputElement;
   }
 
   function button(prefix: string): HTMLButtonElement {

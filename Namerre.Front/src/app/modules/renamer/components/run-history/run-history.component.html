@@ -33,11 +33,75 @@
         >
       </div>
     }
+    @if (list.items.length) {
+      <div class="flex flex-wrap items-center gap-3" role="group" aria-label="Bulk actions">
+        <label class="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            [checked]="allRunsChosen()"
+            [indeterminate]="someRunsChosen() && !allRunsChosen()"
+            (change)="toggleAllRuns()"
+            [disabled]="deleting() || !deletableRunIds().length"
+          />
+          Select all on this page
+        </label>
+        <span class="text-sm text-slate-500 dark:text-slate-400"
+          >{{ chosenRuns().size }} selected</span
+        >
+        <button
+          type="button"
+          class="ml-auto"
+          (click)="requestBulkDelete()"
+          [disabled]="!chosenRuns().size || deleting() || pendingBulkDelete()"
+        >
+          <fa-icon [icon]="trashIcon" aria-hidden="true" /> Delete selected
+        </button>
+      </div>
+      @if (pendingBulkDelete() && chosenRuns().size) {
+        <section class="surface mt-3 p-5" role="group" aria-label="Confirm bulk deletion">
+          <p>
+            Delete {{ chosenRuns().size }} {{ chosenRuns().size === 1 ? 'record' : 'records' }}?
+            Rename records also take their undo records and saved settings with them. Files on disk
+            are not touched, but you will no longer be able to undo these from here.
+          </p>
+          <div class="actions">
+            <button type="button" (click)="confirmBulkDelete()" [disabled]="deleting()">
+              Confirm deletion of {{ chosenRuns().size }}
+            </button>
+            <button type="button" (click)="cancelDelete()" [disabled]="deleting()">Cancel</button>
+          </div>
+          @if (deleting()) {
+            <p role="status">Deleting…</p>
+          }
+          @if (deleteError()) {
+            <p class="error" role="alert">{{ deleteError() }}</p>
+          }
+        </section>
+      }
+    }
     <ul class="my-4 space-y-3">
       @for (entry of entries(); track entry.run.id) {
         <li class="surface p-5" [class]="entry.nested ? 'ml-6 sm:ml-10' : ''">
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
+          <div class="flex items-start gap-3">
+            <input
+              type="checkbox"
+              class="mt-1 shrink-0"
+              [attr.aria-label]="
+                'Select ' +
+                (kindLabel(entry.run.kind) | lowercase) +
+                ' record: ' +
+                runTitle(entry.run)
+              "
+              [title]="
+                isSettledRun(entry.run)
+                  ? 'Select for deletion'
+                  : 'Only completed or recovered runs can be deleted'
+              "
+              [checked]="chosenRuns().has(entry.run.id)"
+              (change)="toggleRun(entry.run.id)"
+              [disabled]="!isSettledRun(entry.run) || deleting()"
+            />
+            <div class="min-w-0 flex-1">
               <p class="mb-1 flex flex-wrap items-center gap-2">
                 <span
                   class="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"

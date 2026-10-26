@@ -194,31 +194,40 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
     /// Deletes a settled run record together with its rollback descendants, their jobs and idempotency keys,
     /// and any plan no remaining run references. The filesystem is never touched.
     /// </summary>
-    public IReadOnlyList<string> DeleteRun(string id)
+    public IReadOnlyList<string> DeleteRun(string id) => DeleteRuns([id], ignoreMissing: false);
+
+    /// <summary>
+    /// Deletes the given runs with their rollbacks and orphaned plans in one transaction: either every
+    /// run is deleted or none is. Runs already gone (e.g. deleted from another tab) are skipped unless
+    /// <paramref name="ignoreMissing"/> is false.
+    /// </summary>
+    public IReadOnlyList<string> DeleteRuns(IReadOnlyCollection<string> ids, bool ignoreMissing = true)
     {
         Initialize();
         lock (gate)
         {
             using var db = Open();
             using var transaction = db.Database.BeginTransaction();
-            var root = Read<RunLink>(db, id, "Run");
             // Only the run graph is needed: stream the history and skip materializing files and journals.
             var runs = db.Documents.AsNoTracking().Where(d => d.Kind == "Run").Select(d => d.Json).AsEnumerable()
                 .Select(json => JsonSerializer.Deserialize<RunLink>(json, Json)!).ToArray();
-            var deleted = new List<RunLink> { root };
+            var known = runs.ToDictionary(r => r.Id);
+            if (!ignoreMissing && ids.Any(id => !known.ContainsKey(id)))
+                throw new RenameException("NotFound", "The requested resource was not found.", 404);
+            var deleted = ids.Where(known.ContainsKey).Select(id => known[id]).Distinct().ToList();
+            var runIds = deleted.Select(r => r.Id).ToHashSet();
             for (var i = 0; i < deleted.Count; i++)
-                deleted.AddRange(runs.Where(r => r.ParentRunId == deleted[i].Id));
+                deleted.AddRange(runs.Where(r => r.ParentRunId == deleted[i].Id && runIds.Add(r.Id)));
             if (deleted.Any(r => !RunTransitions.IsSettled(r.Status)))
                 throw new RenameException("RunNotSettled",
                     "Only completed or recovered runs without pending rollbacks or recovery can be deleted.", 409);
-            var runIds = deleted.Select(r => r.Id).ToHashSet();
             var planIds = deleted.Select(r => r.PlanId)
                 .Where(plan => !runs.Any(r => !runIds.Contains(r.Id) && r.PlanId == plan)).ToHashSet();
-            var ids = runIds.Concat(planIds).ToArray();
+            var targets = runIds.Concat(planIds).ToArray();
             // Set-based deletes stay inside the transaction, so a failure before Commit still rolls everything back.
-            db.Operations.Where(o => ids.Contains(o.Target)).ExecuteDelete();
-            db.Jobs.Where(j => ids.Contains(j.Target)).ExecuteDelete();
-            db.Documents.Where(d => ids.Contains(d.Id)).ExecuteDelete();
+            db.Operations.Where(o => targets.Contains(o.Target)).ExecuteDelete();
+            db.Jobs.Where(j => targets.Contains(j.Target)).ExecuteDelete();
+            db.Documents.Where(d => targets.Contains(d.Id)).ExecuteDelete();
             boundary?.Invoke("Delete:Before");
             transaction.Commit();
             boundary?.Invoke("Delete:After");
