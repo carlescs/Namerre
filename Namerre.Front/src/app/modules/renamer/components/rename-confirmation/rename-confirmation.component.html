@@ -1,51 +1,110 @@
 <p
   class="mt-0 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4 text-amber-900 dark:text-amber-200"
 >
-  Prepare a snapshot and check the exact changes below. Nothing is renamed until you confirm.
+  Look over the changes below. Nothing is renamed until you click the rename button.
 </p>
 @if (preparing()) {
-  <p role="status">
-    Preparing immutable snapshot and {{ verifyContent() ? 'hashing' : 'checking' }}
-    {{ plan()?.completedFiles ?? 0 }} / {{ fileCount() }} files…
-  </p>
-  <progress
-    [value]="plan()?.completedFiles ?? 0"
-    [max]="fileCount()"
-    [attr.aria-label]="verifyContent() ? 'Files hashed' : 'Files checked'"
-  ></progress>
-}
-@if (plan(); as prepared) {
+  <div role="status">
+    <p class="mb-2">Checking {{ completed() }} of {{ fileCount() }} files…</p>
+    <div
+      class="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
+      role="progressbar"
+      aria-label="Files checked"
+      aria-valuemin="0"
+      [attr.aria-valuemax]="fileCount()"
+      [attr.aria-valuenow]="completed()"
+    >
+      <div
+        class="h-full rounded-full bg-indigo-600 transition-[width] dark:bg-indigo-400"
+        [style.width.%]="percent()"
+      ></div>
+    </div>
+  </div>
+} @else if (plan(); as prepared) {
   <section aria-labelledby="plan-heading">
-    <h3 id="plan-heading">Immutable plan {{ prepared.id }} — version {{ prepared.version }}</h3>
-    <p role="status">
-      {{ prepared.status }}. {{ prepared.files.length }} files; {{ changedCount() }} changes.
-    </p>
-    @for (issue of prepared.issues; track $index) {
-      <p class="error">{{ issue.code }}: {{ issue.message }}</p>
+    @if (prepared.status === 'Ready') {
+      <h3 id="plan-heading">Ready to rename {{ changedCount() }} {{ changedLabel() }}</h3>
+      <p role="status">
+        {{ prepared.files.length }} {{ prepared.files.length === 1 ? 'file' : 'files' }} checked;
+        {{ prepared.files.length - changedCount() }} will stay as they are.
+      </p>
+    } @else {
+      <h3 id="plan-heading">This rename is not ready</h3>
+      <p role="status">Current state: {{ prepared.status }}.</p>
     }
-    <ul>
-      @for (file of prepared.files; track file.id) {
-        <li>
-          <code>{{ file.sourcePath }}</code> → <code>{{ file.targetPath }}</code>
-          <details>
-            <summary>
-              {{
-                file.hash.startsWith('stat:')
-                  ? 'Prepared size/time fingerprint'
-                  : 'Prepared content hash'
-              }}
-            </summary>
-            <code>{{ file.hash }}</code>
-          </details>
-        </li>
-      }
-    </ul>
+    @for (issue of prepared.issues; track $index) {
+      <p class="error">
+        {{ issue.message }}
+        <small class="text-slate-500 dark:text-slate-400">({{ issue.code }})</small>
+      </p>
+    }
+    <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+      <table class="min-w-xl">
+        <caption class="sr-only">
+          Files, with their current and new names
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Current name</th>
+            <th scope="col">New name</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (file of prepared.files; track file.id) {
+            <tr>
+              <td class="align-top">
+                <app-name-change
+                  [sourcePath]="file.sourcePath"
+                  [targetPath]="file.targetPath"
+                  side="from"
+                />
+              </td>
+              <td class="align-top">
+                @if (file.sourcePath === file.targetPath) {
+                  <span class="text-slate-500 dark:text-slate-400">Stays the same</span>
+                } @else {
+                  <app-name-change
+                    [sourcePath]="file.sourcePath"
+                    [targetPath]="file.targetPath"
+                    side="to"
+                  />
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <details>
+      <summary>Technical details</summary>
+      <dl class="mt-3 mb-0 text-xs">
+        <dt class="font-semibold">Plan</dt>
+        <dd class="m-0 mb-2">
+          <code>{{ prepared.id }}</code> · version {{ prepared.version }} · {{ prepared.status }}
+        </dd>
+        <dt class="font-semibold">Fingerprints taken when the files were checked</dt>
+        <dd class="m-0">
+          <ul class="m-0 list-none space-y-2 p-0">
+            @for (file of prepared.files; track file.id) {
+              <li>
+                {{ file.sourcePath }}
+                <span class="text-slate-500 dark:text-slate-400">
+                  ({{ file.hash.startsWith('stat:') ? 'size and time' : 'content' }})
+                </span>
+                <br />
+                <code>{{ file.hash }}</code>
+              </li>
+            }
+          </ul>
+        </dd>
+      </dl>
+    </details>
     @if (prepared.pipeline.deleteEmptyFolders) {
       <p>Folders left empty after their files move are deleted once the run finishes.</p>
     }
     <p>
-      Confirm only the paths above. Any collection, configuration, or match change invalidates this
-      approval.
+      Only the changes listed above will be made. If you change the files, the settings or a match,
+      you will need to check again before renaming.
     </p>
     <button
       class="btn-danger"
@@ -53,13 +112,13 @@
       (click)="confirmRequested.emit()"
       [disabled]="!canConfirm()"
     >
-      Confirm and execute this exact plan
+      Rename {{ changedCount() }} {{ changedLabel() }}
     </button>
   </section>
 }
 @if (canRetry()) {
-  <button type="button" (click)="retryRequested.emit()">Retry preparation status</button>
+  <button type="button" (click)="retryRequested.emit()">Check again</button>
 }
 @if (executing()) {
-  <p role="status">Submitting durable execution. Do not submit a different operation.</p>
+  <p role="status">Starting the rename…</p>
 }

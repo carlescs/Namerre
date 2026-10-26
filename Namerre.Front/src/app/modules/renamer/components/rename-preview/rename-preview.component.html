@@ -1,95 +1,193 @@
-<div class="actions">
-  <button type="button" (click)="previewRequested.emit()" [disabled]="disabled()">
-    Preview again
-  </button>
-</div>
+<fieldset
+  class="mx-0 mb-5 mt-0 min-w-0 rounded-xl border border-slate-200 p-4 dark:border-slate-800"
+>
+  <legend class="px-2 text-sm font-semibold text-slate-700 dark:text-slate-300">Run options</legend>
+  <div class="space-y-3">
+    <ng-content />
+  </div>
+</fieldset>
 @if (loading()) {
   <p role="status">Evaluating ordered plugins…</p>
 }
 @if (result(); as preview) {
   <section aria-labelledby="preview-heading">
-    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <h3 id="preview-heading">Preview — no files have been changed</h3>
-      <span
-        class="badge"
-        [class]="
-          preview.canPrepare
-            ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300'
-            : ''
-        "
-        >{{ preview.canPrepare ? 'Ready for review' : 'Needs attention' }}</span
-      >
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <h3 id="preview-heading" class="m-0">Preview — no files have been changed</h3>
+      <div class="flex flex-wrap items-center gap-3">
+        <span
+          class="badge"
+          [class]="
+            preview.canPrepare
+              ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300'
+              : ''
+          "
+          >{{ preview.canPrepare ? 'Ready for review' : 'Needs attention' }}</span
+        >
+        <button
+          type="button"
+          class="px-3 py-1 text-xs"
+          (click)="previewRequested.emit()"
+          [disabled]="disabled()"
+        >
+          Refresh preview
+        </button>
+      </div>
     </div>
+    <p class="mb-4 mt-0 text-sm font-medium" role="status">
+      {{ counts().rename }} will be renamed · {{ counts().unchanged }} unchanged ·
+      {{ counts().problem }} {{ counts().problem === 1 ? 'problem' : 'problems' }}
+    </p>
     @if (!preview.canPrepare) {
       @if (metadataPending()) {
         <p class="text-xs text-slate-500 dark:text-slate-400">
-          Go back to complete TMDB matching, then resolve any remaining errors before preparing.
+          Go back to finish matching files with TMDB, then fix any remaining problems before
+          continuing.
         </p>
       } @else {
-        <p class="error">Resolve the errors and conflicts below before preparing.</p>
+        <p class="error">Fix the problems and name clashes listed below before continuing.</p>
       }
     }
     @if (unchanged()) {
-      <p>No filenames would change. Go back to configure a renaming plugin.</p>
+      <p>No filenames would change. Go back and set up a renaming plugin.</p>
     }
-    @for (file of preview.files; track file.id) {
-      <article>
-        <h4>{{ file.sourcePath }}</h4>
-        @if (awaitingMetadata(file)) {
-          <p>The final target is available after TMDB matching is complete.</p>
-        } @else {
-          <p>
-            Folder: <code>{{ folder(file.sourcePath) }}</code> →
-            <code>{{ folder(file.targetPath) }}</code>
-          </p>
-          <div class="mt-4 grid gap-3 sm:grid-cols-2">
-            <div class="rounded-lg bg-slate-50 dark:bg-slate-950/60 p-4">
-              <p class="eyebrow mt-0 text-slate-500 dark:text-slate-400">Original path</p>
-              <code class="bg-transparent p-0">{{ file.sourcePath }}</code>
-            </div>
-            <div
-              class="rounded-lg border border-indigo-100 dark:border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-500/10 p-4"
-            >
-              <p class="eyebrow mt-0">Proposed path</p>
-              <p class="m-0">
-                Final target: <code class="bg-transparent p-0">{{ file.targetPath }}</code>
-              </p>
-              <span
-                class="mt-2 inline-block text-xs font-medium text-indigo-700 dark:text-indigo-300"
-                >{{ file.unchanged ? 'Unchanged' : 'Will move / rename' }}</span
-              >
-            </div>
-          </div>
-        }
-        @for (issue of file.issues; track $index) {
-          @if (!isMatchingIssue(issue.code)) {
-            <p class="error">{{ issue.code }}: {{ issue.message }}</p>
-          }
-        }
-        <details>
-          <summary>Per-plugin trace ({{ file.steps.length }} steps)</summary>
-          <ol>
-            @for (step of file.steps; track step.instanceId) {
-              <li>
-                <strong>{{ step.typeId }}</strong> <small>({{ step.instanceId }})</small>
-                <p>
-                  Input: <code>{{ step.inputPath }}</code>
-                </p>
-                <p>
-                  Output: <code>{{ step.outputPath ?? 'Blocked — no output' }}</code>
-                </p>
-                @if (step.error) {
-                  @if (isMatchingIssue(step.error.code)) {
-                    <p>Awaiting TMDB matching.</p>
-                  } @else {
-                    <p class="error">{{ step.error.code }}: {{ step.error.message }}</p>
-                  }
+    <div class="mb-4 flex flex-wrap gap-2" role="group" aria-label="Show files">
+      @for (option of filters(); track option.id) {
+        <button
+          type="button"
+          class="px-3 py-1 text-xs"
+          [attr.aria-pressed]="filter() === option.id"
+          (click)="filter.set(option.id)"
+        >
+          {{ option.label }} ({{ option.count }})
+        </button>
+      }
+    </div>
+    <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+      <table class="min-w-xl">
+        <caption class="sr-only">
+          Files, with their current and new names
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Status</th>
+            <th scope="col">Current name</th>
+            <th scope="col">New name</th>
+          </tr>
+        </thead>
+        @for (file of visibleFiles(); track file.id) {
+          @let state = status(file);
+          <tbody>
+            <tr>
+              <td class="w-32 align-top">
+                <span
+                  class="badge"
+                  [class]="
+                    state === 'rename'
+                      ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-500/10 dark:text-indigo-300'
+                      : state === 'problem'
+                        ? 'bg-rose-50 text-rose-800 dark:bg-rose-500/10 dark:text-rose-300'
+                        : ''
+                  "
+                  >{{
+                    state === 'rename'
+                      ? 'Will rename'
+                      : state === 'unchanged'
+                        ? 'Unchanged'
+                        : awaitingMetadata(file)
+                          ? 'Needs match'
+                          : 'Problem'
+                  }}</span
+                >
+              </td>
+              <td class="align-top">
+                <app-name-change
+                  [sourcePath]="file.sourcePath"
+                  [targetPath]="file.targetPath"
+                  side="from"
+                />
+              </td>
+              <td class="align-top">
+                @if (awaitingMetadata(file)) {
+                  <p class="m-0 text-slate-500 dark:text-slate-400">
+                    The new name appears once TMDB matching is complete.
+                  </p>
+                } @else if (state === 'unchanged') {
+                  <span class="text-slate-500 dark:text-slate-400">Stays the same</span>
+                } @else {
+                  <app-name-change
+                    [sourcePath]="file.sourcePath"
+                    [targetPath]="file.targetPath"
+                    side="to"
+                  />
                 }
-              </li>
+                @for (issue of problems(file); track $index) {
+                  <p class="m-0 mt-1 text-xs text-rose-700 dark:text-rose-300">
+                    {{ issue.message }}
+                    <small class="text-slate-500 dark:text-slate-400">({{ issue.code }})</small>
+                  </p>
+                }
+              </td>
+            </tr>
+            @if (file.steps.length) {
+              <tr>
+                <td class="border-t-0 py-1"></td>
+                <td colspan="2" class="border-t-0 py-1">
+                  <details class="m-0 border-0 bg-transparent p-0 dark:bg-transparent">
+                    <summary class="text-xs">
+                      How this name was built ({{ file.steps.length }}
+                      {{ file.steps.length === 1 ? 'step' : 'steps' }})
+                    </summary>
+                    <ol class="mt-2 space-y-2 text-xs">
+                      @for (step of file.steps; track step.instanceId) {
+                        <li>
+                          <strong>{{ step.typeId }}</strong>
+                          <p class="m-0">
+                            From <code>{{ step.inputPath }}</code>
+                          </p>
+                          <p class="m-0">
+                            To <code>{{ step.outputPath ?? 'Blocked — no result' }}</code>
+                          </p>
+                          @if (step.error) {
+                            @if (isMatchingIssue(step.error.code)) {
+                              <p class="m-0">Waiting for TMDB matching.</p>
+                            } @else {
+                              <p class="m-0 text-rose-700 dark:text-rose-300">
+                                {{ step.error.message }}
+                                <small class="text-slate-500 dark:text-slate-400"
+                                  >({{ step.error.code }})</small
+                                >
+                              </p>
+                            }
+                          }
+                        </li>
+                      }
+                    </ol>
+                  </details>
+                </td>
+              </tr>
             }
-          </ol>
-        </details>
-      </article>
-    }
+          </tbody>
+        } @empty {
+          <tbody>
+            <tr>
+              <td colspan="3" class="text-slate-500 dark:text-slate-400">
+                No files match this filter.
+              </td>
+            </tr>
+          </tbody>
+        }
+      </table>
+    </div>
   </section>
+} @else {
+  <div class="actions">
+    <button
+      type="button"
+      class="px-3 py-1 text-xs"
+      (click)="previewRequested.emit()"
+      [disabled]="disabled()"
+    >
+      Refresh preview
+    </button>
+  </div>
 }

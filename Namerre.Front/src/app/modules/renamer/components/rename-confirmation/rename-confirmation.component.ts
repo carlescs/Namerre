@@ -1,8 +1,9 @@
 import { Component, computed, input, output } from '@angular/core';
 import { PlanView } from '../../rename-api';
+import { NameChangeComponent } from '../name-change/name-change.component';
 
 @Component({
-  imports: [],
+  imports: [NameChangeComponent],
   selector: 'app-rename-confirmation',
   styleUrl: './rename-confirmation.component.scss',
   templateUrl: './rename-confirmation.component.html',
@@ -19,5 +20,10 @@ export class RenameConfirmationComponent {
   readonly retryRequested = output<void>();
   protected readonly changedCount = computed(
     () => this.plan()?.files.filter((file) => file.sourcePath !== file.targetPath).length ?? 0,
+  );
+  protected readonly changedLabel = computed(() => (this.changedCount() === 1 ? 'file' : 'files'));
+  protected readonly completed = computed(() => this.plan()?.completedFiles ?? 0);
+  protected readonly percent = computed(() =>
+    this.fileCount() > 0 ? Math.min(100, (this.completed() / this.fileCount()) * 100) : 0,
   );
 }

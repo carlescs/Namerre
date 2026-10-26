@@ -14,7 +14,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Router, RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import {
   catchError,
   concatMap,
@@ -64,7 +64,6 @@ type WizardStage = 'files' | 'plugins' | 'matching' | 'preview' | 'confirmation'
     RenamePreviewComponent,
     TmdbMatchingComponent,
     TmdbPickerComponent,
-    RouterLink,
   ],
   selector: 'app-rename-workflow',
   styleUrl: './rename-workflow.component.scss',

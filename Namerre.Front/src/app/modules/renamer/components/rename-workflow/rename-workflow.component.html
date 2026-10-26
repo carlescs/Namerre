@@ -33,9 +33,10 @@
 <div class="surface">
   <header class="stage-header border-b border-slate-200 dark:border-slate-800 px-5 py-6 sm:px-8">
     <p class="eyebrow mt-0">Step {{ stageIndex() + 1 }} of {{ stages().length }}</p>
-    <h2 #stageHeading tabindex="-1">{{ stages()[stageIndex()].title }}</h2>
+    @let current = stages()[stageIndex()];
+    <h2 #stageHeading tabindex="-1" class="focus-visible:outline-none">{{ current.title }}</h2>
     <p class="mb-0 max-w-2xl text-slate-500 dark:text-slate-400">
-      {{ stages()[stageIndex()].description }}
+      {{ current.description }}
     </p>
   </header>
   <div class="wizard-screens workflow-content p-5 sm:p-8" [class.backwards]="backwards()">
@@ -77,41 +78,42 @@
       [loading]="loadingPreview()"
       [disabled]="!validCollection() || suggesting() || preparing() || executing()"
       (previewRequested)="refreshPreview()"
-    />
-    <label class="mx-5 flex items-start gap-2 text-sm sm:mx-8" [hidden]="stage() !== 'preview'">
-      <input
-        #quickCheck
-        id="quick-check"
-        type="checkbox"
-        [checked]="!verifyContent()"
-        (change)="verifyContent.set(!quickCheck.checked)"
-        [disabled]="preparing() || executing()"
-      />
-      <span>
-        Quick check: skip content hashing and only compare file size and modification time.
-        <span class="block text-xs text-slate-500 dark:text-slate-400"
-          >Much faster for large files, but a change that keeps both unchanged goes
-          undetected.</span
-        >
-      </span>
-    </label>
-    <label class="mx-5 flex items-start gap-2 text-sm sm:mx-8" [hidden]="stage() !== 'preview'">
-      <input
-        #emptyFolders
-        id="delete-empty-folders"
-        type="checkbox"
-        [checked]="deleteEmptyFolders()"
-        (change)="deleteEmptyFolders.set(emptyFolders.checked)"
-        [disabled]="preparing() || executing()"
-      />
-      <span>
-        Delete folders left empty after their files are moved out.
-        <span class="block text-xs text-slate-500 dark:text-slate-400"
-          >Only folders that are empty once the run finishes are removed; a rollback of the run does
-          the same for the folders it empties.</span
-        >
-      </span>
-    </label>
+    >
+      <label class="flex items-start gap-2 text-sm">
+        <input
+          #quickCheck
+          id="quick-check"
+          type="checkbox"
+          [checked]="!verifyContent()"
+          (change)="verifyContent.set(!quickCheck.checked)"
+          [disabled]="preparing() || executing()"
+        />
+        <span>
+          Quick check: skip content hashing and only compare file size and modification time.
+          <span class="block text-xs text-slate-500 dark:text-slate-400"
+            >Much faster for large files, but a change that keeps both unchanged goes
+            undetected.</span
+          >
+        </span>
+      </label>
+      <label class="flex items-start gap-2 text-sm">
+        <input
+          #emptyFolders
+          id="delete-empty-folders"
+          type="checkbox"
+          [checked]="deleteEmptyFolders()"
+          (change)="deleteEmptyFolders.set(emptyFolders.checked)"
+          [disabled]="preparing() || executing()"
+        />
+        <span>
+          Delete folders left empty after their files are moved out.
+          <span class="block text-xs text-slate-500 dark:text-slate-400"
+            >Only folders that are empty once the run finishes are removed; a rollback of the run
+            does the same for the folders it empties.</span
+          >
+        </span>
+      </label>
+    </app-rename-preview>
     <app-rename-confirmation
       class="wizard-screen"
       [hidden]="stage() !== 'confirmation'"
@@ -172,7 +174,7 @@
       }
       @case ('preview') {
         <button class="btn-primary" type="button" (click)="prepare()" [disabled]="!canPrepare()">
-          {{ verifyContent() ? 'Prepare immutable plan and hash files' : 'Prepare immutable plan' }}
+          {{ verifyContent() ? 'Hash files and continue' : 'Check files and continue' }}
         </button>
       }
     }
@@ -182,7 +184,6 @@
   class="mt-5 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400"
 >
   <p class="m-0">Preview first. Your files stay unchanged until final confirmation.</p>
-  <a routerLink="/runs">Saved runs and recovery <span aria-hidden="true">&rarr;</span></a>
 </footer>
 @if (matching(); as context) {
   <app-tmdb-picker
