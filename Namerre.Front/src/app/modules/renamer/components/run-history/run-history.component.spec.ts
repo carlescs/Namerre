@@ -82,7 +82,7 @@ describe('RunHistoryComponent', () => {
     checkboxes[0].click();
     checkboxes[1].click();
     await fixture.whenStable();
-    button('Check selected-file').click();
+    button('Check undo for selected').click();
     const preview = http.expectOne('/api/rename-runs/run-1/rollback-preview');
     expect(preview.request.body.fileIds).toEqual(['a', 'b']);
     const operationId = preview.request.body.operationId;
@@ -101,7 +101,7 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('Blocked — left untouched');
     expect(fixture.nativeElement.textContent).toContain('Original destination is occupied.');
-    button('Confirm rollback of 1').click();
+    button('Undo 1 file').click();
     const rollback = http.expectOne('/api/rename-runs/run-1/rollback');
     expect(rollback.request.body).toEqual({ fileIds: ['a'], operationId });
     rollback.flush({ id: 'rollback-1', status: 'Queued', location: '' });
@@ -115,7 +115,7 @@ describe('RunHistoryComponent', () => {
       fixture.nativeElement.querySelector('thead input[type="checkbox"]') as HTMLInputElement
     ).click();
     await fixture.whenStable();
-    button('Check selected-file').click();
+    button('Check undo for selected').click();
     await fixture.whenStable();
     const preview = http.expectOne('/api/rename-runs/run-1/rollback-preview');
     const operation = preview.request.body.operationId;
@@ -156,20 +156,20 @@ describe('RunHistoryComponent', () => {
     (fixture.nativeElement.querySelector('input.file-select') as HTMLInputElement).click();
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('progress')).toBeNull();
-    button('Check selected-file').click();
+    button('Check undo for selected').click();
     await fixture.whenStable();
     const progress = fixture.nativeElement.querySelector('progress') as HTMLProgressElement;
-    expect(progress.getAttribute('aria-label')).toBe('Selected files checked for rollback');
+    expect(progress.getAttribute('aria-label')).toBe('Selected files checked for undo');
     expect(progress.value).toBe(0);
     expect(progress.max).toBe(1);
-    expect(fixture.nativeElement.textContent).toContain('Checked 0 / 1 selected file for rollback');
+    expect(fixture.nativeElement.textContent).toContain('Checked 0 / 1 selected file for undo');
     expect(fixture.nativeElement.textContent).not.toContain('Processing the requested check');
     http
       .expectOne('/api/rename-runs/run-1/rollback-preview')
       .flush({ code: 'Busy', message: 'Try again.' }, { status: 503, statusText: 'Unavailable' });
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('progress')).toBeNull();
-    button('Check selected-file').click();
+    button('Check undo for selected').click();
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('progress')).not.toBeNull();
     http.expectOne('/api/rename-runs/run-1/rollback-preview').flush({
@@ -177,7 +177,7 @@ describe('RunHistoryComponent', () => {
     });
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('progress')).toBeNull();
-    expect(fixture.nativeElement.textContent).toContain('Rollback review — 1 safe files');
+    expect(fixture.nativeElement.textContent).toContain('Undo review — 1 file can be undone');
   });
 
   it('clears the rollback check indicator when navigating away mid-check', async () => {
@@ -185,7 +185,7 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     (fixture.nativeElement.querySelector('input.file-select') as HTMLInputElement).click();
     await fixture.whenStable();
-    button('Check selected-file').click();
+    button('Check undo for selected').click();
     await fixture.whenStable();
     const preview = http.expectOne('/api/rename-runs/run-1/rollback-preview');
     expect(fixture.nativeElement.querySelector('progress')).not.toBeNull();
@@ -221,7 +221,7 @@ describe('RunHistoryComponent', () => {
     expect(rows()).toEqual([true, true, false]);
     expect(all.checked).toBe(true);
     expect(all.indeterminate).toBe(false);
-    button('Check selected-file').click();
+    button('Check undo for selected').click();
     const preview = http.expectOne('/api/rename-runs/run-1/rollback-preview');
     expect(preview.request.body.fileIds).toEqual(['a', 'b']);
     preview.flush({
@@ -234,10 +234,10 @@ describe('RunHistoryComponent', () => {
       })),
     });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Rollback review');
+    expect(fixture.nativeElement.textContent).toContain('Undo review');
     all.click();
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).not.toContain('Rollback review');
+    expect(fixture.nativeElement.textContent).not.toContain('Undo review');
     expect(rows()).toEqual([false, false, false]);
     expect(all.checked).toBe(false);
   });
@@ -247,8 +247,8 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     (fixture.nativeElement.querySelector('input.file-select') as HTMLInputElement).click();
     await fixture.whenStable();
-    button('Refresh').click();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    events.push('Run', 'run-1');
+    await new Promise((resolve) => setTimeout(resolve, 300));
     http.expectOne('/api/rename-runs/run-1').flush({
       ...run,
       files: [{ ...run.files[0], status: 'RolledBack' }, run.files[1]],
@@ -259,8 +259,8 @@ describe('RunHistoryComponent', () => {
     ) as HTMLInputElement;
     expect(all.indeterminate).toBe(false);
     expect(all.checked).toBe(false);
-    expect(fixture.nativeElement.textContent).toContain('0 files explicitly selected');
-    expect(button('Check selected-file').disabled).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('0 files selected');
+    expect(button('Check undo for selected').disabled).toBe(true);
   });
 
   it('does not offer rollback selection for files of a rollback run', async () => {
@@ -281,13 +281,13 @@ describe('RunHistoryComponent', () => {
     const checkbox = fixture.nativeElement.querySelector('input.file-select') as HTMLInputElement;
     checkbox.click();
     await fixture.whenStable();
-    button('Check selected-file').click();
+    button('Check undo for selected').click();
     const pending = http.expectOne('/api/rename-runs/run-1/rollback-preview');
     // A late DOM event still cannot preserve approval for a changed selection.
     checkbox.dispatchEvent(new Event('change'));
     await fixture.whenStable();
     expect(pending.cancelled).toBe(true);
-    expect(fixture.nativeElement.textContent).not.toContain('Rollback review');
+    expect(fixture.nativeElement.textContent).not.toContain('Undo review');
     http.expectNone('/api/rename-runs/run-1/rollback');
   });
 
@@ -303,8 +303,8 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('.stage/a');
     expect(fixture.nativeElement.textContent).toContain('Interrupted after staging.');
-    expect(fixture.nativeElement.textContent).toContain('Interrupted:');
-    button('Inspect recovery evidence').click();
+    expect(fixture.nativeElement.textContent).toContain('(Interrupted)');
+    button('Check recovery evidence').click();
     http.expectOne('/api/rename-runs/run-1/recovery-preview').flush({
       runId: 'run-1',
       canRecover: false,
@@ -319,10 +319,10 @@ describe('RunHistoryComponent', () => {
       ],
     });
     await fixture.whenStable();
-    expect(button('Confirm explicit restoration').disabled).toBe(true);
+    expect(button('Move files back to where they started').disabled).toBe(true);
     expect(fixture.nativeElement.textContent).toContain('Multiple equivalent copies found.');
     http.expectNone('/api/rename-runs/run-1/recover');
-    button('Inspect recovery evidence').click();
+    button('Check recovery evidence').click();
     http.expectOne('/api/rename-runs/run-1/recovery-preview').flush({
       runId: 'run-1',
       canRecover: true,
@@ -331,7 +331,7 @@ describe('RunHistoryComponent', () => {
     });
     await fixture.whenStable();
     http.expectNone('/api/rename-runs/run-1/recover');
-    button('Confirm explicit restoration').click();
+    button('Move files back to where they started').click();
     const recover = http.expectOne('/api/rename-runs/run-1/recover');
     expect(recover.request.body.action).toBe('RestoreOriginal');
     recover.flush({ id: 'run-1', status: 'Queued', location: '' });
@@ -413,7 +413,7 @@ describe('RunHistoryComponent', () => {
       .flush(null, { status: 204, statusText: 'No Content' });
     http.expectOne('/api/rename-runs?page=1&pageSize=20').flush({ ...page, items: [] });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('No saved runs yet.');
+    expect(fixture.nativeElement.textContent).toContain('Nothing has been renamed yet.');
   });
 
   it('links an original run to the rollback runs created from it', async () => {
@@ -428,17 +428,15 @@ describe('RunHistoryComponent', () => {
     const section = fixture.nativeElement.querySelector(
       'section[aria-labelledby="rollback-runs-heading"]',
     ) as HTMLElement;
-    expect(section.querySelector('a[href="/runs/rollback-1"]')?.textContent).toContain(
-      'Rollback rollback-1',
-    );
+    expect(section.querySelector('a[href="/runs/rollback-1"]')?.textContent).toContain('Undo');
     expect(section.querySelector('a[href="/runs/rollback-2"]')).not.toBeNull();
-    expect(section.textContent).toContain('Queued');
+    expect(section.textContent).toContain('Waiting');
   });
 
   it('omits the rollback runs section when none exist', async () => {
     http.expectOne('/api/rename-runs/run-1').flush({ ...run, rollbackRuns: [] });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).not.toContain('Rollback runs');
+    expect(fixture.nativeElement.textContent).not.toContain('Undos of this rename');
   });
 
   it('loads the saved plan once when the snapshot is opened and retries after a failure', async () => {
@@ -449,13 +447,13 @@ describe('RunHistoryComponent', () => {
     details.open = true;
     details.dispatchEvent(new Event('toggle'));
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Loading saved plan…');
+    expect(fixture.nativeElement.textContent).toContain('Loading saved settings…');
     http
       .expectOne('/api/rename-plans/plan-1')
       .flush({ title: 'Plan storage is unavailable.' }, { status: 503, statusText: 'Unavailable' });
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('Plan storage is unavailable.');
-    button('Retry saved plan').click();
+    button('Try again').click();
     http.expectOne('/api/rename-plans/plan-1').flush({
       id: 'plan-1',
       version: 2,
@@ -480,11 +478,11 @@ describe('RunHistoryComponent', () => {
     });
     await fixture.whenStable();
     const text = fixture.nativeElement.textContent;
-    expect(text).toContain('Plan plan-1, version 2 — Executed');
-    expect(text).toContain('case — instance upper');
+    expect(text).toContain('Plan plan-1, version 2 · Executed');
+    expect(text).toContain('Letter case');
     expect(text).toContain('Disabled');
     expect(text).toContain('abc123');
-    expect(text).not.toContain('Empty pipeline.');
+    expect(text).not.toContain('No rename steps were used.');
     details.dispatchEvent(new Event('toggle'));
     http.expectNone('/api/rename-plans/plan-1');
   });
@@ -506,7 +504,7 @@ describe('RunHistoryComponent', () => {
       createdAt: '2026-10-18T00:00:00Z',
     });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Empty pipeline.');
+    expect(fixture.nativeElement.textContent).toContain('No rename steps were used.');
   });
 
   it('shows load failures and retries on request', async () => {
@@ -517,12 +515,12 @@ describe('RunHistoryComponent', () => {
     expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain(
       'That run does not exist.',
     );
-    button('Refresh / retry').click();
+    button('Try again').click();
     await new Promise((resolve) => setTimeout(resolve, 10));
     http.expectOne('/api/rename-runs/run-1').flush(run);
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).not.toContain('That run does not exist.');
-    expect(fixture.nativeElement.textContent).toContain('Status: Completed.');
+    expect(fixture.nativeElement.textContent).toContain('· 2 files');
   });
 
   it('shows history load failures', async () => {
@@ -538,7 +536,7 @@ describe('RunHistoryComponent', () => {
   it('re-reads runs on pushed changes and polls only while they are active', async () => {
     http.expectOne('/api/rename-runs/run-1').flush({ ...run, status: 'Running' });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Status: Running.');
+    expect(fixture.nativeElement.textContent).toContain('In progress');
     expect(events.polling).toBe(true);
     events.push('Run', 'run-2');
     events.push('Plan', 'run-1');
@@ -549,7 +547,7 @@ describe('RunHistoryComponent', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     http.expectOne('/api/rename-runs/run-1').flush(run);
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Status: Completed.');
+    expect(fixture.nativeElement.textContent).toContain('· 2 files');
     expect(events.polling).toBe(false);
     // A settled run still follows pushes: completing a rollback rewrites its file statuses.
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -560,7 +558,7 @@ describe('RunHistoryComponent', () => {
       files: run.files.map((file) => (file.id === 'a' ? { ...file, status: 'RolledBack' } : file)),
     });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('RolledBack');
+    expect(fixture.nativeElement.textContent).toContain('Undone');
   });
 
   it('refreshes the history page when any run changes', async () => {
@@ -581,17 +579,15 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     (fixture.nativeElement.querySelector('input[type="checkbox"]') as HTMLInputElement).click();
     await fixture.whenStable();
-    button('Check selected-file').click();
+    button('Check undo for selected').click();
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain(
-      'Checked 0 / 2 selected files for rollback',
-    );
+    expect(fixture.nativeElement.textContent).toContain('Checked 0 / 2 selected files for undo');
     http
       .expectOne('/api/rename-runs/run-1/rollback-preview')
       .flush({ title: 'Run changed.' }, { status: 409, statusText: 'Conflict' });
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('Run changed.');
-    expect(button('Check selected-file').disabled).toBe(false);
+    expect(button('Check undo for selected').disabled).toBe(false);
   });
 
   it('reports a refused rollback without leaving the review', async () => {
@@ -599,31 +595,31 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     (fixture.nativeElement.querySelector('input[type="checkbox"]') as HTMLInputElement).click();
     await fixture.whenStable();
-    button('Check selected-file').click();
+    button('Check undo for selected').click();
     http.expectOne('/api/rename-runs/run-1/rollback-preview').flush({
       files: [{ id: 'a', safe: true, currentPath: 'A.txt', destinationPath: 'a.txt', issues: [] }],
     });
     await fixture.whenStable();
-    button('Confirm rollback of 1').click();
+    button('Undo 1 file').click();
     http
       .expectOne('/api/rename-runs/run-1/rollback')
       .flush({ title: 'Queue is full.' }, { status: 429, statusText: 'Too Many Requests' });
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('Queue is full.');
-    expect(fixture.nativeElement.textContent).toContain('Rollback review — 1 safe files');
+    expect(fixture.nativeElement.textContent).toContain('Undo review — 1 file can be undone');
   });
 
   it('opens a recovery run that has a new id and reports recovery failures', async () => {
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     http.expectOne('/api/rename-runs/run-1').flush({ ...run, status: 'RecoveryRequired' });
     await fixture.whenStable();
-    button('Inspect recovery evidence').click();
+    button('Check recovery evidence').click();
     http
       .expectOne('/api/rename-runs/run-1/recovery-preview')
       .flush({ title: 'Evidence unavailable.' }, { status: 503, statusText: 'Unavailable' });
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('Evidence unavailable.');
-    button('Inspect recovery evidence').click();
+    button('Check recovery evidence').click();
     http.expectOne('/api/rename-runs/run-1/recovery-preview').flush({
       runId: 'run-1',
       canRecover: true,
@@ -631,14 +627,14 @@ describe('RunHistoryComponent', () => {
       files: [{ id: 'a', locatedPath: null, state: 'Missing', issues: [] }],
     });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Unknown / ambiguous');
-    button('Confirm explicit restoration').click();
+    expect(fixture.nativeElement.textContent).toContain('Unknown or unclear');
+    button('Move files back to where they started').click();
     http
       .expectOne('/api/rename-runs/run-1/recover')
       .flush({ title: 'Recovery refused.' }, { status: 409, statusText: 'Conflict' });
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('Recovery refused.');
-    button('Confirm explicit restoration').click();
+    button('Move files back to where they started').click();
     http
       .expectOne('/api/rename-runs/run-1/recover')
       .flush({ id: 'recovery-2', status: 'Queued', location: '' });
@@ -659,12 +655,10 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     deleteButton().click();
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain(
-      'its rollback records and its prepared plan',
-    );
+    expect(fixture.nativeElement.textContent).toContain('its undo records and its saved settings');
     button('Confirm deletion').click();
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Deleting saved run…');
+    expect(fixture.nativeElement.textContent).toContain('Deleting…');
     http
       .expectOne({ method: 'DELETE', url: '/api/rename-runs/run-1' })
       .flush(null, { status: 204, statusText: 'No Content' });
@@ -681,13 +675,82 @@ describe('RunHistoryComponent', () => {
     deleteButton().click();
     await fixture.whenStable();
     const text = fixture.nativeElement.textContent;
-    expect(text).toContain('Delete this rollback record?');
-    expect(text).not.toContain('prepared plan');
+    expect(text).toContain('Delete this undo record?');
+    expect(text).not.toContain('its saved settings');
+  });
+
+  it('titles list entries from their folder and nests an undo under its rename', async () => {
+    params.next(convertToParamMap({}));
+    http.expectOne('/api/rename-runs/run-1');
+    const rename = {
+      ...run,
+      id: 'rename-1',
+      files: ['a', 'b'].map((id) => ({
+        ...run.files[0],
+        id,
+        sourcePath: `Shows/Dark/S01/${id}.mkv`,
+        targetPath: `Shows/Dark/S01/${id}-new.mkv`,
+      })),
+    };
+    const undo = {
+      ...rename,
+      id: 'undo-1',
+      kind: 'Rollback',
+      parentRunId: 'rename-1',
+      status: 'Running',
+    };
+    http
+      .expectOne('/api/rename-runs?page=1&pageSize=20')
+      .flush({ items: [undo, rename], page: 1, pageSize: 20, hasMore: false });
+    await fixture.whenStable();
+    const items = Array.from(fixture.nativeElement.querySelectorAll('ul > li')) as HTMLElement[];
+    expect(items.length).toBe(2);
+    expect(items[0].textContent).toContain('Shows/Dark/S01');
+    expect(items[0].textContent).toContain('Rename');
+    expect(items[0].textContent).toContain('2 files');
+    expect(items[0].textContent).not.toContain('rename-1');
+    expect(items[1].textContent).toContain('Undo');
+    expect(items[1].textContent).toContain('In progress');
+    expect(items[1].textContent).toContain('Undo of Shows/Dark/S01');
+    expect(items[1].className).toContain('ml-6');
+    expect(items[0].querySelector('.bg-emerald-100')).not.toBeNull();
+    expect(items[1].querySelector('.bg-sky-100')).not.toBeNull();
+  });
+
+  it('offers Try again only after a load failure', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush(run);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('Try again');
+  });
+
+  it('hides the temporary location column unless a file is unfinished', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush(run);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('Temporary location');
+    http.verify();
+    events.push('Run', 'run-1');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    http.expectOne('/api/rename-runs/run-1').flush({
+      ...run,
+      files: [{ ...run.files[0], status: 'Failed', error: 'Disk full.', errorCode: 'Io' }],
+    });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Temporary location');
+    expect(fixture.nativeElement.textContent).toContain('Disk full.');
+    expect(fixture.nativeElement.querySelector('.bg-rose-100')).not.toBeNull();
+  });
+
+  it('does not show a focus ring on the heading focused in code', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush(run);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('h1').className).toContain(
+      'focus-visible:outline-none',
+    );
   });
 
   function deleteButton(): HTMLButtonElement {
     const result = fixture.nativeElement.querySelector(
-      'button[aria-label="Delete saved run run-1"]',
+      'button[aria-label^="Delete"]',
     ) as HTMLButtonElement | null;
     if (!result) throw new Error('Delete button not found');
     return result;
