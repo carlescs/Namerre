@@ -90,7 +90,9 @@ describe('PluginEditorComponent', () => {
         .find((element) => element.textContent?.includes(label))!
         .querySelector('input')!;
     const changeFolder = input('Allow folder change');
+    expect(fixture.nativeElement.textContent).not.toContain('Base folder');
     changeFolder.click();
+    await fixture.whenStable();
     const baseFolder = input('Base folder');
     baseFolder.value = 'Library/Movies';
     baseFolder.dispatchEvent(new Event('input'));
@@ -99,12 +101,52 @@ describe('PluginEditorComponent', () => {
     expect(plugins[0].options.changeFolder).toBe(true);
     expect(plugins[0].options.baseFolder).toBe('Library/Movies');
     expect(plugins[1].options.baseFolder).toBe('');
-    expect(fixture.nativeElement.textContent).toContain('relative to the configured server root');
+    expect(fixture.nativeElement.textContent).toContain('Relative to the library root');
 
     changeFolder.click();
     await fixture.whenStable();
     expect(plugins[0].options.changeFolder).toBe(false);
     expect(plugins[0].options.baseFolder).toBe('Library/Movies');
+    expect(fixture.nativeElement.textContent).not.toContain('Base folder');
+  });
+
+  it('adds a plugin with one click, describes each type and stops at 32', async () => {
+    const buttons = [...fixture.nativeElement.querySelectorAll('button[data-plugin-type]')];
+    expect(buttons.map((b) => (b as HTMLElement).textContent?.trim())).toEqual([
+      expect.stringContaining('Literal replacement'),
+      expect.stringContaining('Case change'),
+      expect.stringContaining('TMDB'),
+    ]);
+    expect(buttons[0].textContent).toContain('Replace a piece of text');
+    await add('case');
+    expect(document.activeElement?.textContent).toContain('1. Case change');
+    for (let i = 1; i < 32; i++) await add('case');
+    expect(plugins).toHaveLength(32);
+    expect(buttons.every((candidate) => (candidate as HTMLButtonElement).disabled)).toBe(true);
+  });
+
+  it('shows friendly choice labels while emitting the original values', async () => {
+    await add('case');
+    await add('literal');
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('UPPERCASE');
+    expect(text).toContain('Title Case');
+    expect(text).toContain('First match only');
+    const select = fixture.nativeElement.querySelector('article select') as HTMLSelectElement;
+    select.value = 'title';
+    select.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    expect(plugins[0].options.mode).toBe('title');
+  });
+
+  it('keeps hidden TMDB values and offers locale suggestions', async () => {
+    await add('tmdb');
+    expect(fixture.nativeElement.querySelectorAll('datalist#tmdb-languages option').length).toBe(
+      12,
+    );
+    expect(plugins[0].options.folderTemplate).toBe('{title} ({year})');
+    expect(plugins[0].options.seasonFolderTemplate).toBe('Season {season}');
+    expect(plugins[0].options.language).toBe('en-US');
   });
 
   it('emits a season folder option and template for each TMDB plugin', async () => {
@@ -116,7 +158,12 @@ describe('PluginEditorComponent', () => {
       [...card.querySelectorAll('label')]
         .find((element) => element.textContent?.includes(label))!
         .querySelector('input')!;
+    expect(fixture.nativeElement.textContent).not.toContain('Add season folder');
+    input('Allow folder change').click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('Season folder template');
     input('Add season folder').click();
+    await fixture.whenStable();
     const template = input('Season folder template');
     template.value = 'Season {seasonNumber}';
     template.dispatchEvent(new Event('input'));
@@ -137,10 +184,11 @@ describe('PluginEditorComponent', () => {
       [...card.querySelectorAll('label')]
         .find((element) => element.textContent?.includes(label))!
         .querySelector('input')!;
-    const template = input('Filename stem template');
+    const template = input('Filename template');
     template.value = '';
     template.dispatchEvent(new Event('input'));
     input('Allow folder change').click();
+    await fixture.whenStable();
     input('Add season folder').click();
     await fixture.whenStable();
     expect(preview()).toContain('Sample Movie (2024)/Sample Movie (2024).mkv');
@@ -157,22 +205,12 @@ describe('PluginEditorComponent', () => {
     for (let i = 0; i < 32; i++) await add('case');
     const addButton = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
     expect(plugins).toHaveLength(32);
-    expect(fixture.nativeElement.textContent).toContain('Ordered plugins (32/32)');
+    expect(fixture.nativeElement.textContent).toContain('Your renaming steps (32/32)');
     expect(addButton.disabled).toBe(true);
     addButton.disabled = false;
     addButton.click();
     await fixture.whenStable();
     expect(plugins).toHaveLength(32);
-  });
-
-  it('does not add a plugin before a type is chosen', async () => {
-    const addButton = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
-    expect(addButton.disabled).toBe(true);
-    addButton.disabled = false;
-    addButton.click();
-    await fixture.whenStable();
-    expect(plugins).toEqual([]);
-    expect(fixture.nativeElement.textContent).toContain('No plugins selected');
   });
 
   it('moves plugins down and disables moves past either end', async () => {
@@ -232,11 +270,9 @@ describe('PluginEditorComponent', () => {
   });
 
   async function add(type: string): Promise<void> {
-    const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
-    select.value = type;
-    select.dispatchEvent(new Event('change'));
-    await fixture.whenStable();
-    (fixture.nativeElement.querySelector('button') as HTMLButtonElement).click();
+    (
+      fixture.nativeElement.querySelector(`button[data-plugin-type="${type}"]`) as HTMLButtonElement
+    ).click();
     await fixture.whenStable();
   }
 

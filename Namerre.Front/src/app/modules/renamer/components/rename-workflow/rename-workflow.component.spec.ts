@@ -153,13 +153,7 @@ describe('RenameWorkflowComponent', () => {
     const editor = fixture.debugElement.query(
       By.directive(PluginEditorComponent),
     ).componentInstance;
-    const type = fixture.nativeElement.querySelector(
-      'app-plugin-editor select',
-    ) as HTMLSelectElement;
-    type.value = 'case';
-    type.dispatchEvent(new Event('change'));
-    await fixture.whenStable();
-    button('Add plugin').click();
+    button('Case').click();
     await fixture.whenStable();
     const mode = fixture.nativeElement.querySelector(
       'app-plugin-editor article select',
