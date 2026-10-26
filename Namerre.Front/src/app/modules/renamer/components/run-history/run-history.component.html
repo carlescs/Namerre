@@ -57,11 +57,23 @@
           type="button"
           class="ml-auto"
           (click)="requestBulkDelete()"
-          [disabled]="!chosenRuns().size || deleting() || pendingBulkDelete()"
+          [disabled]="
+            !chosenRuns().size ||
+            tooManyRuns() ||
+            deleting() ||
+            selectingEveryPage() ||
+            pendingBulkDelete()
+          "
         >
           <fa-icon [icon]="trashIcon" aria-hidden="true" /> Delete selected
         </button>
       </div>
+      @if (tooManyRuns()) {
+        <p class="error mt-2 text-sm" role="alert">
+          One deletion takes at most {{ maxRunsPerDeletion }} runs. Untick
+          {{ chosenRuns().size - maxRunsPerDeletion }} to continue.
+        </p>
+      }
       @if (everyPage(); as every) {
         <p class="mt-2 text-sm" role="status">
           @if (every.hasMore) {
@@ -78,7 +90,7 @@
             type="button"
             class="text-sm"
             (click)="selectEveryPage()"
-            [disabled]="deleting() || selectingEveryPage()"
+            [disabled]="deleting() || pendingBulkDelete() || selectingEveryPage()"
           >
             Select all deletable runs on every page
           </button>
@@ -98,7 +110,11 @@
             are not touched, but you will no longer be able to undo these from here.
           </p>
           <div class="actions">
-            <button type="button" (click)="confirmBulkDelete()" [disabled]="deleting()">
+            <button
+              type="button"
+              (click)="confirmBulkDelete()"
+              [disabled]="deleting() || tooManyRuns()"
+            >
               Confirm deletion of {{ chosenRuns().size }}
             </button>
             <button type="button" (click)="cancelDelete()" [disabled]="deleting()">Cancel</button>

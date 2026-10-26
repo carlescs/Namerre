@@ -6,7 +6,6 @@ using Namerre.Application.Renaming.Previews;
 using Namerre.Application.Renaming.Recovery;
 using Namerre.Application.Renaming.Rollback;
 using Namerre.Application.Renaming.Runs;
-using Namerre.Domain.Renaming;
 
 namespace Namerre.Infrastructure.Renaming;
 
@@ -102,7 +101,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
 
     public Task<DeletableRuns> GetDeletableRuns(CancellationToken cancellationToken)
     {
-        var ids = store.RunIds([.. RunTransitions.SettledStatuses], take: MaxRunsPerDeletion + 1);
+        var ids = store.DeletableRunIds(take: MaxRunsPerDeletion + 1);
         return Task.FromResult(new DeletableRuns(ids.Take(MaxRunsPerDeletion).ToArray(), ids.Count > MaxRunsPerDeletion));
     }
 

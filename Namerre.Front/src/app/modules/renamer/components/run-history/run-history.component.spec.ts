@@ -850,6 +850,81 @@ describe('RunHistoryComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('1 selected');
   });
 
+  it('refuses to send more runs than one deletion takes', async () => {
+    await showListPage(1, [run], true);
+    selectAllRuns().click();
+    await fixture.whenStable();
+    button('Select all deletable runs on every page').click();
+    const ids = Array.from({ length: 1000 }, (_, index) => `old-${index}`);
+    http.expectOne('/api/rename-run-deletions/candidates').flush({ ids, hasMore: true });
+    await fixture.whenStable();
+    expect(button('Delete selected').disabled).toBe(false);
+    runCheckbox(0).click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('1001 selected');
+    expect(fixture.nativeElement.textContent).toContain('One deletion takes at most 1000 runs');
+    expect(button('Delete selected').disabled).toBe(true);
+    http.expectNone('/api/rename-run-deletions');
+  });
+
+  it('ignores an every-page answer once the user changes the selection', async () => {
+    await showListPage(1, [run], true);
+    selectAllRuns().click();
+    await fixture.whenStable();
+    button('Select all deletable runs on every page').click();
+    const candidates = http.expectOne('/api/rename-run-deletions/candidates');
+    await fixture.whenStable();
+    expect(button('Delete selected').disabled).toBe(true);
+    runCheckbox(0).click();
+    await fixture.whenStable();
+    expect(candidates.cancelled).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('0 selected');
+    expect(fixture.nativeElement.textContent).not.toContain('Selecting runs on every page');
+  });
+
+  it('closes the bulk confirmation when the selection is cleared', async () => {
+    await showListPage(1, [run], false);
+    runCheckbox(0).click();
+    await fixture.whenStable();
+    button('Delete selected').click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Delete 1 record?');
+    button('Clear selection').click();
+    await fixture.whenStable();
+    runCheckbox(0).click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('Delete 1 record?');
+    expect(button('Delete selected').disabled).toBe(false);
+  });
+
+  it('returns to the first page after deleting runs chosen on other pages', async () => {
+    await showListPage(1, [run], true);
+    runCheckbox(0).click();
+    await fixture.whenStable();
+    button('Next page').click();
+    http.expectOne('/api/rename-runs?page=2&pageSize=20').flush({
+      items: [
+        { ...run, id: 'run-2' },
+        { ...run, id: 'run-3' },
+      ],
+      page: 2,
+      pageSize: 20,
+      hasMore: false,
+    });
+    await fixture.whenStable();
+    runCheckbox(0).click();
+    await fixture.whenStable();
+    button('Delete selected').click();
+    await fixture.whenStable();
+    button('Confirm deletion of 2').click();
+    http.expectOne('/api/rename-run-deletions').flush(['run-1', 'run-2']);
+    http
+      .expectOne('/api/rename-runs?page=1&pageSize=20')
+      .flush({ items: [{ ...run, id: 'run-3' }], page: 1, pageSize: 20, hasMore: false });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Page 1');
+  });
+
   it('describes rollback records without mentioning a prepared plan', async () => {
     http.expectOne('/api/rename-runs/run-1').flush({ ...run, kind: 'Rollback' });
     await fixture.whenStable();
@@ -935,6 +1010,15 @@ describe('RunHistoryComponent', () => {
     ) as HTMLButtonElement | null;
     if (!result) throw new Error('Delete button not found');
     return result;
+  }
+
+  async function showListPage(page: number, items: RunView[], hasMore: boolean): Promise<void> {
+    params.next(convertToParamMap({}));
+    http.expectOne('/api/rename-runs/run-1');
+    http
+      .expectOne(`/api/rename-runs?page=${page}&pageSize=20`)
+      .flush({ items, page, pageSize: 20, hasMore });
+    await fixture.whenStable();
   }
 
   function runCheckbox(index: number): HTMLInputElement {

@@ -344,10 +344,11 @@ public sealed class RenamingWorkflowTests : IDisposable
     }
 
     [Fact]
-    public async Task DeletionCandidatesListOnlySettledRunsNewestFirst()
+    public async Task DeletionCandidatesListOnlyDeletableRunsNewestFirst()
     {
         Write("alpha.txt", "A");
         Write("bravo.txt", "before");
+        Write("charlie.txt", "C");
         using var harness = Harness();
         var settled = await harness.Service.Execute((await Prepare(harness, UpperRequest(["alpha.txt"]))).Id,
             new(1, Guid.NewGuid().ToString()), default);
@@ -358,6 +359,11 @@ public sealed class RenamingWorkflowTests : IDisposable
         Write("bravo.txt", "after!");
         await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
         await harness.Service.ProcessNext(default);
+        // A completed rename whose rollback is still queued cannot be deleted, so it is no candidate either.
+        var pending = await harness.Service.Execute((await Prepare(harness, UpperRequest(["charlie.txt"]))).Id,
+            new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        await harness.Service.Rollback(pending.Id, new(["0"], Guid.NewGuid().ToString()), default);
 
         var candidates = await harness.Service.GetDeletableRuns(default);
         Assert.Equal([rollback.Id, settled.Id], candidates.Ids);

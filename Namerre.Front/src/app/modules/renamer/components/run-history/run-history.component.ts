@@ -17,6 +17,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { BehaviorSubject, catchError, EMPTY, exhaustMap, Subscription, timer } from 'rxjs';
 import {
   DeletableRuns,
+  MAX_RUNS_PER_DELETION,
   RecoveryPreview,
   PlanView,
   RenameApi,
@@ -95,6 +96,8 @@ export class RunHistoryComponent {
   protected readonly everyPage = signal<DeletableRuns | null>(null);
   protected readonly selectingEveryPage = signal(false);
   protected readonly selectionError = signal('');
+  protected readonly maxRunsPerDeletion = MAX_RUNS_PER_DELETION;
+  protected readonly tooManyRuns = computed(() => this.chosenRuns().size > MAX_RUNS_PER_DELETION);
   protected readonly deletableRunIds = computed(() =>
     (this.history()?.items ?? []).filter(isSettledRun).map((run) => run.id),
   );
@@ -352,7 +355,7 @@ export class RunHistoryComponent {
   protected toggleRun(id: string): void {
     if (this.deleting()) return;
     this.everyPage.set(null);
-    this.chosenRuns.update((chosen) => {
+    this.choose((chosen) => {
       const next = new Set(chosen);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -366,7 +369,7 @@ export class RunHistoryComponent {
     const ids = this.deletableRunIds();
     const select = !this.allRunsChosen();
     if (!select) this.everyPage.set(null);
-    this.chosenRuns.update((chosen) => {
+    this.choose((chosen) => {
       const next = new Set(chosen);
       for (const id of ids) {
         if (select) next.add(id);
@@ -377,7 +380,7 @@ export class RunHistoryComponent {
   }
 
   protected selectEveryPage(): void {
-    if (this.deleting() || this.selectingEveryPage()) return;
+    if (this.deleting() || this.pendingBulkDelete() || this.selectingEveryPage()) return;
     this.selectingEveryPage.set(true);
     this.selectionError.set('');
     this.candidatesRequest = this.api
@@ -397,11 +400,21 @@ export class RunHistoryComponent {
   }
 
   protected clearRuns(): void {
+    this.everyPage.set(null);
+    this.choose(() => new Set());
+  }
+
+  /**
+   * Applies a manual selection change. It supersedes a pending "every page" read, so a late
+   * answer cannot bring back runs the user just unticked, and an emptied selection closes the
+   * bulk confirmation instead of reviving it with the next tick.
+   */
+  private choose(update: (chosen: Set<string>) => Set<string>): void {
     this.candidatesRequest?.unsubscribe();
     this.selectingEveryPage.set(false);
     this.selectionError.set('');
-    this.everyPage.set(null);
-    this.chosenRuns.set(new Set());
+    this.chosenRuns.update(update);
+    if (!this.chosenRuns().size) this.pendingBulkDelete.set(false);
   }
 
   protected requestDelete(id: string): void {
@@ -412,7 +425,8 @@ export class RunHistoryComponent {
   }
 
   protected requestBulkDelete(): void {
-    if (this.deleting() || !this.chosenRuns().size) return;
+    const size = this.chosenRuns().size;
+    if (this.deleting() || this.selectingEveryPage() || !size || this.tooManyRuns()) return;
     this.pendingDelete.set('');
     this.pendingBulkDelete.set(true);
     this.deleteError.set('');
@@ -453,7 +467,7 @@ export class RunHistoryComponent {
 
   protected confirmBulkDelete(): void {
     const ids = [...this.chosenRuns()];
-    if (!this.pendingBulkDelete() || !ids.length || this.deleting()) return;
+    if (!this.pendingBulkDelete() || !ids.length || this.tooManyRuns() || this.deleting()) return;
     this.deleting.set(true);
     this.deleteError.set('');
     this.deleteRequest = this.api
@@ -473,11 +487,17 @@ export class RunHistoryComponent {
       });
   }
 
-  /** Re-reads the list, stepping back a page when the deletion emptied the current one. */
+  /**
+   * Re-reads the list. Deleting runs shown elsewhere shifts every later page by an unknown amount,
+   * so that goes back to the first page; otherwise it steps back only when this page emptied.
+   */
   private reloadAfterDeletion(deleted: string[]): void {
     const removed = new Set(deleted);
+    const items = this.history()?.items ?? [];
+    const shown = new Set(items.map((item) => item.id));
     this.chosenRuns.update((chosen) => retain(chosen, (id) => !removed.has(id)));
-    if (this.page() > 1 && this.history()?.items.every((item) => removed.has(item.id)))
+    if (deleted.some((id) => !shown.has(id))) this.page.set(1);
+    else if (this.page() > 1 && items.every((item) => removed.has(item.id)))
       this.page.update((page) => page - 1);
     this.refresh();
   }

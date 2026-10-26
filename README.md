@@ -352,7 +352,9 @@ unrecovered rollback, cannot be deleted.
 To delete several records at once, tick them in the history list and choose **Delete
 selected**. The selection is kept while moving between pages. Once every deletable run on
 a page is ticked, **Select all deletable runs on every page** selects the newest 1000
-settled runs (`GET /api/rename-run-deletions/candidates`, which returns `ids` and `hasMore`).
+deletable runs: settled runs without a pending or unrecovered rollback
+(`GET /api/rename-run-deletions/candidates`, which returns `ids` and `hasMore`). A
+selection larger than 1000 runs must be trimmed before it can be deleted.
 Deletion uses `POST /api/rename-run-deletions` with `{ "runIds": [...] }` (1–1000 distinct
 IDs) and returns every deleted run ID, rollbacks included. The batch is all-or-nothing: if
 any selected run cannot be deleted, nothing is. Runs that were already deleted, for example

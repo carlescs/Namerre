@@ -127,6 +127,8 @@ export interface RunPage {
   pageSize: number;
   hasMore: boolean;
 }
+/** Most runs one bulk deletion accepts (`MaxRunsPerDeletion` on the server). */
+export const MAX_RUNS_PER_DELETION = 1000;
 /** Settled run ids on every page, newest first; `hasMore` means more exist than one deletion takes. */
 export interface DeletableRuns {
   ids: string[];

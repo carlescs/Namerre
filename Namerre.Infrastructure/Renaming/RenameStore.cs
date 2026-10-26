@@ -120,14 +120,20 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         }
     }
 
-    /// <summary>Lists the IDs of runs in one of <paramref name="statuses"/>, newest first, without reading their JSON.</summary>
-    public IReadOnlyList<string> RunIds(string[] statuses, int take)
+    /// <summary>
+    /// Lists the IDs of runs <see cref="DeleteRuns"/> would accept, newest first, without reading their JSON:
+    /// settled runs none of whose rollbacks is still pending or awaiting recovery.
+    /// </summary>
+    public IReadOnlyList<string> DeletableRunIds(int take)
     {
         Initialize();
         lock (gate)
         {
             using var db = Open();
-            return db.Documents.AsNoTracking().Where(d => d.Kind == "Run" && statuses.Contains(d.Status))
+            string[] settled = [.. RunTransitions.SettledStatuses];
+            var runs = db.Documents.AsNoTracking().Where(d => d.Kind == "Run");
+            var blocked = runs.Where(r => r.ParentId != null && !settled.Contains(r.Status)).Select(r => r.ParentId);
+            return runs.Where(d => settled.Contains(d.Status) && !blocked.Contains(d.Id))
                 .OrderByDescending(d => d.Order).ThenBy(d => d.Id).Take(take).Select(d => d.Id).ToArray();
         }
     }
