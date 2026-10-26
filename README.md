@@ -1,7 +1,13 @@
-# Namerre
+<p align="center">
+  <img src="Namerre.Front/public/favicon.svg" alt="Namerre logo" width="96" height="96">
+</p>
 
-A self-hosted, web-based file renamer with user-configured transformation pipelines,
-previews, persistent run history, and selected-file rollback.
+<h1 align="center">Namerre</h1>
+
+<p align="center">
+  A self-hosted, web-based file renamer with user-configured transformation pipelines,
+  previews, persistent run history, and selected-file rollback.
+</p>
 
 ## Getting started
 
