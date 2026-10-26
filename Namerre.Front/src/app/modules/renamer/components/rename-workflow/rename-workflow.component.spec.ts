@@ -419,10 +419,10 @@ describe('RenameWorkflowComponent', () => {
     const matchingStage = fixture.nativeElement.querySelector(
       '[aria-labelledby="matching-heading"]',
     ) as HTMLElement;
-    expect(matchingStage.textContent).toContain('Choose / change');
+    expect(matchingStage.textContent).toContain('Find match');
     expect(matchingStage.closest('[hidden]')).toBeNull();
     expect(matchingStage.closest('details')).toBeNull();
-    expect(text()).toContain('Match required.');
+    expect(text()).toContain('Needs match');
     expect(text()).not.toContain('MetadataRequired');
     expect(text()).not.toContain('Final target:');
     expect(button('Next: review filenames').disabled).toBe(true);
@@ -520,7 +520,7 @@ describe('RenameWorkflowComponent', () => {
     button('Next: review filenames').click();
     await fixture.whenStable();
     expect(text()).toContain('Final target:');
-    expect(text()).toContain('Metadata confirmed for this step.');
+    expect(text()).toContain('Confirmed');
     expect(button('Prepare immutable').disabled).toBe(false);
     http.expectNone('/api/metadata/tmdb/search');
   });
@@ -588,7 +588,7 @@ describe('RenameWorkflowComponent', () => {
     };
     http.expectOne('/api/rename-previews').flush(twoFiles);
     await fixture.whenStable();
-    button('Choose / change').click();
+    button('Find match').click();
     await fixture.whenStable();
     const show = {
       id: 42,
@@ -617,11 +617,11 @@ describe('RenameWorkflowComponent', () => {
     expect(current.request.body.selections).toEqual([selection]);
     current.flush({ ...twoFiles, files: [matchedPreview.files[0], twoFiles.files[1]] });
     await fixture.whenStable();
-    button('Choose / change').click();
+    button('Find match').click();
     await fixture.whenStable();
     expect(picker().context().state).toEqual(state);
     expect(picker().context().reusedShow).toBe(false);
-    button('Cancel matching').click();
+    button('Cancel').click();
     await fixture.whenStable();
     const choices = fixture.nativeElement.querySelectorAll(
       '[aria-labelledby="matching-heading"] article button',
@@ -633,8 +633,8 @@ describe('RenameWorkflowComponent', () => {
       reusedShow: true,
       state: { ...state, episode: 1 },
     });
-    expect(text()).not.toContain('Confirm this match');
-    button('Cancel matching').click();
+    expect(text()).not.toContain('Use this match');
+    button('Cancel').click();
     await fixture.whenStable();
     button('Preview').click();
     const unconfirmed = http.expectOne('/api/rename-previews');
@@ -644,7 +644,7 @@ describe('RenameWorkflowComponent', () => {
 
   it('proposes a verified movie from its cleaned filename without approving it automatically', async () => {
     await showAutomaticFiles(['Movies/The.Movie.2024.1080p.mkv']);
-    button('Match movies automatically').click();
+    button('Find movie matches').click();
     const search = http.expectOne('/api/metadata/tmdb/search');
     expect(search.request.body).toEqual({
       mediaType: 'movie',
@@ -674,9 +674,11 @@ describe('RenameWorkflowComponent', () => {
     await fixture.whenStable();
     expect(text()).toContain('The Movie');
     expect(text()).toContain('2024');
-    expect(text()).toContain('Proposed match');
+    expect(text()).toContain('Proposed');
     expect(button('Next: review filenames').disabled).toBe(true);
-    button('Accept proposed match').click();
+    (
+      fixture.nativeElement.querySelector('[aria-label^="Accept match"]') as HTMLButtonElement
+    ).click();
     await fixture.whenStable();
     button('Preview').click();
     const accepted = http.expectOne('/api/rename-previews');
@@ -691,9 +693,43 @@ describe('RenameWorkflowComponent', () => {
     accepted.flush({ files: [], canPrepare: false });
   });
 
+  it('makes one search and one verification per file for files that share a title', async () => {
+    await showAutomaticFiles(['Show.S01E01.mkv', 'Show.S01E02.mkv', 'Show.S01E03.mkv']);
+    const primary = (fixture.nativeElement as HTMLElement).querySelector('button.btn-primary');
+    expect(button('Find episode matches').classList.contains('btn-primary')).toBe(true);
+    expect(button('Find movie matches').classList.contains('btn-primary')).toBe(false);
+    expect(primary).not.toBeNull();
+    button('Find episode matches').click();
+    await fixture.whenStable();
+    expect(text()).toContain('Matching 0 of 3 files');
+    const show = {
+      id: 1,
+      mediaType: 'tv',
+      title: 'Show',
+      year: '2020',
+      season: null,
+      episode: null,
+      episodeTitle: null,
+      confirmationToken: null,
+    };
+    http.expectOne('/api/metadata/tmdb/search').flush({ matches: [show] });
+    for (const episode of [1, 2, 3]) {
+      const verify = http.expectOne('/api/metadata/tmdb/search');
+      expect(verify.request.body).toMatchObject({ id: 1, season: 1, episode });
+      verify.flush({
+        matches: [{ ...show, season: 1, episode, confirmationToken: `token-${episode}` }],
+      });
+      await fixture.whenStable();
+      if (episode === 1) expect(text()).toContain('Matching 1 of 3 files');
+    }
+    await fixture.whenStable();
+    expect(text()).not.toContain('Matching');
+    expect(text()).toContain('Show (2020) · S01E02');
+  });
+
   it('infers and verifies each episode separately and restores its proposed search for correction', async () => {
     await showAutomaticFiles(['A.Show.S02E03.mkv', 'A.Show.2x04.mkv']);
-    button('Match episodes automatically').click();
+    button('Find episode matches').click();
     const show = {
       id: 42,
       mediaType: 'tv',
@@ -705,9 +741,12 @@ describe('RenameWorkflowComponent', () => {
       confirmationToken: null,
     };
     for (const episode of [3, 4]) {
-      const search = http.expectOne('/api/metadata/tmdb/search');
-      expect(search.request.body).toMatchObject({ query: 'A Show', mediaType: 'tv' });
-      search.flush({ matches: [show] });
+      if (episode === 3) {
+        // The show search is shared by both episodes; only verification repeats.
+        const search = http.expectOne('/api/metadata/tmdb/search');
+        expect(search.request.body).toMatchObject({ query: 'A Show', mediaType: 'tv' });
+        search.flush({ matches: [show] });
+      }
       const verify = http.expectOne('/api/metadata/tmdb/search');
       expect(verify.request.body).toMatchObject({ id: 42, season: 2, episode });
       verify.flush({
@@ -726,7 +765,7 @@ describe('RenameWorkflowComponent', () => {
     expect(text()).toContain('Episode 3');
     expect(text()).toContain('Episode 4');
     expect(button('Accept all matches').disabled).toBe(false);
-    button('Choose / change').click();
+    button('Change').click();
     await fixture.whenStable();
     expect(picker().context().state).toMatchObject({
       mediaType: 'tv',
@@ -735,8 +774,8 @@ describe('RenameWorkflowComponent', () => {
       episode: 3,
       selected: { id: 42 },
     });
-    expect(text()).not.toContain('Confirm this match');
-    button('Cancel matching').click();
+    expect(text()).not.toContain('Use this match');
+    button('Cancel').click();
     await fixture.whenStable();
     button('Accept all matches').click();
     await fixture.whenStable();
@@ -762,7 +801,7 @@ describe('RenameWorkflowComponent', () => {
   it('accepts all verified proposals in one preview and leaves failed matches unapproved', async () => {
     await showAutomaticFiles(['A.Movie.2024.mkv', 'Other.Movie.2023.mkv', 'Unknown.mkv']);
     expect(button('Accept all matches').disabled).toBe(true);
-    button('Match movies automatically').click();
+    button('Find movie matches').click();
     await fixture.whenStable();
     expect(button('Accept all matches').disabled).toBe(true);
     for (const [id, title, year] of [
@@ -812,7 +851,7 @@ describe('RenameWorkflowComponent', () => {
 
   it('continues after a failed lookup and leaves unidentified episode numbers for manual correction', async () => {
     await showAutomaticFiles(['A.Show.S01E01.mkv', 'Unknown.Pilot.mkv', 'Other.Show.S01E02.mkv']);
-    button('Match episodes automatically').click();
+    button('Find episode matches').click();
     http
       .expectOne('/api/metadata/tmdb/search')
       .flush(
@@ -826,18 +865,18 @@ describe('RenameWorkflowComponent', () => {
     expect(text()).toContain('TMDB rate limit reached');
     expect(text()).toContain('Could not infer the title or episode numbers');
     expect(text()).toContain('No TMDB matches');
-    expect(button('Match episodes automatically').disabled).toBe(false);
+    expect(button('Find episode matches').disabled).toBe(false);
     expect(button('Next: review filenames').disabled).toBe(true);
   });
 
   it('cancels suggestions on configuration changes and discards stale proposal information', async () => {
     await showAutomaticFiles(['A.Movie.2024.mkv']);
-    button('Match movies automatically').click();
+    button('Find movie matches').click();
     const stale = http.expectOne('/api/metadata/tmdb/search');
     changePlugins([{ ...tmdb, options: { ...tmdb.options, language: 'fr' } }]);
     await fixture.whenStable();
     expect(stale.cancelled).toBe(true);
-    expect(text()).not.toContain('Accept proposed match');
+    expect(text()).not.toContain('Proposed');
     button('Preview').click();
     http.expectOne('/api/rename-previews').flush({ files: [], canPrepare: false });
   });
@@ -849,7 +888,7 @@ describe('RenameWorkflowComponent', () => {
     http.expectNone('/api/metadata/tmdb/search');
     http.expectOne('/api/rename-previews').flush(tmdbPreview);
     await fixture.whenStable();
-    button('Match movies automatically').click();
+    button('Find movie matches').click();
     http.expectOne('/api/metadata/tmdb/search').flush({ matches: [] });
     await fixture.whenStable();
     expect(text()).toContain('No TMDB matches');
@@ -978,7 +1017,7 @@ describe('RenameWorkflowComponent', () => {
     button('Next: match metadata').click();
     http.expectOne('/api/rename-previews').flush(tmdbPreview);
     await fixture.whenStable();
-    button('Choose / change').click();
+    button('Find match').click();
     await fixture.whenStable();
     picker().confirmed.emit(selection);
     await fixture.whenStable();

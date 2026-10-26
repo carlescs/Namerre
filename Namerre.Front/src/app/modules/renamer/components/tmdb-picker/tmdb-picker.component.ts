@@ -69,6 +69,21 @@ export class TmdbPickerComponent implements OnInit, AfterViewInit {
   protected readonly busy = signal(false);
   protected readonly searched = signal(false);
   protected readonly error = signal('');
+  protected readonly attempted = signal(false);
+  protected readonly locales = [
+    'en-US',
+    'en-GB',
+    'es-ES',
+    'ca-ES',
+    'fr-FR',
+    'de-DE',
+    'it-IT',
+    'pt-PT',
+    'pt-BR',
+    'ja-JP',
+    'ko-KR',
+    'zh-CN',
+  ];
   private request?: Subscription;
   private revision = 0;
   private searchIdentity = '';
@@ -125,6 +140,7 @@ export class TmdbPickerComponent implements OnInit, AfterViewInit {
     this.error.set('');
     this.resolved.set(null);
     this.selected.set(null);
+    this.attempted.set(false);
     this.matches.set([]);
     this.request = this.api
       .tmdb(this.searchRequest())
@@ -147,6 +163,9 @@ export class TmdbPickerComponent implements OnInit, AfterViewInit {
   protected choose(match: TmdbMatch): void {
     this.selected.set(match);
     this.resolved.set(null);
+    this.attempted.set(false);
+    // Verify right away; the manual button is only a fallback for failures and edits.
+    this.verify();
   }
 
   protected verify(): void {
@@ -155,6 +174,7 @@ export class TmdbPickerComponent implements OnInit, AfterViewInit {
     const context = this.context();
     const revision = ++this.revision;
     this.busy.set(true);
+    this.attempted.set(true);
     this.error.set('');
     const request: TmdbRequest = {
       ...this.searchRequest(true),
