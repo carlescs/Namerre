@@ -2,7 +2,7 @@
   #folderPicker
   aria-labelledby="picker-heading"
   aria-describedby="picker-description"
-  (cancel)="cancelPicker()"
+  (cancel)="onCancel($event)"
 >
   <header>
     <p class="eyebrow">Server library</p>
@@ -32,36 +32,63 @@
     </p>
 
     @if (browsingFolder(); as selected) {
-      <nav aria-label="Folder navigation">
-        <button type="button" (click)="openFolder('')" [disabled]="loading() || !selected.path">
-          Server root
-        </button>
-        @if (selected.parentPath !== null) {
-          <button type="button" (click)="openFolder(selected.parentPath)" [disabled]="loading()">
-            Parent folder
+      <div class="tip-row toolbar">
+        <nav aria-label="Folder navigation">
+          <button type="button" (click)="openFolder('')" [disabled]="loading() || !selected.path">
+            Server root
           </button>
-        }
-        <button type="button" (click)="openFolder(selected.path)" [disabled]="loading()">
-          Refresh
-        </button>
-      </nav>
+          @if (selected.parentPath !== null) {
+            <button type="button" (click)="openFolder(selected.parentPath)" [disabled]="loading()">
+              Parent folder
+            </button>
+          }
+          <button type="button" (click)="openFolder(selected.path)" [disabled]="loading()">
+            Refresh
+          </button>
+        </nav>
+        <div
+          class="flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300 sm:ml-auto"
+        >
+          <p class="m-0">
+            {{ fileCount() }} {{ fileCount() === 1 ? 'file' : 'files' }} in this folder.
+          </p>
+          @if (!fileCount() && directories().length && !includeSubfolders()) {
+            <span
+              class="inline-flex"
+              (mouseenter)="showTip('no-files')"
+              (mouseleave)="hideTip('no-files', true)"
+            >
+              <button
+                type="button"
+                class="tip-trigger text-amber-700 dark:text-amber-300"
+                aria-label="Why selecting this folder adds nothing"
+                aria-describedby="no-files-tip"
+                (click)="showTip('no-files')"
+                (focus)="showTip('no-files')"
+                (blur)="hideTip('no-files')"
+                (keydown.escape)="closeTip($event)"
+              >
+                <fa-icon [icon]="infoIcon" aria-hidden="true" />
+              </button>
+              <span
+                id="no-files-tip"
+                role="tooltip"
+                class="tip"
+                [class.tip-open]="openTip() === 'no-files'"
+              >
+                This folder has no files of its own, so selecting it will add nothing. Tick "Include
+                subfolders" to add the files inside its subfolders.
+              </span>
+            </span>
+          }
+        </div>
+      </div>
 
-      <p class="mb-0 mt-3 text-sm text-slate-600 dark:text-slate-300">
-        {{ fileCount() }} {{ fileCount() === 1 ? 'file' : 'files' }} in this folder.
-      </p>
-      @if (!fileCount() && directories().length && !includeSubfolders()) {
-        <p class="mb-0 mt-1 text-sm text-amber-800 dark:text-amber-300">
-          This folder has no files of its own, so selecting it will add nothing. Tick "Include
-          subfolders" to add the files inside its subfolders.
-        </p>
-      }
-
-      <h3 id="subfolders-heading" class="mb-3 mt-4">Subfolders</h3>
       <div class="folder-table" role="region" aria-labelledby="subfolders-heading" tabindex="0">
         <table aria-labelledby="subfolders-heading">
           <thead>
             <tr>
-              <th scope="col">Folder name</th>
+              <th id="subfolders-heading" scope="col">Subfolders</th>
             </tr>
           </thead>
           <tbody>
@@ -115,20 +142,45 @@
         />
         Include subfolders
       </label>
-      <label class="selection-option">
-        <input
-          type="checkbox"
-          [checked]="showHidden()"
-          (change)="showHidden.set($event.target.checked)"
-          [disabled]="loading()"
-        />
-        Show hidden files and folders
-      </label>
-      <p class="hint">
-        Only folders within the configured server root are available. Links are excluded. Hidden and
-        system entries such as <code>.DS_Store</code> or <code>&#64;eaDir</code> are skipped unless
-        shown.
-      </p>
+      <div class="tip-row selection-option">
+        <label class="flex items-center gap-2">
+          <input
+            type="checkbox"
+            [checked]="showHidden()"
+            (change)="showHidden.set($event.target.checked)"
+            [disabled]="loading()"
+          />
+          Show hidden files and folders
+        </label>
+        <span
+          class="inline-flex"
+          (mouseenter)="showTip('browse')"
+          (mouseleave)="hideTip('browse', true)"
+        >
+          <button
+            type="button"
+            class="tip-trigger text-slate-500 dark:text-slate-400"
+            aria-label="About hidden files and folder access"
+            aria-describedby="browse-tip"
+            (click)="showTip('browse')"
+            (focus)="showTip('browse')"
+            (blur)="hideTip('browse')"
+            (keydown.escape)="closeTip($event)"
+          >
+            <fa-icon [icon]="infoIcon" aria-hidden="true" />
+          </button>
+          <span
+            id="browse-tip"
+            role="tooltip"
+            class="tip"
+            [class.tip-open]="openTip() === 'browse'"
+          >
+            Only folders within the configured server root are available. Links are excluded. Hidden
+            and system entries such as <code>.DS_Store</code> or <code>&#64;eaDir</code> are skipped
+            unless shown.
+          </span>
+        </span>
+      </div>
     }
   </div>
   <footer>
