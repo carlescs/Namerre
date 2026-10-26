@@ -61,6 +61,7 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 _ = app.Services.GetRequiredService<AdminAccount>();
+_ = app.Services.GetRequiredService<OidcLogin>();
 
 if (!string.IsNullOrWhiteSpace(app.Services.GetRequiredService<IOptions<NamerreOptions>>().Value.DataPath))
 {

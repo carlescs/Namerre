@@ -3,9 +3,12 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Namerre.Authentication;
 using Namerre.Application.Authentication;
 using Namerre.Application.Renaming;
@@ -14,8 +17,8 @@ namespace Namerre.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public sealed class AuthController(AdminAccount account, IAntiforgery antiforgery,
-    ILogger<AuthController> logger) : ControllerBase
+public sealed class AuthController(AdminAccount account, OidcLogin oidc,
+    IOptionsMonitor<OpenIdConnectOptions> oidcOptions, IAntiforgery antiforgery, ILogger<AuthController> logger) : ControllerBase
 {
     [AllowAnonymous]
     [HttpGet("session")]
@@ -32,8 +35,38 @@ public sealed class AuthController(AdminAccount account, IAntiforgery antiforger
         return Ok(new
         {
             username = User.Identity?.IsAuthenticated == true ? User.Identity.Name : null,
-            requiresSetup = account.RequiresSetup
+            requiresSetup = account.RequiresSetup,
+            oidc = oidc.Enabled ? new { displayName = oidc.DisplayName } : null,
+            // A single sign-on session does not know the local administrator password.
+            canChangePassword = account.CanChangePassword && !IsSingleSignOnSession
         });
+    }
+
+    [AllowAnonymous]
+    [HttpGet("oidc/login")]
+    public async Task<IActionResult> OidcLogin(CancellationToken cancellationToken)
+    {
+        if (!oidc.Enabled)
+            return NotFound();
+        try
+        {
+            // Load the provider metadata first so an unreachable identity provider is not a bare server error.
+            await oidcOptions.Get(Authentication.OidcLogin.Scheme).ConfigurationManager!
+                .GetConfigurationAsync(cancellationToken);
+            // The challenge itself may call the provider (pushed authorization requests), so it is guarded too.
+            // A fixed return address avoids open redirects.
+            await HttpContext.ChallengeAsync(Authentication.OidcLogin.Scheme,
+                new AuthenticationProperties { RedirectUri = "/" });
+            return new EmptyResult();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or
+            HttpRequestException or OpenIdConnectProtocolException)
+        {
+            logger.LogWarning(exception, "The identity provider is unavailable.");
+            if (!Response.HasStarted)
+                Response.Clear();
+            return Redirect("/?signInError=unavailable");
+        }
     }
 
     [AllowAnonymous]
@@ -67,17 +100,45 @@ public sealed class AuthController(AdminAccount account, IAntiforgery antiforger
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest request)
     {
-        if (!account.Verify(request.Username, request.Password))
+        var verified = account.Authenticate(request.Username, request.Password);
+        if (verified is null)
             return Unauthorized(new { message = "Invalid username or password." });
 
-        var principal = new ClaimsPrincipal(new ClaimsIdentity(
-        [
-            new Claim(ClaimTypes.NameIdentifier, account.Username),
-            new Claim(ClaimTypes.Name, account.Username),
-            new Claim("credential-stamp", account.Stamp)
-        ], CookieAuthenticationDefaults.AuthenticationScheme));
-        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal,
-            new AuthenticationProperties { IsPersistent = false });
+        await SignInAsync(verified);
+        return NoContent();
+    }
+
+    [EnableRateLimiting("login")]
+    [HttpPost("password")]
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
+    {
+        if (IsSingleSignOnSession)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new { message = "Sign in with the local administrator account to change its password." });
+        PasswordChangeResult result;
+        AdminCredentials? changed;
+        try
+        {
+            result = account.ChangePassword(request.CurrentPassword, request.NewPassword, out changed);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+            RenameException or AdministratorStorageException)
+        {
+            logger.LogError(exception, "Unable to save the administrator password.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new { message = "Unable to save the password. Check the database and server permissions, then retry." });
+        }
+
+        if (result == PasswordChangeResult.InvalidPassword)
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "The current password is incorrect." });
+        if (result == PasswordChangeResult.ManagedByConfiguration)
+            return Conflict(new { message = "The administrator is configured on the server. Update Namerre:Authentication:PasswordHash instead." });
+        if (result != PasswordChangeResult.Changed || changed is null)
+            return Conflict(new { message = "The stored administrator changed unexpectedly. Restart Namerre and sign in again." });
+
+        logger.LogInformation("Administrator password changed.");
+        // The credential stamp changed, which signs out every other session; keep this one.
+        await SignInAsync(changed);
         return NoContent();
     }
 
@@ -86,6 +147,21 @@ public sealed class AuthController(AdminAccount account, IAntiforgery antiforger
     {
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         return NoContent();
+    }
+
+    private bool IsSingleSignOnSession
+        => User.FindFirst(Authentication.OidcLogin.MethodClaim)?.Value == Authentication.OidcLogin.Scheme;
+
+    private Task SignInAsync(AdminCredentials credentials)
+    {
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, credentials.Username),
+            new Claim(ClaimTypes.Name, credentials.Username),
+            new Claim(AdminAccount.StampClaim, AdminAccount.StampOf(credentials))
+        ], CookieAuthenticationDefaults.AuthenticationScheme));
+        return HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal,
+            new AuthenticationProperties { IsPersistent = false });
     }
 }
 
@@ -97,3 +173,7 @@ public sealed record SetupRequest(
     [Required, StringLength(64, MinimumLength = 64)] string Token,
     [Required, StringLength(128)] string Username,
     [Required, StringLength(1024)] string Password);
+
+public sealed record ChangePasswordRequest(
+    [Required, StringLength(1024)] string CurrentPassword,
+    [Required, StringLength(1024)] string NewPassword);

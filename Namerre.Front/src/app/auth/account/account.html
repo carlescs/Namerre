@@ -1,0 +1,63 @@
+<main id="main-content" tabindex="-1" class="mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-10">
+  <p class="eyebrow">Your account</p>
+  <h1>Account</h1>
+  <p class="mb-6 text-slate-500 dark:text-slate-400">
+    Signed in as <strong>{{ auth.username() }}</strong
+    >.
+  </p>
+  <section class="surface p-6">
+    <h2 class="text-lg">Change password</h2>
+    @if (auth.canChangePassword()) {
+      <p class="text-slate-500 dark:text-slate-400">
+        Changing the password signs out every other browser session.
+      </p>
+      <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="busy()">
+        <label for="current-password">Current password</label>
+        <input
+          id="current-password"
+          type="password"
+          formControlName="currentPassword"
+          autocomplete="current-password"
+          maxlength="1024"
+          required
+        />
+        <label for="new-password">New password</label>
+        <input
+          id="new-password"
+          type="password"
+          formControlName="newPassword"
+          autocomplete="new-password"
+          maxlength="1024"
+          required
+        />
+        <label for="new-password-confirmation">Confirm new password</label>
+        <input
+          id="new-password-confirmation"
+          type="password"
+          formControlName="confirmation"
+          autocomplete="new-password"
+          maxlength="1024"
+          required
+        />
+        @if (form.hasError('passwordMismatch') && form.controls.confirmation.dirty) {
+          <p role="alert">Passwords must match.</p>
+        }
+        @if (error()) {
+          <p role="alert">{{ error() }}</p>
+        }
+        @if (changed()) {
+          <p role="status">Password changed. Other sessions have been signed out.</p>
+        }
+        <button class="btn-primary mt-4" type="submit" [disabled]="busy() || form.invalid">
+          {{ busy() ? 'Saving...' : 'Change password' }}
+        </button>
+      </form>
+    } @else {
+      <p class="mb-0 text-slate-500 dark:text-slate-400">
+        The administrator credentials are set in the server configuration. To change the password,
+        generate a new hash, update <code>Namerre:Authentication:PasswordHash</code>, and restart
+        Namerre.
+      </p>
+    }
+  </section>
+</main>
