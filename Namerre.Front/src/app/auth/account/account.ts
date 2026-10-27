@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Auth } from '../auth';
+import { Auth, minimumPasswordLength, serverMessage } from '../auth';
 
 @Component({
   imports: [ReactiveFormsModule],
@@ -19,7 +19,12 @@ export class Account {
       }),
       newPassword: new FormControl('', {
         nonNullable: true,
-        validators: [Validators.required, Validators.pattern(/\S/), Validators.maxLength(1024)],
+        validators: [
+          Validators.required,
+          Validators.pattern(/\S/),
+          Validators.minLength(minimumPasswordLength),
+          Validators.maxLength(1024),
+        ],
       }),
       confirmation: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     },
@@ -30,6 +35,7 @@ export class Account {
           : { passwordMismatch: true },
     },
   );
+  protected readonly minimumPasswordLength = minimumPasswordLength;
   protected readonly busy = signal(false);
   protected readonly error = signal('');
   protected readonly changed = signal(false);
@@ -53,7 +59,8 @@ export class Account {
               ? 'Too many attempts. Wait one minute and try again.'
               : error instanceof HttpErrorResponse && error.status === 503
                 ? 'Unable to save the password. Check the server database and permissions, then retry.'
-                : 'Unable to change the password. Check your connection and use HTTPS, then retry.',
+                : (serverMessage(error, 400) ??
+                  'Unable to change the password. Check your connection and use HTTPS, then retry.'),
       );
     } finally {
       this.form.reset();

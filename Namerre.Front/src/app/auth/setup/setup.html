@@ -31,9 +31,14 @@
       type="password"
       formControlName="password"
       autocomplete="new-password"
+      [attr.minlength]="minimumPasswordLength"
       maxlength="1024"
+      aria-describedby="setup-password-hint"
       required
     />
+    <p id="setup-password-hint" class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
+      At least {{ minimumPasswordLength }} characters.
+    </p>
     <label for="setup-confirmation">Confirm password</label>
     <input
       id="setup-confirmation"

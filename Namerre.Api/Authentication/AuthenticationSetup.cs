@@ -1,9 +1,12 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using Namerre.Application.Authentication;
 using Namerre.Infrastructure.Authentication;
@@ -12,6 +15,11 @@ namespace Namerre.Authentication;
 
 public static class AuthenticationSetup
 {
+    // Login, setup and password changes share these limits; each attempt costs a full password hash.
+    public const string LoginPolicy = "login";
+    internal const int LoginLimitPerClient = 5;
+    internal const int LoginLimitShared = 60;
+
     public static IServiceCollection AddAdminAuthentication(this IServiceCollection services)
     {
         services.AddSingleton<IAdministratorStore, AdministratorStore>();
@@ -63,16 +71,40 @@ public static class AuthenticationSetup
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            // One account, one shared limit: changing source IP cannot bypass it.
-            options.AddPolicy("login", _ => RateLimitPartition.GetFixedWindowLimiter("administrator",
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 5,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0
-                }));
+            // Each client gets its own small budget, so one source cannot lock the administrator out...
+            options.AddPolicy(LoginPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+                ClientPartition(context.Connection.RemoteIpAddress), _ => LoginWindow(LoginLimitPerClient)));
+            // ...and a shared ceiling still bounds guessing from many addresses at once.
+            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+                context.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName == LoginPolicy
+                    ? RateLimitPartition.GetFixedWindowLimiter("administrator", _ => LoginWindow(LoginLimitShared))
+                    : RateLimitPartition.GetNoLimiter(""));
         });
         return services;
+    }
+
+    private static FixedWindowRateLimiterOptions LoginWindow(int permits) => new()
+    {
+        PermitLimit = permits,
+        Window = TimeSpan.FromMinutes(1),
+        QueueLimit = 0
+    };
+
+    /// <summary>
+    /// Groups clients by address, after forwarded headers are applied. IPv6 clients are grouped by their /64
+    /// prefix, since a single host usually controls a whole /64 and could otherwise rotate addresses.
+    /// </summary>
+    internal static string ClientPartition(IPAddress? address)
+    {
+        if (address is null)
+            return "unknown";
+        if (address.IsIPv4MappedToIPv6)
+            return address.MapToIPv4().ToString();
+        if (address.AddressFamily != AddressFamily.InterNetworkV6)
+            return address.ToString();
+        var bytes = address.GetAddressBytes();
+        Array.Clear(bytes, 8, 8);
+        return new IPAddress(bytes) + "/64";
     }
 
     internal static bool IsValidSession(ClaimsPrincipal principal, AdminAccount account,

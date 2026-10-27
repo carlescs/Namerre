@@ -3,6 +3,9 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -84,11 +87,10 @@ public sealed class AuthenticationTests
     }
 
     [Fact]
-    public async Task InvalidCredentialsHaveGenericErrorsAndSharedRateLimit()
+    public async Task InvalidCredentialsHaveGenericErrorsAndArePerClientRateLimited()
     {
-        using var factory = new AuthWebApplicationFactory();
-        using var client = AuthWebApplicationFactory.AnonymousClient(factory);
-        await AuthWebApplicationFactory.RefreshCsrf(client);
+        using var factory = ClientAddressFactory();
+        using var client = await ClientAt(factory, "192.0.2.10");
         for (var attempt = 0; attempt < 5; attempt++)
         {
             using var invalid = await client.PostAsJsonAsync("/api/auth/login",
@@ -96,11 +98,59 @@ public sealed class AuthenticationTests
             Assert.Equal(HttpStatusCode.Unauthorized, invalid.StatusCode);
             Assert.Contains("Invalid username or password.", await invalid.Content.ReadAsStringAsync());
         }
-        using var otherClient = AuthWebApplicationFactory.AnonymousClient(factory);
-        await AuthWebApplicationFactory.RefreshCsrf(otherClient);
-        using var limited = await otherClient.PostAsJsonAsync("/api/auth/login",
+        using var limited = await client.PostAsJsonAsync("/api/auth/login",
             new { AuthWebApplicationFactory.Username, AuthWebApplicationFactory.Password });
         Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+
+        // Another client is not locked out by the first one's failures.
+        using var otherClient = await ClientAt(factory, "198.51.100.20");
+        using var login = await otherClient.PostAsJsonAsync("/api/auth/login",
+            new { AuthWebApplicationFactory.Username, AuthWebApplicationFactory.Password });
+        Assert.Equal(HttpStatusCode.NoContent, login.StatusCode);
+    }
+
+    [Fact]
+    public async Task IPv6ClientsShareTheLimitOfTheirSlash64()
+    {
+        using var factory = ClientAddressFactory();
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            using var client = await ClientAt(factory, $"2001:db8:1:2::{attempt + 1:x}");
+            using var invalid = await client.PostAsJsonAsync("/api/auth/login",
+                new { AuthWebApplicationFactory.Username, password = "incorrect" });
+            Assert.Equal(HttpStatusCode.Unauthorized, invalid.StatusCode);
+        }
+        using var sameNetwork = await ClientAt(factory, "2001:db8:1:2:ffff::1");
+        using var limited = await sameNetwork.PostAsJsonAsync("/api/auth/login",
+            new { AuthWebApplicationFactory.Username, AuthWebApplicationFactory.Password });
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+    }
+
+    [Fact]
+    public async Task LoginAttemptsFromManyClientsShareACeiling()
+    {
+        using var factory = ClientAddressFactory();
+        const int clients = Namerre.Authentication.AuthenticationSetup.LoginLimitShared
+            / Namerre.Authentication.AuthenticationSetup.LoginLimitPerClient;
+        var attempts = Enumerable.Range(0, clients).Select(async index =>
+        {
+            using var client = await ClientAt(factory, $"203.0.113.{index + 1}");
+            for (var attempt = 0; attempt < Namerre.Authentication.AuthenticationSetup.LoginLimitPerClient; attempt++)
+            {
+                using var invalid = await client.PostAsJsonAsync("/api/auth/login",
+                    new { AuthWebApplicationFactory.Username, password = "incorrect" });
+                Assert.Equal(HttpStatusCode.Unauthorized, invalid.StatusCode);
+            }
+        });
+        await Task.WhenAll(attempts);
+
+        using var fresh = await ClientAt(factory, "192.0.2.99");
+        using var limited = await fresh.PostAsJsonAsync("/api/auth/login",
+            new { AuthWebApplicationFactory.Username, AuthWebApplicationFactory.Password });
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        // The ceiling only covers sign-in endpoints.
+        using var session = await fresh.GetAsync("/api/auth/session");
+        Assert.Equal(HttpStatusCode.OK, session.StatusCode);
     }
 
     [Theory]
@@ -154,4 +204,35 @@ public sealed class AuthenticationTests
     }
 
     private sealed record Session(string? Username);
+
+    private const string ClientAddressHeader = "X-Test-Client-Address";
+
+    private static WebApplicationFactory<Program> ClientAddressFactory()
+        => new AuthWebApplicationFactory().WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+                services.AddTransient<IStartupFilter>(_ => new ClientAddressStartupFilter())));
+
+    private static async Task<HttpClient> ClientAt(WebApplicationFactory<Program> factory, string address)
+    {
+        var client = AuthWebApplicationFactory.AnonymousClient(factory);
+        client.DefaultRequestHeaders.Add(ClientAddressHeader, address);
+        await AuthWebApplicationFactory.RefreshCsrf(client);
+        return client;
+    }
+
+    // The test server has no remote address; this stands in for the connection (or trusted proxy) address.
+    private sealed class ClientAddressStartupFilter : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)
+            => app =>
+            {
+                app.Use((context, nextMiddleware) =>
+                {
+                    if (context.Request.Headers.TryGetValue(ClientAddressHeader, out var address))
+                        context.Connection.RemoteIpAddress = IPAddress.Parse(address.ToString());
+                    return nextMiddleware(context);
+                });
+                next(app);
+            };
+    }
 }

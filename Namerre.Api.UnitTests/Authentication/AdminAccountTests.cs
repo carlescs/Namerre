@@ -120,14 +120,14 @@ public sealed class AdminAccountTests
         store.TryCreate(Arg.Any<AdminCredentials>()).Returns(true);
         var account = new AdminAccount(Configured(null, null), store);
 
-        var result = account.CompleteSetup(account.SetupToken!, "admin", "s3cret pass");
+        var result = account.CompleteSetup(account.SetupToken!, "admin", "s3cret passphrase");
 
         Assert.Equal(SetupResult.Completed, result);
         Assert.False(account.RequiresSetup);
         Assert.Null(account.SetupToken);
-        Assert.True(account.Verify("admin", "s3cret pass"));
+        Assert.True(account.Verify("admin", "s3cret passphrase"));
         store.Received(1).TryCreate(Arg.Is<AdminCredentials>(c =>
-            c.Username == "admin" && c.PasswordHash != "s3cret pass"));
+            c.Username == "admin" && c.PasswordHash != "s3cret passphrase"));
         Assert.Equal(SetupResult.AlreadyConfigured, account.CompleteSetup("token", "again", "pass"));
     }
 
@@ -148,8 +148,27 @@ public sealed class AdminAccountTests
         store.TryCreate(Arg.Any<AdminCredentials>()).Returns(false);
         var account = new AdminAccount(Configured(null, null), store);
 
-        Assert.Equal(SetupResult.AlreadyConfigured, account.CompleteSetup(account.SetupToken!, "admin", "pass"));
+        Assert.Equal(SetupResult.AlreadyConfigured,
+            account.CompleteSetup(account.SetupToken!, "admin", "s3cret passphrase"));
         Assert.True(account.RequiresSetup);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("x")]
+    [InlineData("eleven char")]
+    [InlineData("            ")]
+    public void SetupRejectsPasswordsShorterThanTheMinimum(string password)
+    {
+        var account = new AdminAccount(Configured(null, null), store);
+        var token = account.SetupToken!;
+
+        Assert.Equal(SetupResult.WeakPassword, account.CompleteSetup(token, "admin", password));
+
+        // The token stays valid so the administrator can retry with a longer password.
+        Assert.True(account.RequiresSetup);
+        Assert.Equal(token, account.SetupToken);
+        store.DidNotReceive().TryCreate(Arg.Any<AdminCredentials>());
     }
 
     [Fact]
@@ -188,6 +207,35 @@ public sealed class AdminAccountTests
         Assert.True(account.Verify("stored", "correct horse"));
         store.DidNotReceiveWithAnyArgs().TryUpdate(default!, default!);
     }
+
+    [Fact]
+    public void PasswordChangeRejectsNewPasswordsShorterThanTheMinimum()
+    {
+        store.Load().Returns(new AdminCredentials("stored", Hash));
+        var account = new AdminAccount(Configured(null, null), store);
+
+        Assert.Equal(PasswordChangeResult.WeakPassword, account.ChangePassword("correct horse", "short", out var changed));
+
+        Assert.Null(changed);
+        Assert.True(account.Verify("stored", "correct horse"));
+        store.DidNotReceiveWithAnyArgs().TryUpdate(default!, default!);
+    }
+
+    [Fact]
+    public void ExistingShorterPasswordsStillSignIn()
+    {
+        var shortHash = AdminAccount.HashPassword("short");
+        var account = new AdminAccount(Configured("admin", shortHash), store);
+
+        Assert.True(account.Verify("admin", "short"));
+    }
+
+    [Theory]
+    [InlineData("a-twelve-chr", true)]
+    [InlineData("eleven char", false)]
+    [InlineData("             ", false)]
+    public void PasswordsNeedAtLeastTwelveCharacters(string password, bool expected)
+        => Assert.Equal(expected, AdminAccount.IsAcceptablePassword(password));
 
     [Fact]
     public void PasswordChangeKeepsTheOldPasswordWhenTheStoredAccountChanged()

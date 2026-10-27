@@ -12,7 +12,8 @@ public enum SetupResult
 {
     Completed,
     AlreadyConfigured,
-    InvalidToken
+    InvalidToken,
+    WeakPassword
 }
 
 public enum PasswordChangeResult
@@ -20,12 +21,14 @@ public enum PasswordChangeResult
     Changed,
     InvalidPassword,
     ManagedByConfiguration,
-    Conflict
+    Conflict,
+    WeakPassword
 }
 
 public sealed class AdminAccount
 {
     public const string StampClaim = "credential-stamp";
+    public const int MinimumPasswordLength = 12;
     private static readonly PasswordHasher<string> Hasher = new(
         Options.Create(new PasswordHasherOptions { IterationCount = 210_000 }));
     private readonly object gate = new();
@@ -68,6 +71,8 @@ public sealed class AdminAccount
             if (SetupToken is null || !CryptographicOperations.FixedTimeEquals(
                     Encoding.UTF8.GetBytes(SetupToken), Encoding.UTF8.GetBytes(token)))
                 return SetupResult.InvalidToken;
+            if (!IsAcceptablePassword(password))
+                return SetupResult.WeakPassword;
             var account = new AdminCredentials(username, HashPassword(password));
             Validate(account);
             if (!store.TryCreate(account))
@@ -94,6 +99,8 @@ public sealed class AdminAccount
             if (Hasher.VerifyHashedPassword(account.Username, account.PasswordHash, currentPassword) ==
                 PasswordVerificationResult.Failed)
                 return PasswordChangeResult.InvalidPassword;
+            if (!IsAcceptablePassword(newPassword))
+                return PasswordChangeResult.WeakPassword;
             var updated = account with { PasswordHash = HashPassword(newPassword) };
             if (!store.TryUpdate(account, updated.PasswordHash))
                 return PasswordChangeResult.Conflict;
@@ -138,6 +145,10 @@ public sealed class AdminAccount
             string.Equals(username, account.Username, StringComparison.Ordinal) ? account : null;
     }
 
+    // Applies to new passwords only, so an existing shorter password keeps working until it is changed.
+    public static bool IsAcceptablePassword(string password)
+        => password.Length >= MinimumPasswordLength && !string.IsNullOrWhiteSpace(password);
+
     public static string HashPassword(string password) => Hasher.HashPassword("", password);
 
     public static void GeneratePasswordHash()
@@ -159,8 +170,8 @@ public sealed class AdminAccount
         }
         Console.Error.WriteLine();
         var value = password.ToString();
-        if (string.IsNullOrWhiteSpace(value))
-            throw new InvalidOperationException("Enter a password.");
+        if (!IsAcceptablePassword(value))
+            throw new InvalidOperationException($"Enter a password of at least {MinimumPasswordLength} characters.");
         Console.WriteLine(HashPassword(value));
     }
 }

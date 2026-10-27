@@ -20,6 +20,9 @@ namespace Namerre.Controllers;
 public sealed class AuthController(AdminAccount account, OidcLogin oidc,
     IOptionsMonitor<OpenIdConnectOptions> oidcOptions, IAntiforgery antiforgery, ILogger<AuthController> logger) : ControllerBase
 {
+    private static readonly string WeakPasswordMessage =
+        $"Use a password of at least {AdminAccount.MinimumPasswordLength} characters.";
+
     [AllowAnonymous]
     [HttpGet("session")]
     public IActionResult Session()
@@ -70,7 +73,7 @@ public sealed class AuthController(AdminAccount account, OidcLogin oidc,
     }
 
     [AllowAnonymous]
-    [EnableRateLimiting("login")]
+    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
     [HttpPost("setup")]
     public IActionResult Setup(SetupRequest request)
     {
@@ -83,6 +86,8 @@ public sealed class AuthController(AdminAccount account, OidcLogin oidc,
                 return Conflict(new { message = "The administrator is already configured. Sign in instead." });
             if (result == SetupResult.InvalidToken)
                 return StatusCode(StatusCodes.Status403Forbidden, new { message = "Invalid setup token." });
+            if (result == SetupResult.WeakPassword)
+                return BadRequest(new { message = WeakPasswordMessage });
             logger.LogInformation("Administrator installation completed.");
             return NoContent();
         }
@@ -96,7 +101,7 @@ public sealed class AuthController(AdminAccount account, OidcLogin oidc,
     }
 
     [AllowAnonymous]
-    [EnableRateLimiting("login")]
+    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest request)
     {
@@ -108,7 +113,7 @@ public sealed class AuthController(AdminAccount account, OidcLogin oidc,
         return NoContent();
     }
 
-    [EnableRateLimiting("login")]
+    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
     [HttpPost("password")]
     public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
     {
@@ -131,6 +136,8 @@ public sealed class AuthController(AdminAccount account, OidcLogin oidc,
 
         if (result == PasswordChangeResult.InvalidPassword)
             return StatusCode(StatusCodes.Status403Forbidden, new { message = "The current password is incorrect." });
+        if (result == PasswordChangeResult.WeakPassword)
+            return BadRequest(new { message = WeakPasswordMessage });
         if (result == PasswordChangeResult.ManagedByConfiguration)
             return Conflict(new { message = "The administrator is configured on the server. Update Namerre:Authentication:PasswordHash instead." });
         if (result != PasswordChangeResult.Changed || changed is null)

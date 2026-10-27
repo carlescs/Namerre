@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Logo } from '../../brand/logo';
-import { Auth } from '../auth';
+import { Auth, minimumPasswordLength, serverMessage } from '../auth';
 import { SingleSignOn } from '../single-sign-on/single-sign-on';
 
 @Component({
@@ -25,7 +25,11 @@ export class Setup {
       }),
       password: new FormControl('', {
         nonNullable: true,
-        validators: [Validators.required, Validators.maxLength(1024)],
+        validators: [
+          Validators.required,
+          Validators.minLength(minimumPasswordLength),
+          Validators.maxLength(1024),
+        ],
       }),
       confirmation: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     },
@@ -36,6 +40,7 @@ export class Setup {
           : { passwordMismatch: true },
     },
   );
+  protected readonly minimumPasswordLength = minimumPasswordLength;
   protected readonly busy = signal(false);
   protected readonly error = signal('');
 
@@ -57,7 +62,8 @@ export class Setup {
               ? 'Too many attempts. Wait one minute and try again.'
               : error instanceof HttpErrorResponse && error.status === 503
                 ? 'Unable to save the administrator. Check the server database and permissions, then retry.'
-                : 'Unable to complete installation. Check your connection and use HTTPS, then retry.',
+                : (serverMessage(error, 400) ??
+                  'Unable to complete installation. Check your connection and use HTTPS, then retry.'),
         );
       }
     } finally {

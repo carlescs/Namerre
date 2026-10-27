@@ -5,9 +5,13 @@ using Namerre.Application.Renaming;
 using Namerre.Infrastructure.Renaming;
 using Namerre.Authentication;
 using Namerre.Notifications;
+using Namerre.Security;
 using Namerre.Telemetry;
 using Microsoft.Extensions.Options;
 using Namerre.Infrastructure.Configuration;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using Microsoft.AspNetCore.DataProtection.Repositories;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Net;
 
@@ -55,6 +59,17 @@ builder.Services.AddSingleton<IFolderBrowser>(services => new ServerFolderBrowse
     services.GetRequiredService<RenameStore>().IsOwnedEntry));
 builder.Services.AddControllersWithViews();
 builder.Services.AddAdminAuthentication();
+// Keys that protect session and antiforgery cookies live with the database, so sessions survive restarts and
+// container replacement instead of depending on wherever the default key location happens to be.
+builder.Services.AddDataProtection().SetApplicationName("Namerre");
+builder.Services.AddOptions<KeyManagementOptions>()
+    .Configure<IOptions<NamerreOptions>, IHostEnvironment, ILoggerFactory>((options, settings, environment, loggers) =>
+    {
+        if (string.IsNullOrWhiteSpace(settings.Value.DataPath))
+            return;
+        var keys = Path.Combine(Path.GetFullPath(settings.Value.DataPath, environment.ContentRootPath), "keys");
+        options.XmlRepository = new FileSystemXmlRepository(new DirectoryInfo(keys), loggers);
+    });
 builder.AddOptionalTelemetry();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
@@ -70,6 +85,7 @@ if (!string.IsNullOrWhiteSpace(app.Services.GetRequiredService<IOptions<NamerreO
 
 // Configure the HTTP request pipeline.
 app.UseForwardedHeaders();
+app.UseSecurityHeaders();
 
 if (app.Environment.IsDevelopment())
 {
