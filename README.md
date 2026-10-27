@@ -335,9 +335,10 @@ so parents emptied in turn go too. The configured root is never removed, and a f
 that still holds anything, even an empty subfolder, stays.
 Each removal is journaled as `DeleteDirectory`. Cleanup is best effort: a folder that
 cannot be removed is journaled as `Failed` and the run still completes. Rollbacks of
-such a run inherit the option, so folders the rename created are removed again when
-rolling back empties them; missing original folders are recreated on rollback and
-recovery.
+such a run inherit the option by default, so folders the rename created are removed again
+when rolling back empties them. The undo review lets you change that for one rollback
+(`deleteEmptyFolders` on `POST /api/rename-runs/{id}/rollback`; omitted inherits the
+run's choice). Missing original folders are recreated on rollback and recovery.
 
 Select individual files in a saved run to preview rollback. Rollback checks the
 expected current path and original content hash, never overwrites an occupied

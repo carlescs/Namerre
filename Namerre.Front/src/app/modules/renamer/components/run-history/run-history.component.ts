@@ -76,6 +76,8 @@ export class RunHistoryComponent {
     return ids.length > 0 && ids.every((id) => selection.has(id));
   });
   protected readonly rollback = signal<SelectionPreview | null>(null);
+  /** Cleanup choice for the reviewed undo; starts from the rename's own choice. */
+  protected readonly rollbackDeleteEmptyFolders = signal(false);
   protected readonly recovery = signal<RecoveryPreview | null>(null);
   protected readonly loading = signal(false);
   protected readonly busy = signal(false);
@@ -278,6 +280,7 @@ export class RunHistoryComponent {
       .subscribe({
         next: (preview) => {
           if (revision !== this.revision) return;
+          this.rollbackDeleteEmptyFolders.set(this.run()?.deleteEmptyFolders ?? false);
           this.rollback.set(preview);
           this.busy.set(false);
           this.stopCheckProgress();
@@ -301,6 +304,7 @@ export class RunHistoryComponent {
         this.rollback()
           ?.files.filter((file) => file.safe)
           .map((file) => file.id) ?? [],
+      deleteEmptyFolders: this.rollbackDeleteEmptyFolders(),
     };
     this.action = this.api
       .rollback(this.runId(), request)

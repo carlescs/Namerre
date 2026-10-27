@@ -103,9 +103,39 @@ describe('RunHistoryComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Original destination is occupied.');
     button('Undo 1 file').click();
     const rollback = http.expectOne('/api/rename-runs/run-1/rollback');
-    expect(rollback.request.body).toEqual({ fileIds: ['a'], operationId });
+    expect(rollback.request.body).toEqual({
+      fileIds: ['a'],
+      operationId,
+      deleteEmptyFolders: false,
+    });
     rollback.flush({ id: 'rollback-1', status: 'Queued', location: '' });
     expect(navigate).toHaveBeenCalledWith(['/runs', 'rollback-1']);
+  });
+
+  it('starts the undo folder cleanup from the rename choice and sends the changed choice', async () => {
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    http.expectOne('/api/rename-runs/run-1').flush({ ...run, deleteEmptyFolders: true });
+    await fixture.whenStable();
+    (fixture.nativeElement.querySelector('input.file-select') as HTMLInputElement).click();
+    await fixture.whenStable();
+    button('Check undo for selected').click();
+    http.expectOne('/api/rename-runs/run-1/rollback-preview').flush({
+      files: [{ id: 'a', safe: true, currentPath: 'A.txt', destinationPath: 'a.txt', issues: [] }],
+    });
+    await fixture.whenStable();
+    const review = fixture.nativeElement.querySelector(
+      'section[aria-labelledby="rollback-heading"]',
+    ) as HTMLElement;
+    expect(review.querySelector('label')?.textContent).toContain('Delete folders left empty');
+    const cleanup = review.querySelector('label input') as HTMLInputElement;
+    expect(cleanup.checked).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('The rename had this on.');
+    cleanup.click();
+    await fixture.whenStable();
+    button('Undo 1 file').click();
+    const rollback = http.expectOne('/api/rename-runs/run-1/rollback');
+    expect(rollback.request.body.deleteEmptyFolders).toBe(false);
+    rollback.flush({ id: 'rollback-1', status: 'Queued', location: '' });
   });
 
   it('fills the rollback check progress from the polled per-file count', async () => {
@@ -968,6 +998,9 @@ describe('RunHistoryComponent', () => {
     expect(items[1].textContent).toContain('Undo');
     expect(items[1].textContent).toContain('In progress');
     expect(items[1].textContent).toContain('Undo of Shows/Dark/S01');
+    expect(items[1].querySelector('a[href="/runs/rename-1"]')?.textContent).toContain(
+      'Shows/Dark/S01',
+    );
     expect(items[1].className).toContain('ml-6');
     expect(items[0].querySelector('.bg-emerald-100')).not.toBeNull();
     expect(items[1].querySelector('.bg-sky-100')).not.toBeNull();

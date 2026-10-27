@@ -168,9 +168,12 @@
               <p class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
                 {{ fileCount(entry.run.files.length) }} · {{ entry.run.createdAt | date: 'medium' }}
               </p>
-              @if (entry.run.kind === 'Rollback') {
+              @if (entry.run.kind === 'Rollback' && entry.run.parentRunId) {
                 <p class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
-                  Undo of {{ entry.parentTitle || 'an earlier rename' }}
+                  Undo of
+                  <a [routerLink]="['/runs', entry.run.parentRunId]">{{
+                    entry.parentTitle || 'an earlier rename'
+                  }}</a>
                 </p>
               }
             </div>
@@ -223,6 +226,34 @@
     <p class="text-xs text-slate-500 dark:text-slate-400">
       Run {{ current.id }} · Plan {{ current.planId }}
     </p>
+    @if (current.parentRunId) {
+      <p>
+        This undoes an earlier rename{{
+          current.deleteEmptyFolders ? ' and removes folders it leaves empty' : ''
+        }}.
+        <a [routerLink]="['/runs', current.parentRunId]">View the original rename</a>
+      </p>
+    }
+    @if (current.rollbackRuns?.length) {
+      <section aria-labelledby="rollback-runs-heading">
+        <h3 id="rollback-runs-heading">Undos of this rename</h3>
+        <ul>
+          @for (child of current.rollbackRuns; track child.id) {
+            <li class="flex flex-wrap items-center gap-2">
+              <a [routerLink]="['/runs', child.id]">{{ kindLabel(child.kind) }}</a>
+              <span
+                class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                [class]="statusClasses(child.status)"
+                >{{ statusLabel(child.status) }}</span
+              >
+              <span class="text-xs text-slate-500 dark:text-slate-400">{{
+                child.createdAt | date: 'medium'
+              }}</span>
+            </li>
+          }
+        </ul>
+      </section>
+    }
     <details #approvedPlan (toggle)="approvedPlan.open && inspectPlan()">
       <summary>Show saved settings and file fingerprints</summary>
       @if (loadingPlan()) {
@@ -267,32 +298,6 @@
         </ul>
       }
     </details>
-    @if (current.parentRunId) {
-      <p>
-        This undoes an earlier rename.
-        <a [routerLink]="['/runs', current.parentRunId]">View the original rename</a>
-      </p>
-    }
-    @if (current.rollbackRuns?.length) {
-      <section aria-labelledby="rollback-runs-heading">
-        <h3 id="rollback-runs-heading">Undos of this rename</h3>
-        <ul>
-          @for (child of current.rollbackRuns; track child.id) {
-            <li class="flex flex-wrap items-center gap-2">
-              <a [routerLink]="['/runs', child.id]">{{ kindLabel(child.kind) }}</a>
-              <span
-                class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
-                [class]="statusClasses(child.status)"
-                >{{ statusLabel(child.status) }}</span
-              >
-              <span class="text-xs text-slate-500 dark:text-slate-400">{{
-                child.createdAt | date: 'medium'
-              }}</span>
-            </li>
-          }
-        </ul>
-      </section>
-    }
     @if (current.error) {
       <p class="error" role="alert">{{ current.error }}</p>
     }
@@ -444,6 +449,20 @@
             }
           </article>
         }
+        <label class="flex items-center gap-2">
+          <input
+            #undoEmptyFolders
+            type="checkbox"
+            [checked]="rollbackDeleteEmptyFolders()"
+            (change)="rollbackDeleteEmptyFolders.set(undoEmptyFolders.checked)"
+            [disabled]="busy()"
+          />
+          Delete folders left empty
+        </label>
+        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Once every file is back, folders the undo leaves empty are removed, such as folders the
+          rename created. The rename had this {{ current.deleteEmptyFolders ? 'on' : 'off' }}.
+        </p>
         <p>
           Only the safe files shown here will be undone. Blocked files stay untouched. If a file is
           blocked because it depends on others, select those files too and check again. Everything

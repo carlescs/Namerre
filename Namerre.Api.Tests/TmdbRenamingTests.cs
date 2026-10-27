@@ -128,6 +128,28 @@ public sealed class TmdbRenamingTests : IDisposable
             && j.FromPath == "A Movie (2001)" && j.Status == "Completed"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RollbackCanOverrideTheInheritedFolderCleanup(bool deleteEmptyFolders)
+    {
+        WriteRelease();
+        var filesystem = new BoundedFileSystem(Root, workspace);
+        using var store = new RenameStore(filesystem, Data, workspace);
+        using var client = MovieClient();
+        var metadata = new TmdbMetadata(client, Config("secret"), store);
+        var service = new RenameService(store, filesystem, new PipelineEngine(metadata, filesystem), NullLogger<RenameService>.Instance);
+        var id = await MoveMovie(service, metadata, !deleteEmptyFolders);
+
+        var second = await service.Rollback(id, new(["file"], Guid.NewGuid().ToString(), deleteEmptyFolders), default);
+        await service.ProcessNext(default);
+        var rollback = await service.GetRun(second.Id, default);
+        Assert.Equal("Completed", rollback.Status);
+        Assert.Equal(deleteEmptyFolders, rollback.DeleteEmptyFolders);
+        Assert.Equal("content", File.ReadAllText(Path.Combine(Root, "Downloads", "Release", "input.mkv")));
+        Assert.Equal(!deleteEmptyFolders, Directory.Exists(Path.Combine(Root, "A Movie (2001)")));
+    }
+
     [Fact]
     public async Task EmptiedSourceFoldersAreDeletedDeepestFirstButNeverTheRootOrOccupiedFolders()
     {
