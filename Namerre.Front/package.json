@@ -36,5 +36,14 @@
     "tailwindcss": "^4.1.0",
     "typescript": "~6.0.2",
     "vitest": "^5.0.0"
+  },
+  "overrides": {
+    "vite": "^8.3.4"
+  },
+  "allowScripts": {
+    "@parcel/watcher": true,
+    "esbuild": true,
+    "lmdb": true,
+    "msgpackr-extract": true
   }
 }
