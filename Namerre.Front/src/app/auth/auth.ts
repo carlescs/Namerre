@@ -53,9 +53,15 @@ export class Auth {
     await firstValueFrom(this.http.post('/api/auth/password', { currentPassword, newPassword }));
   }
 
+  /** Ends the session; single sign-on sessions then leave for the identity provider's sign-out. */
   async logout(): Promise<void> {
-    await firstValueFrom(this.http.post('/api/auth/logout', {}));
+    const result = await firstValueFrom(
+      this.http.post<{ endSessionUrl?: string } | null>('/api/auth/logout', {}),
+    );
     this.username.set(null);
+    if (result?.endSessionUrl) {
+      this.document.location.assign(result.endSessionUrl);
+    }
   }
 }
 

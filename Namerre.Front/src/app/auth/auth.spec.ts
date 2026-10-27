@@ -1,5 +1,6 @@
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { DOCUMENT } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Auth, authenticationInterceptor } from './auth';
 
@@ -83,6 +84,40 @@ describe('Auth', () => {
     const failure = expect(logout).rejects.toMatchObject({ status: 401 });
     http.expectOne('/api/auth/logout').flush({}, { status: 401, statusText: 'Unauthorized' });
     await failure;
+    expect(auth.username()).toBeNull();
+  });
+
+  it('signs out of the identity provider after a single sign-on session ends', async () => {
+    const assign = vi.fn();
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(withInterceptors([authenticationInterceptor])),
+        provideHttpClientTesting(),
+        { provide: DOCUMENT, useValue: { cookie: '', location: { assign } } },
+      ],
+    });
+    auth = TestBed.inject(Auth);
+    http = TestBed.inject(HttpTestingController);
+    auth.username.set('alice');
+
+    const logout = auth.logout();
+    http
+      .expectOne('/api/auth/logout')
+      .flush({ endSessionUrl: 'https://keycloak.test/logout?client_id=namerre' });
+    await logout;
+
+    expect(auth.username()).toBeNull();
+    expect(assign).toHaveBeenCalledExactlyOnceWith(
+      'https://keycloak.test/logout?client_id=namerre',
+    );
+  });
+
+  it('stays in the app after a local sign-out', async () => {
+    auth.username.set('admin');
+    const logout = auth.logout();
+    http.expectOne('/api/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
+    await logout;
     expect(auth.username()).toBeNull();
   });
 

@@ -143,10 +143,43 @@ public sealed class AuthController(AdminAccount account, OidcLogin oidc,
     }
 
     [HttpPost("logout")]
-    public async Task<IActionResult> Logout()
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
     {
+        var endSessionUrl = IsSingleSignOnSession && oidc.Enabled
+            ? await EndSessionUrlAsync(await HttpContext.GetTokenAsync(Authentication.OidcLogin.IdTokenName),
+                cancellationToken)
+            : null;
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        return NoContent();
+        // The browser must navigate to the provider itself, so the address is returned instead of a redirect.
+        return endSessionUrl is null ? NoContent() : Ok(new { endSessionUrl });
+    }
+
+    /// <summary>Builds the identity provider's RP-initiated logout address, or null when it has none.</summary>
+    private async Task<string?> EndSessionUrlAsync(string? idToken, CancellationToken cancellationToken)
+    {
+        var options = oidcOptions.Get(Authentication.OidcLogin.Scheme);
+        try
+        {
+            var configuration = await options.ConfigurationManager!.GetConfigurationAsync(cancellationToken);
+            if (string.IsNullOrEmpty(configuration.EndSessionEndpoint))
+                return null;
+            return new OpenIdConnectMessage
+            {
+                IssuerAddress = configuration.EndSessionEndpoint,
+                IdTokenHint = idToken,
+                // Lets the provider identify the client for sessions started before ID tokens were kept.
+                ClientId = options.ClientId,
+                // A fixed return address avoids open redirects.
+                PostLogoutRedirectUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/"
+            }.CreateLogoutRequestUrl();
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or
+            HttpRequestException or OpenIdConnectProtocolException)
+        {
+            // Still end the Namerre session; the provider session simply outlives it.
+            logger.LogWarning(exception, "The identity provider is unavailable; signing out of Namerre only.");
+            return null;
+        }
     }
 
     private bool IsSingleSignOnSession

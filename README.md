@@ -256,7 +256,8 @@ Keycloak setup:
 1. In your realm, create an **OpenID Connect** client (for example `namerre`) with
    **Client authentication** on and only the **Standard flow** enabled. Set
    **Valid redirect URIs** to `https://<namerre-host>/api/auth/oidc/callback` and
-   **Web origins** to `https://<namerre-host>`. Copy the client secret from **Credentials**.
+   **Web origins** to `https://<namerre-host>`, and **Valid post logout redirect URIs** to
+   `https://<namerre-host>/`. Copy the client secret from **Credentials**.
 2. Create a realm role (for example `namerre-admin`) and assign it to the allowed users
    or a group.
 3. Keycloak does not put roles in the ID token by default. Under **Client scopes** →
@@ -273,13 +274,16 @@ $env:Namerre__Authentication__Oidc__DisplayName = 'Keycloak'
 ```
 
 Namerre uses the authorization code flow with PKCE, validates the ID token and
-discards the provider's tokens after sign-in: it keeps only the subject and username
-in the same eight-hour, SameSite=Strict session cookie as local sign-in. Users without
+discards the access and refresh tokens after sign-in: it keeps the subject, username
+and ID token (used only as the sign-out hint) in the same encrypted eight-hour,
+SameSite=Strict session cookie as local sign-in. Users without
 the role are rejected. Changing `Authority`, `ClientId`, `RequiredRole`, `RoleClaim` or
 `UsernameClaim` invalidates existing single sign-on sessions after a restart; removing
-the role in Keycloak takes effect at the next sign-in. **Sign out** ends the Namerre
-session only, not the Keycloak session, so the button may sign straight back in while
-Keycloak still remembers the user. **Change password** applies to the local administrator only and is
+the role in Keycloak takes effect at the next sign-in. **Sign out** of a single sign-on
+session also ends the Keycloak session: Namerre ends its own session, then sends the
+browser to the provider's `end_session_endpoint`, which returns to Namerre afterwards.
+If the provider advertises no such endpoint or is unreachable, only the Namerre session
+ends, and the button may sign straight back in while Keycloak still remembers the user. **Change password** applies to the local administrator only and is
 not offered in single sign-on sessions. Behind a reverse proxy, configure trusted proxies
 (see above) so the callback URL uses the public `https` host. Incomplete settings fail
 startup; an unreachable provider shows an error on the login page.

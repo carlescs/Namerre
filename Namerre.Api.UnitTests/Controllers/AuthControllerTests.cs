@@ -152,7 +152,7 @@ public sealed class AuthControllerTests
     {
         var controller = Controller(Configured());
 
-        Assert.IsType<NoContentResult>(await controller.Logout());
+        Assert.IsType<NoContentResult>(await controller.Logout(CancellationToken.None));
 
         await authentication.Received(1).SignOutAsync(controller.HttpContext,
             CookieAuthenticationDefaults.AuthenticationScheme, Arg.Any<AuthenticationProperties?>());
