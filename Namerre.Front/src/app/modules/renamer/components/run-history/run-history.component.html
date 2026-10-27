@@ -444,6 +444,20 @@
             }
           </article>
         }
+        <label class="flex items-center gap-2">
+          <input
+            #undoEmptyFolders
+            type="checkbox"
+            [checked]="rollbackDeleteEmptyFolders()"
+            (change)="rollbackDeleteEmptyFolders.set(undoEmptyFolders.checked)"
+            [disabled]="busy()"
+          />
+          Delete folders left empty
+        </label>
+        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Once every file is back, folders the undo leaves empty are removed, such as folders the
+          rename created. The rename had this {{ current.deleteEmptyFolders ? 'on' : 'off' }}.
+        </p>
         <p>
           Only the safe files shown here will be undone. Blocked files stay untouched. If a file is
           blocked because it depends on others, select those files too and check again. Everything

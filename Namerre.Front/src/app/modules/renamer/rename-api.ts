@@ -110,7 +110,7 @@ export interface RunView {
   }[];
   createdAt: string;
   error: string | null;
-  /** Snapshot of the plan option; rollbacks of this run inherit it. */
+  /** Snapshot of the plan option (or the undo's own choice); rollbacks start from it. */
   deleteEmptyFolders?: boolean;
   /** Rollback runs created from this run; only present on single-run reads. */
   rollbackRuns?: RunReference[];
@@ -137,6 +137,8 @@ export interface DeletableRuns {
 export interface SelectionRequest {
   fileIds: string[];
   operationId: string;
+  /** Rollback only: remove folders the undo leaves empty; omitted inherits the run's choice. */
+  deleteEmptyFolders?: boolean;
 }
 export interface RollbackCheckProgress {
   completedFiles: number;

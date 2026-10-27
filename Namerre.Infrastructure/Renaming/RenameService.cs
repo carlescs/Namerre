@@ -167,8 +167,10 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
                 throw new RenameException("RollbackBlocked", "No selected files can safely be rolled back. Inspect the rollback preview.", 409);
             var files = parent.Files.Where(f => safe.Contains(f.Id)).Select(f =>
                 new RunFile(f.Id, f.TargetPath, f.SourcePath, Staging(f.TargetPath), f.Hash, "Pending")).ToArray();
-            // A rollback inherits the cleanup choice, so folders the rename created and filled are removed again.
-            var run = CreateRun(parent.PlanId, parent.Id, "Rollback", files, parent.DeleteEmptyFolders);
+            // Unless the request decides, a rollback inherits the cleanup choice, so folders the rename created and
+            // filled are removed again.
+            var run = CreateRun(parent.PlanId, parent.Id, "Rollback", files,
+                request.DeleteEmptyFolders ?? parent.DeleteEmptyFolders);
             store.Enqueue(run.Id, "Run", run.Status, run, "Execute", key);
             Notify("Run", run.Id, run.Status);
             return Accepted(run.Id, run.Status);
