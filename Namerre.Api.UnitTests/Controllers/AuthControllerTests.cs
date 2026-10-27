@@ -96,8 +96,20 @@ public sealed class AuthControllerTests
         var account = Unconfigured();
 
         Assert.IsType<NoContentResult>(Controller(account).Setup(
-            new SetupRequest(account.SetupToken!, "admin", "password")));
+            new SetupRequest(account.SetupToken!, "admin", "a long enough password")));
         Assert.False(account.RequiresSetup);
+    }
+
+    [Fact]
+    public void SetupWithAShortPasswordIsABadRequest()
+    {
+        var account = Unconfigured();
+
+        var result = Assert.IsType<BadRequestObjectResult>(Controller(account).Setup(
+            new SetupRequest(account.SetupToken!, "admin", "password")));
+
+        Assert.Equivalent(new { message = "Use a password of at least 12 characters." }, result.Value);
+        Assert.True(account.RequiresSetup);
     }
 
     public static TheoryData<Exception> StorageFailures => new()
@@ -115,7 +127,7 @@ public sealed class AuthControllerTests
         store.TryCreate(Arg.Any<AdminCredentials>()).Throws(failure);
         var account = Unconfigured();
 
-        var result = Controller(account).Setup(new SetupRequest(account.SetupToken!, "admin", "password"));
+        var result = Controller(account).Setup(new SetupRequest(account.SetupToken!, "admin", "a long enough password"));
 
         Assert.Equal(StatusCodes.Status503ServiceUnavailable, Assert.IsType<ObjectResult>(result).StatusCode);
         Assert.True(account.RequiresSetup);
@@ -185,6 +197,19 @@ public sealed class AuthControllerTests
         var result = await Controller(account).ChangePassword(new ChangePasswordRequest("wrong", "new password"));
 
         Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.True(account.Verify("admin", "password"));
+        await authentication.DidNotReceiveWithAnyArgs().SignInAsync(default!, default, default!, default);
+    }
+
+    [Fact]
+    public async Task ChangingToAShortPasswordIsABadRequest()
+    {
+        var account = Stored();
+
+        var result = await Controller(account).ChangePassword(new ChangePasswordRequest("password", "too short"));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equivalent(new { message = "Use a password of at least 12 characters." }, badRequest.Value);
         Assert.True(account.Verify("admin", "password"));
         await authentication.DidNotReceiveWithAnyArgs().SignInAsync(default!, default, default!, default);
     }

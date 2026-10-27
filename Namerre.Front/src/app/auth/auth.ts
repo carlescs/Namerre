@@ -2,6 +2,18 @@ import { HttpClient, HttpErrorResponse, HttpInterceptorFn } from '@angular/commo
 import { DOCUMENT, inject, Injectable, signal } from '@angular/core';
 import { catchError, firstValueFrom, throwError } from 'rxjs';
 
+/** Matches the server's rule for new administrator passwords; existing shorter passwords still sign in. */
+export const minimumPasswordLength = 12;
+
+/** The `message` the server explains a rejected request with, e.g. a too-short password. */
+export function serverMessage(error: unknown, status: number): string | null {
+  return error instanceof HttpErrorResponse &&
+    error.status === status &&
+    typeof error.error?.message === 'string'
+    ? error.error.message
+    : null;
+}
+
 export interface SingleSignOnProvider {
   displayName: string;
 }

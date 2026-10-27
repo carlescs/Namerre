@@ -21,21 +21,21 @@ describe('Setup', () => {
     input.dispatchEvent(new Event('input'));
   }
 
-  it('accepts a short password, requires confirmation, and submits administrator credentials', async () => {
+  it('requires confirmation and submits administrator credentials', async () => {
     const fixture = TestBed.createComponent(Setup);
     await fixture.whenStable();
     const element = fixture.nativeElement as HTMLElement;
     fill(element, '#setup-token', 'a'.repeat(64));
     fill(element, '#setup-username', 'admin');
-    fill(element, '#setup-password', 'x');
+    fill(element, '#setup-password', 'a-long-password');
     fill(element, '#setup-confirmation', 'different-password');
     await fixture.whenStable();
     expect(element.querySelector('[role="alert"]')?.textContent).toContain('Passwords must match');
     expect((element.querySelector('button') as HTMLButtonElement).disabled).toBe(true);
-    fill(element, '#setup-confirmation', 'x');
+    fill(element, '#setup-confirmation', 'a-long-password');
     element.querySelector('form')!.dispatchEvent(new Event('submit'));
     await fixture.whenStable();
-    expect(setup).toHaveBeenCalledWith('a'.repeat(64), 'admin', 'x');
+    expect(setup).toHaveBeenCalledWith('a'.repeat(64), 'admin', 'a-long-password');
     expect((element.querySelector('#setup-password') as HTMLInputElement).value).toBe('');
     expect((element.querySelector('#setup-confirmation') as HTMLInputElement).value).toBe('');
   });
@@ -51,6 +51,45 @@ describe('Setup', () => {
     element.querySelector('form')!.dispatchEvent(new Event('submit'));
     await fixture.whenStable();
     expect(setup).not.toHaveBeenCalled();
+  });
+
+  it('requires at least twelve characters and says so', async () => {
+    const fixture = TestBed.createComponent(Setup);
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    fill(element, '#setup-token', 'a'.repeat(64));
+    fill(element, '#setup-username', 'admin');
+    fill(element, '#setup-password', 'eleven char');
+    fill(element, '#setup-confirmation', 'eleven char');
+    await fixture.whenStable();
+    expect(element.querySelector('#setup-password-hint')?.textContent).toContain(
+      'At least 12 characters',
+    );
+    expect((element.querySelector('button') as HTMLButtonElement).disabled).toBe(true);
+    element.querySelector('form')!.dispatchEvent(new Event('submit'));
+    await fixture.whenStable();
+    expect(setup).not.toHaveBeenCalled();
+  });
+
+  it('shows the server explanation when it rejects the password', async () => {
+    setup.mockRejectedValue(
+      new HttpErrorResponse({
+        status: 400,
+        error: { message: 'Use a password of at least 12 characters.' },
+      }),
+    );
+    const fixture = TestBed.createComponent(Setup);
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    fill(element, '#setup-token', 'a'.repeat(64));
+    fill(element, '#setup-username', 'admin');
+    fill(element, '#setup-password', 'a-unique-long-password');
+    fill(element, '#setup-confirmation', 'a-unique-long-password');
+    element.querySelector('form')!.dispatchEvent(new Event('submit'));
+    await fixture.whenStable();
+    expect(element.querySelector('[role="alert"]')?.textContent).toContain(
+      'at least 12 characters',
+    );
   });
 
   it('shows database errors without claiming installation succeeded', async () => {

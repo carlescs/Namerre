@@ -77,19 +77,49 @@ public sealed class InstallationTests : IDisposable
 
     [Theory]
     [InlineData("x")]
-    [InlineData("short")]
-    public async Task ShortPasswordsCanBeInstalledAndUsedForLogin(string password)
+    [InlineData("eleven char")]
+    public async Task ShortPasswordsAreRejectedAndTheTokenStaysValid(string password)
     {
         using var factory = Factory();
         using var client = AuthWebApplicationFactory.AnonymousClient(factory);
         await AuthWebApplicationFactory.RefreshCsrf(client);
-        using var setup = await client.PostAsJsonAsync("/api/auth/setup",
-            new { token = Token(factory), Username, password });
-        Assert.Equal(HttpStatusCode.NoContent, setup.StatusCode);
-        using var login = await client.PostAsJsonAsync("/api/auth/login", new { Username, password });
-        Assert.Equal(HttpStatusCode.NoContent, login.StatusCode);
-        using var folders = await client.GetAsync("/api/folders");
-        Assert.Equal(HttpStatusCode.OK, folders.StatusCode);
+        var token = Token(factory);
+        using var setup = await client.PostAsJsonAsync("/api/auth/setup", new { token, Username, password });
+        Assert.Equal(HttpStatusCode.BadRequest, setup.StatusCode);
+        Assert.Contains("at least 12 characters", await setup.Content.ReadAsStringAsync());
+        using (var database = OpenDatabase())
+            Assert.Empty(database.Administrators);
+
+        using var retry = await client.PostAsJsonAsync("/api/auth/setup", new { token, Username, Password });
+        Assert.Equal(HttpStatusCode.NoContent, retry.StatusCode);
+    }
+
+    [Fact]
+    public async Task SessionsSurviveARestartBecauseDataProtectionKeysArePersisted()
+    {
+        string cookie;
+        using (var factory = Factory())
+        using (var client = AuthWebApplicationFactory.AnonymousClient(factory))
+        {
+            await AuthWebApplicationFactory.RefreshCsrf(client);
+            using var setup = await client.PostAsJsonAsync("/api/auth/setup",
+                new { token = Token(factory), Username, Password });
+            Assert.Equal(HttpStatusCode.NoContent, setup.StatusCode);
+            using var login = await client.PostAsJsonAsync("/api/auth/login", new { Username, Password });
+            Assert.Equal(HttpStatusCode.NoContent, login.StatusCode);
+            cookie = login.Headers.GetValues("Set-Cookie")
+                .Single(value => value.StartsWith("__Host-namerre-session=", StringComparison.Ordinal))
+                .Split(';')[0];
+        }
+        Assert.NotEmpty(Directory.GetFiles(Path.Combine(Data, "keys"), "key-*.xml"));
+
+        using (var factory = Factory())
+        using (var client = AuthWebApplicationFactory.AnonymousClient(factory))
+        {
+            client.DefaultRequestHeaders.Add("Cookie", cookie);
+            using var folders = await client.GetAsync("/api/folders");
+            Assert.Equal(HttpStatusCode.OK, folders.StatusCode);
+        }
     }
 
     [Fact]
