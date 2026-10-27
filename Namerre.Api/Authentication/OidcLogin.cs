@@ -14,6 +14,7 @@ public sealed class OidcLogin
     public const string Scheme = "oidc";
     public const string MethodClaim = "auth-method";
     public const string CallbackPath = "/api/auth/oidc/callback";
+    public const string IdTokenName = "id_token";
 
     public OidcLogin(IOptions<NamerreOptions> options)
     {

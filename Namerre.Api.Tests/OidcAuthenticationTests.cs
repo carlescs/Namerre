@@ -147,6 +147,45 @@ public sealed class OidcAuthenticationTests
         Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
     }
 
+    [Fact]
+    public async Task SigningOutAlsoEndsTheProviderSession()
+    {
+        using var provider = new FakeProvider([Role]) { HasEndSessionEndpoint = true };
+        using var factory = provider.Factory();
+        using var client = Client(factory);
+        using var callback = await provider.SignIn(client);
+        await AuthWebApplicationFactory.RefreshCsrf(client);
+
+        using var logout = await client.PostAsJsonAsync("/api/auth/logout", new { });
+
+        Assert.Equal(HttpStatusCode.OK, logout.StatusCode);
+        var endSession = new Uri((await logout.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("endSessionUrl").GetString()!);
+        Assert.StartsWith(Issuer + "/protocol/openid-connect/logout?", endSession.AbsoluteUri);
+        var query = HttpUtility.ParseQueryString(endSession.Query);
+        Assert.Equal(provider.IdToken, query["id_token_hint"]);
+        Assert.Equal(ClientId, query["client_id"]);
+        Assert.Equal("https://localhost/", query["post_logout_redirect_uri"]);
+        using var denied = await client.GetAsync("/api/rename-plugins");
+        Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
+    }
+
+    [Fact]
+    public async Task SigningOutEndsOnlyTheNamerreSessionWithoutAProviderLogoutEndpoint()
+    {
+        using var provider = new FakeProvider([Role]);
+        using var factory = provider.Factory();
+        using var client = Client(factory);
+        using var callback = await provider.SignIn(client);
+        await AuthWebApplicationFactory.RefreshCsrf(client);
+
+        using var logout = await client.PostAsJsonAsync("/api/auth/logout", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
+        using var denied = await client.GetAsync("/api/rename-plugins");
+        Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
+    }
+
     private static HttpClient Client(WebApplicationFactory<Program> factory)
         => factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -161,7 +200,9 @@ public sealed class OidcAuthenticationTests
         private string? nonce;
 
         public string? TokenRequest { get; private set; }
+        public string? IdToken { get; private set; }
         public bool PushedAuthorizationFails { get; init; }
+        public bool HasEndSessionEndpoint { get; init; }
 
         public WebApplicationFactory<Program> Factory() => new AuthWebApplicationFactory().WithWebHostBuilder(builder =>
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
@@ -184,6 +225,8 @@ public sealed class OidcAuthenticationTests
                         };
                         if (PushedAuthorizationFails)
                             configuration.PushedAuthorizationRequestEndpoint = Issuer + "/protocol/openid-connect/ext/par/request";
+                        if (HasEndSessionEndpoint)
+                            configuration.EndSessionEndpoint = Issuer + "/protocol/openid-connect/logout";
                         configuration.SigningKeys.Add(key);
                         options.Configuration = configuration;
                         options.ConfigurationManager =
@@ -212,7 +255,7 @@ public sealed class OidcAuthenticationTests
             TokenRequest = await request.Content!.ReadAsStringAsync(cancellationToken);
             if (PushedAuthorizationFails)
                 throw new HttpRequestException("Connection refused.");
-            var idToken = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
+            IdToken = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
             {
                 Issuer = Issuer,
                 Audience = ClientId,
@@ -231,7 +274,7 @@ public sealed class OidcAuthenticationTests
                 {
                     access_token = "access-token",
                     token_type = "Bearer",
-                    id_token = idToken,
+                    id_token = IdToken,
                     expires_in = 300
                 })
             };

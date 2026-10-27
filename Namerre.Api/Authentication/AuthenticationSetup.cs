@@ -102,11 +102,19 @@ public static class AuthenticationSetup
         // The Namerre session keeps its own fixed eight-hour lifetime.
         options.UseTokenLifetime = false;
         options.CallbackPath = OidcLogin.CallbackPath;
-        // Signing out only ends the Namerre session; identity provider sign-out endpoints are not exposed.
+        // Sign-out is started by AuthController.Logout; the handler's own sign-out endpoints are not exposed.
         options.SignedOutCallbackPath = PathString.Empty;
         options.RemoteSignOutPath = PathString.Empty;
         foreach (var scope in settings.Scopes.Where(scope => !string.IsNullOrWhiteSpace(scope)))
             options.Scope.Add(scope);
+        options.Events.OnTokenValidated = context =>
+        {
+            // Keep only the ID token, as the hint that lets the provider end its session without asking.
+            var idToken = context.TokenEndpointResponse?.IdToken ?? context.ProtocolMessage.IdToken;
+            if (!string.IsNullOrEmpty(idToken))
+                context.Properties!.StoreTokens([new AuthenticationToken { Name = OidcLogin.IdTokenName, Value = idToken }]);
+            return Task.CompletedTask;
+        };
         options.Events.OnTicketReceived = context =>
         {
             var services = context.HttpContext.RequestServices;
