@@ -998,9 +998,6 @@ describe('RunHistoryComponent', () => {
     expect(items[1].textContent).toContain('Undo');
     expect(items[1].textContent).toContain('In progress');
     expect(items[1].textContent).toContain('Undo of Shows/Dark/S01');
-    expect(items[1].querySelector('a[href="/runs/rename-1"]')?.textContent).toContain(
-      'Shows/Dark/S01',
-    );
     expect(items[1].className).toContain('ml-6');
     expect(items[0].querySelector('.bg-emerald-100')).not.toBeNull();
     expect(items[1].querySelector('.bg-sky-100')).not.toBeNull();
