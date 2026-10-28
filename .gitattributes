@@ -62,5 +62,5 @@
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
 
-# Git hooks run under sh and break with CRLF line endings.
-.husky/* text eol=lf
+# Shell scripts run under sh and break with CRLF line endings.
+*.sh text eol=lf

@@ -135,4 +135,7 @@ cleared on rebuild) — put static assets in `Namerre.Front/public`.
   (stable) and `next` (`-pre.N`), creates the tag and GitHub release, and dispatches it.
 - Commits follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, …; `!` or a
   `BREAKING CHANGE:` footer for majors) — they drive the version bump. `commits.yml` lints PR
-  commits with commitlint; root `npm ci` installs the husky `commit-msg` hook.
+  commits with commitlint; root `npm ci` installs the lefthook `commit-msg` hook (`lefthook.yml`).
+- `secrets.yml` scans the full Git history with a pinned Betterleaks release on PRs and pushes;
+  the lefthook `pre-commit` hook scans staged changes when `betterleaks` is on PATH. Never commit
+  real credentials; mark test fixtures with `betterleaks:allow` or add them to `.betterleaksignore`.
