@@ -1,0 +1,22 @@
+# Reviewed Betterleaks false positives (commit:path:rule:line): test-fixture passwords and
+# the README's 'Password=YOUR_TOKEN' placeholder. Add new entries only after reviewing a finding.
+07f3841efecee4f25fb549bef7bc2b6b21248b26:README.md:generic-password:69
+18b0ba07a9f50a392176f117d6680eb3de93b68b:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:120
+18b0ba07a9f50a392176f117d6680eb3de93b68b:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:141
+3a637df463be62655127138235a540971a8e87b1:Namerre.Api.Tests/AuthWebApplicationFactory.cs:generic-password:13
+3a637df463be62655127138235a540971a8e87b1:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:95
+3a637df463be62655127138235a540971a8e87b1:Namerre.Api.Tests/InstallationTests.cs:generic-password:21
+3a637df463be62655127138235a540971a8e87b1:Namerre.Front/src/app/auth/auth.spec.ts:generic-password:34
+3a637df463be62655127138235a540971a8e87b1:Namerre.Front/src/app/auth/auth.spec.ts:generic-password:39
+3a637df463be62655127138235a540971a8e87b1:Namerre.Front/src/app/auth/auth.spec.ts:generic-password:58
+cfd7c348abe66b6be2c1473ceb8278a5b831e63f:Namerre.Api.Tests/RenameNotificationTests.cs:generic-password:97
+cfd7c348abe66b6be2c1473ceb8278a5b831e63f:Namerre.Api.UnitTests/Authentication/AdminAccountTests.cs:generic-password:85
+cfd7c348abe66b6be2c1473ceb8278a5b831e63f:Namerre.Api.UnitTests/Authentication/AdminAccountTests.cs:generic-password:91
+f7bb99c57e5133477a61c21d0123b75bb1fe0f74:Namerre.Api.Tests/InstallationTests.cs:generic-password:217
+f7bb99c57e5133477a61c21d0123b75bb1fe0f74:Namerre.Api.Tests/InstallationTests.cs:generic-password:237
+f7bb99c57e5133477a61c21d0123b75bb1fe0f74:Namerre.Api.Tests/InstallationTests.cs:generic-password:266
+f7bb99c57e5133477a61c21d0123b75bb1fe0f74:Namerre.Api.Tests/InstallationTests.cs:generic-password:278
+f7bb99c57e5133477a61c21d0123b75bb1fe0f74:Namerre.Api.Tests/InstallationTests.cs:generic-password:284
+f7bb99c57e5133477a61c21d0123b75bb1fe0f74:Namerre.Front/src/app/auth/auth.spec.ts:generic-password:97
+f7bb99c57e5133477a61c21d0123b75bb1fe0f74:Namerre.Front/src/app/auth/auth.spec.ts:generic-password:98
+https://github.com/carlescs/Namerre::generic-password:
