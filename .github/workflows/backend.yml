@@ -81,6 +81,10 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci --prefix Namerre.Front
 
+      - name: Lint and check formatting
+        working-directory: Namerre.Front
+        run: npm run lint
+
       - name: Test with coverage
         working-directory: Namerre.Front
         run: npm test -- --watch=false --coverage --coverage-reporters=text-summary --coverage-reporters=html --coverage-reporters=cobertura

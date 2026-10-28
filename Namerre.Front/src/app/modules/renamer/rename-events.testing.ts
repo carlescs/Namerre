@@ -1,5 +1,5 @@
-import { filter, isObservable, map, Observable, startWith, Subject } from 'rxjs';
-import { RenameChange, RenameEvents } from './rename-events';
+import { filter, isObservable, map, type Observable, Subject, startWith } from 'rxjs';
+import type { RenameChange, RenameEvents } from './rename-events';
 
 /**
  * Test double for {@link RenameEvents}: watchers fire once on subscribe and then only on `push`.

@@ -1,4 +1,4 @@
-import { Routes } from '@angular/router';
+import type { Routes } from '@angular/router';
 import { RenamerComponent } from './components/renamer/renamer.component';
 
 export const routes: Routes = [

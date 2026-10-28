@@ -56,7 +56,8 @@ Run frontend commands from `Namerre.Front`:
 | Unit tests, single run | `npm test -- --watch=false` |
 | One test file | `npm test -- --watch=false --include=src/app/app.spec.ts` |
 | One test case | `npm test -- --watch=false --include=src/app/app.spec.ts --filter="should render title"` |
-| Check source formatting with installed Prettier | `npx prettier --check "src/**/*.{ts,html,scss}"` |
+| Lint and check formatting (Biome + Prettier for templates) | `npm run lint` |
+| Apply safe lint fixes and formatting | `npm run format` |
 | Generate a component | `npm run ng -- generate component component-name` |
 
 Tests use Angular's `@angular/build:unit-test` builder with Vitest and jsdom.
@@ -122,9 +123,11 @@ in `tsconfig.spec.json`.
   `protected readonly`). Component tests import the standalone component into
   `TestBed`, create fixtures, and await `fixture.whenStable()` before checking
   rendered content.
-- Frontend formatting is defined by `.editorconfig` and `.prettierrc`:
-  two-space indentation, single-quoted TypeScript strings, a 100-column
-  Prettier width, and Angular parsing for HTML.
+- Frontend linting and formatting of TypeScript, CSS and SCSS use Biome
+  (`biome.json`, recommended rules); Angular HTML templates are still
+  formatted by Prettier (`.prettierrc`, Angular parser) because Biome cannot
+  parse Angular control-flow syntax yet. Both use two-space indentation,
+  single quotes, a 100-column width and OS-native line endings.
 - TypeScript enables `noImplicitOverride`, `noPropertyAccessFromIndexSignature`,
   `noImplicitReturns`, and `noFallthroughCasesInSwitch`; Angular enables strict
   injection parameters and input access modifiers. Preserve these compiler checks.

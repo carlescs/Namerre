@@ -4,7 +4,7 @@ import {
   saveFilesDraft,
   savePipelineDraft,
 } from './draft-storage';
-import { RenamerFile } from './renamer-file';
+import type { RenamerFile } from './renamer-file';
 
 describe('draft storage', () => {
   const file: RenamerFile = {

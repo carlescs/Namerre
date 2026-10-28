@@ -1,4 +1,4 @@
-import { TmdbMatch } from './rename-api';
+import type { TmdbMatch } from './rename-api';
 
 export interface TmdbFilename {
   query: string;

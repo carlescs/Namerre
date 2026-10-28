@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { HubConnection } from '@microsoft/signalr';
-import { BehaviorSubject, Observable, Subject } from 'rxjs';
-import { RENAME_HUB, RenameChange, RenameEvents, refreshOn } from './rename-events';
+import type { HubConnection } from '@microsoft/signalr';
+import { BehaviorSubject, type Observable, Subject } from 'rxjs';
+import { RENAME_HUB, type RenameChange, RenameEvents, refreshOn } from './rename-events';
 
 class FakeHub {
   readonly handlers = new Map<string, (change: RenameChange) => void>();

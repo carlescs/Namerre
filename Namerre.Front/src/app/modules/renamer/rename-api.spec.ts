@@ -5,11 +5,11 @@ import {
   awaitingMetadata,
   isMatchingIssue,
   isSettledRun,
-  PipelineRequest,
-  PreviewFile,
+  type PipelineRequest,
+  type PreviewFile,
   RenameApi,
+  type RunView,
   renameError,
-  RunView,
 } from './rename-api';
 
 describe('RenameApi', () => {

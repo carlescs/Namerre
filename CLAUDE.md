@@ -35,7 +35,8 @@ Frontend, from `Namerre.Front` (Angular unit-test builder with Vitest + jsdom �
 ```powershell
 npm test -- --watch=false
 npm test -- --watch=false --include=src/app/app.spec.ts --filter="should render title"
-npx prettier --check "src/**/*.{ts,html,scss}"
+npm run lint      # Biome (TS/CSS/SCSS lint + format) and Prettier (HTML templates)
+npm run format    # apply Biome safe fixes and formatting, Prettier on templates
 ```
 
 `npm start` (port 4200) has no API proxy; for anything touching `/api`, run the API process,
@@ -123,8 +124,9 @@ cleared on rebuild) — put static assets in `Namerre.Front/public`.
   not the class under test). `Namerre.Infrastructure.UnitTests` covers `TmdbMetadata` (stub
   `HttpMessageHandler`) and `BoundedFileSystem` against temp directories. `Namerre.Api.Tests` holds
   HTTP integration tests (`AuthWebApplicationFactory`).
-- Frontend formatting: Prettier, 2 spaces, single quotes, 100 columns. Keep the strict TypeScript
-  and Angular compiler flags enabled.
+- Frontend linting/formatting: Biome (`biome.json`) for TS/CSS/SCSS, Prettier only for Angular
+  `.html` templates (Biome can't parse Angular control flow yet); 2 spaces, single quotes,
+  100 columns. Keep the strict TypeScript and Angular compiler flags enabled.
 - Workload limits enforced server-side: ≤200 files and ≤32 plugin instances per run, ≤32 queued
   jobs, regex timeout 100 ms, TMDB HTTP timeout 15 s.
 - CI (`.github/workflows/backend.yml`, PRs and `main`) only builds/tests, on Ubuntu and Windows —

@@ -1,21 +1,26 @@
 import {
   afterNextRender,
   Component,
-  ElementRef,
-  inject,
+  type ElementRef,
   Injector,
+  inject,
   input,
-  OnInit,
+  type OnInit,
   output,
   signal,
   viewChild,
   viewChildren,
-  WritableSignal,
+  type WritableSignal,
 } from '@angular/core';
+import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faArrowDown, faArrowUp, faTrashCan } from '@fortawesome/free-solid-svg-icons';
-import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { PluginDescriptor, PluginInstance, PluginOptions, operationId } from '../../rename-api';
+import {
+  operationId,
+  type PluginDescriptor,
+  type PluginInstance,
+  type PluginOptions,
+} from '../../rename-api';
 import { sampleEpisode, sampleMovie, tmdbTemplatePreview } from '../../tmdb-template-preview';
 
 interface Choice {
@@ -54,6 +59,7 @@ const fields: Record<string, OptionField[]> = {
     {
       key: 'replacement',
       label: 'Replace with',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: ${name} is regex replacement syntax
       hint: 'Use $1 or ${name} for captured groups',
     },
     { key: 'ignoreCase', label: 'Ignore case', checkbox: true },

@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Auth, SingleSignOnProvider } from '../auth';
+import { Auth, type SingleSignOnProvider } from '../auth';
 import { SingleSignOn } from './single-sign-on';
 
 describe('SingleSignOn', () => {

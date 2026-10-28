@@ -43,7 +43,7 @@ describe('Theme', () => {
     expect(root.classList.contains('dark')).toBe(true);
     expect(root.style.colorScheme).toBe('dark');
 
-    listeners.forEach((listener) => listener({ matches: false } as MediaQueryListEvent));
+    for (const listener of listeners) listener({ matches: false } as MediaQueryListEvent);
     TestBed.tick();
     expect(root.classList.contains('dark')).toBe(false);
     expect(root.style.colorScheme).toBe('light');

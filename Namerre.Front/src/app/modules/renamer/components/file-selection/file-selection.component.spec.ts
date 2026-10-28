@@ -1,9 +1,9 @@
-import type { Mock } from 'vitest';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { RenamerFile } from '../../renamer-file';
+import type { Mock } from 'vitest';
+import type { RenamerFile } from '../../renamer-file';
 import { FolderPickerComponent } from '../folder-picker/folder-picker.component';
 import { FileSelectionComponent } from './file-selection.component';
 

@@ -1,5 +1,5 @@
-import { inject, Injectable, InjectionToken } from '@angular/core';
-import { HubConnection, HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
+import { Injectable, InjectionToken, inject } from '@angular/core';
+import { type HubConnection, HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import {
   BehaviorSubject,
   combineLatest,
@@ -144,7 +144,10 @@ export function refreshOn<T>(
       });
     };
     const source = triggers.subscribe({
-      next: () => (busy ? (pending = true) : run()),
+      next: () => {
+        if (busy) pending = true;
+        else run();
+      },
       error: (error: unknown) => subscriber.error(error),
     });
     return () => {

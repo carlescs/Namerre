@@ -1,7 +1,7 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { FolderListing } from '../../folder-listing';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import type { FolderListing } from '../../folder-listing';
 import { FolderPickerComponent } from './folder-picker.component';
 
 describe('FolderPickerComponent', () => {
@@ -125,10 +125,10 @@ describe('FolderPickerComponent', () => {
     // Keyboard focus opens it, and Escape on the button closes only the tooltip.
     trigger.dispatchEvent(new FocusEvent('focus'));
     expect(isOpen()).toBe(true);
-    const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
-    trigger.dispatchEvent(escape);
+    const escapeKey = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+    trigger.dispatchEvent(escapeKey);
     expect(isOpen()).toBe(false);
-    expect(escape.defaultPrevented).toBe(true);
+    expect(escapeKey.defaultPrevented).toBe(true);
 
     // With focus elsewhere, the dialog's own cancel (Escape) dismisses the tooltip first.
     host.dispatchEvent(new MouseEvent('mouseenter'));

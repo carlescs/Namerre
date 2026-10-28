@@ -1,9 +1,9 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
-import { FolderListing } from '../../folder-listing';
+import type { FolderListing } from '../../folder-listing';
 import { FolderPickerComponent } from '../folder-picker/folder-picker.component';
 import { RenamerComponent } from './renamer.component';
 

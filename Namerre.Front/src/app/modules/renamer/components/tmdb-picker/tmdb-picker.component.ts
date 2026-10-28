@@ -1,29 +1,29 @@
 import {
-  AfterViewInit,
+  type AfterViewInit,
   Component,
   DestroyRef,
-  ElementRef,
-  OnInit,
+  type ElementRef,
   inject,
   input,
+  type OnInit,
   output,
   signal,
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Subscription } from 'rxjs';
+import type { Subscription } from 'rxjs';
 import { tmdbOptionsHash } from '../../options-hash';
-import { tmdbFilename } from '../../tmdb-filename';
 import {
-  MatchContext,
-  MetadataSelection,
+  type MatchContext,
+  type MetadataSelection,
   RenameApi,
-  TmdbMatch,
-  TmdbPickerState,
-  TmdbRequest,
   renameError,
+  type TmdbMatch,
+  type TmdbPickerState,
+  type TmdbRequest,
 } from '../../rename-api';
+import { tmdbFilename } from '../../tmdb-filename';
 
 @Component({
   imports: [ReactiveFormsModule],
