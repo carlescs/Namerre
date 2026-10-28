@@ -135,4 +135,4 @@ cleared on rebuild) — put static assets in `Namerre.Front/public`.
   (stable) and `next` (`-pre.N`), creates the tag and GitHub release, and dispatches it.
 - Commits follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, …; `!` or a
   `BREAKING CHANGE:` footer for majors) — they drive the version bump. `commits.yml` lints PR
-  commits with commitlint; root `npm ci` installs the husky `commit-msg` hook.
+  commits with commitlint; root `npm ci` installs the lefthook `commit-msg` hook (`lefthook.yml`).

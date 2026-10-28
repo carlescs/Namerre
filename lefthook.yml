@@ -1,0 +1,5 @@
+# Git hooks, installed by `npm ci` in the repository root (see the `prepare` script).
+commit-msg:
+  commands:
+    commitlint:
+      run: npx --no -- commitlint --edit {1}

@@ -702,7 +702,8 @@ The pipeline is split by purpose:
 Commit messages use the form `type(optional scope): summary`, for example
 `feat(tmdb): match episodes by air date` or `fix!: reject renames across devices`.
 Running `npm ci` in the repository root installs the release tooling and a Git
-`commit-msg` hook that checks messages locally; it is separate from the frontend's
+`commit-msg` hook ([lefthook](https://lefthook.dev), configured in `lefthook.yml`)
+that checks messages locally; it is separate from the frontend's
 `npm ci --prefix .\Namerre.Front`.
 
 ## AI-assisted development
