@@ -681,6 +681,12 @@ The pipeline is split by purpose:
 - **Check commit messages** (`.github/workflows/commits.yml`) runs on the same pull
   requests and rejects any commit that does not follow
   [Conventional Commits](https://www.conventionalcommits.org).
+- **Scan for secrets** (`.github/workflows/secrets.yml`) runs on the same pull
+  requests and on pushes to `main` and `next`. It scans the full Git history with a
+  pinned, checksum-verified [Betterleaks](https://github.com/betterleaks/betterleaks)
+  release and fails on any finding (redacted in the log). Mark a false positive with a
+  `betterleaks:allow` comment on the line, or add its fingerprint to
+  `.betterleaksignore`.
 - **Release** (`.github/workflows/release.yml`) runs on every push to `main` and
   `next`. It reruns the tests, then [semantic-release](https://semantic-release.gitbook.io)
   derives the next version from the commits since the last release: `fix:`/`perf:`
@@ -701,9 +707,12 @@ The pipeline is split by purpose:
 
 Commit messages use the form `type(optional scope): summary`, for example
 `feat(tmdb): match episodes by air date` or `fix!: reject renames across devices`.
-Running `npm ci` in the repository root installs the release tooling and a Git
-`commit-msg` hook ([lefthook](https://lefthook.dev), configured in `lefthook.yml`)
-that checks messages locally; it is separate from the frontend's
+Running `npm ci` in the repository root installs the release tooling and Git hooks
+([lefthook](https://lefthook.dev), configured in `lefthook.yml`): `commit-msg` checks
+the message, and `pre-commit` scans staged changes for secrets when `betterleaks` is
+on your `PATH` (install it from the
+[releases page](https://github.com/betterleaks/betterleaks/releases); without it the
+scan is skipped and left to CI). This is separate from the frontend's
 `npm ci --prefix .\Namerre.Front`.
 
 ## AI-assisted development

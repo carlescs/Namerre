@@ -1,4 +1,9 @@
 # Git hooks, installed by `npm ci` in the repository root (see the `prepare` script).
+pre-commit:
+  commands:
+    betterleaks:
+      run: sh scripts/betterleaks-staged.sh
+
 commit-msg:
   commands:
     commitlint:
