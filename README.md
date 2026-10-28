@@ -691,3 +691,15 @@ The pipeline is split by purpose:
   latest stable tag; tick **prerelease** to create the next `vX.Y.Z-pre.N` tag for
   that version instead. It tags the selected commit and dispatches the Docker
   workflow, so a pre-release image can be produced on demand from any branch.
+
+## AI-assisted development
+
+Much of Namerre's code, tests and documentation was written with the help of AI coding
+assistants (mainly [Claude Code](https://claude.com/claude-code)), working under the
+maintainer's direction. Commits where an assistant contributed carry a `Co-Authored-By:`
+trailer naming the model.
+
+AI-generated changes are reviewed, built and tested like any other change, but they can still
+contain mistakes. Namerre renames real files: preview every plan, keep backups of anything you
+cannot afford to lose, and remember that the software is provided as-is under the
+[MIT License](LICENSE.txt), without warranty.
