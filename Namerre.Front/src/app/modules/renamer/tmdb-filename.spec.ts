@@ -1,5 +1,5 @@
+import type { TmdbMatch } from './rename-api';
 import { preferredTmdbMatch, tmdbFilename } from './tmdb-filename';
-import { TmdbMatch } from './rename-api';
 
 describe('TMDB filename inference', () => {
   it('cleans movie release names and extracts the release year', () => {

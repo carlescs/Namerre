@@ -1,5 +1,10 @@
 import { Component, computed, input, output, signal } from '@angular/core';
-import { PreviewFile, PreviewResult, awaitingMetadata, isMatchingIssue } from '../../rename-api';
+import {
+  awaitingMetadata,
+  isMatchingIssue,
+  type PreviewFile,
+  type PreviewResult,
+} from '../../rename-api';
 import { NameChangeComponent } from '../name-change/name-change.component';
 
 type PreviewStatus = 'rename' | 'unchanged' | 'problem';

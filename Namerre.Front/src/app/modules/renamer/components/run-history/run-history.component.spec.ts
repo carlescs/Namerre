@@ -1,15 +1,15 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import {
   ActivatedRoute,
-  ParamMap,
-  Router,
   convertToParamMap,
+  type ParamMap,
   provideRouter,
+  Router,
 } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
-import { RunView } from '../../rename-api';
+import type { RunView } from '../../rename-api';
 import { RenameEvents } from '../../rename-events';
 import { FakeRenameEvents } from '../../rename-events.testing';
 import { RunHistoryComponent } from './run-history.component';

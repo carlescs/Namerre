@@ -1,4 +1,4 @@
-import { RunView } from '../../rename-api';
+import type { RunView } from '../../rename-api';
 
 export type StatusTone = 'green' | 'blue' | 'amber' | 'red' | 'teal' | 'slate';
 

@@ -1,10 +1,10 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, type OnInit, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { Auth } from './auth/auth';
 import { Login } from './auth/login/login';
 import { Setup } from './auth/setup/setup';
-import { Logo } from './brand/logo';
 import { UserMenu } from './auth/user-menu/user-menu';
+import { Logo } from './brand/logo';
 import { ThemePicker } from './theme/theme-picker';
 
 @Component({

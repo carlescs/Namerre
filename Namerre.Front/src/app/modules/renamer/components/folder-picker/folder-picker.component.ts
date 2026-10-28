@@ -1,9 +1,9 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, type HttpErrorResponse } from '@angular/common/http';
 import {
   Component,
   computed,
   DestroyRef,
-  ElementRef,
+  type ElementRef,
   inject,
   output,
   signal,
@@ -12,8 +12,8 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faCircleInfo } from '@fortawesome/free-solid-svg-icons';
-import { finalize, Subscription } from 'rxjs';
-import { FolderListing } from '../../folder-listing';
+import { finalize, type Subscription } from 'rxjs';
+import type { FolderListing } from '../../folder-listing';
 import { isHiddenEntry, isInsideHiddenFolder } from '../../hidden-entries';
 
 @Component({

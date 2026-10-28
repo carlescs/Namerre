@@ -4,30 +4,30 @@ import {
   Component,
   computed,
   DestroyRef,
-  ElementRef,
-  inject,
+  type ElementRef,
   Injector,
+  inject,
   signal,
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { BehaviorSubject, catchError, EMPTY, exhaustMap, Subscription, timer } from 'rxjs';
+import { BehaviorSubject, catchError, EMPTY, exhaustMap, type Subscription, timer } from 'rxjs';
 import {
-  DeletableRuns,
-  MAX_RUNS_PER_DELETION,
-  RecoveryPreview,
-  PlanView,
-  RenameApi,
-  RunPage,
-  RunView,
-  SelectionPreview,
-  SelectionRequest,
+  type DeletableRuns,
   isSettledRun,
+  MAX_RUNS_PER_DELETION,
   operationId,
+  type PlanView,
+  type RecoveryPreview,
+  RenameApi,
+  type RunPage,
+  type RunView,
   renameError,
+  type SelectionPreview,
+  type SelectionRequest,
 } from '../../rename-api';
 import { RenameEvents, refreshOn } from '../../rename-events';
 import {

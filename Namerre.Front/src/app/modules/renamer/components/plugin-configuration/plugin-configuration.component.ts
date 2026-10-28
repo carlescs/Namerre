@@ -1,5 +1,5 @@
 import { Component, input, output } from '@angular/core';
-import { PluginDescriptor, PluginInstance } from '../../rename-api';
+import type { PluginDescriptor, PluginInstance } from '../../rename-api';
 import { PluginEditorComponent } from '../plugin-editor/plugin-editor.component';
 
 @Component({

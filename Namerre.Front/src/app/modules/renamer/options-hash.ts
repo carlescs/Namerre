@@ -53,7 +53,9 @@ export function optionsHash(text: string): string {
       b = a;
       a = (first + second) | 0;
     }
-    [a, b, c, d, e, f, g, h].forEach((value, i) => (state[i] = (state[i] + value) | 0));
+    [a, b, c, d, e, f, g, h].forEach((value, i) => {
+      state[i] = (state[i] + value) | 0;
+    });
   }
   return state.map((value) => (value >>> 0).toString(16).padStart(8, '0')).join('');
 }

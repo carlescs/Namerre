@@ -1,5 +1,5 @@
-import { HttpClient, HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
-import { DOCUMENT, inject, Injectable, signal } from '@angular/core';
+import { HttpClient, HttpErrorResponse, type HttpInterceptorFn } from '@angular/common/http';
+import { DOCUMENT, Injectable, inject, signal } from '@angular/core';
 import { catchError, firstValueFrom, throwError } from 'rxjs';
 
 /** Matches the server's rule for new administrator passwords; existing shorter passwords still sign in. */

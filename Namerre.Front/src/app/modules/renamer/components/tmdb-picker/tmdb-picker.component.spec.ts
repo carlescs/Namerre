@@ -1,8 +1,8 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { tmdbOptionsHash } from '../../options-hash';
-import { MetadataSelection, TmdbPickerState } from '../../rename-api';
+import type { MetadataSelection, TmdbPickerState } from '../../rename-api';
 import { TmdbPickerComponent } from './tmdb-picker.component';
 
 describe('TmdbPickerComponent', () => {

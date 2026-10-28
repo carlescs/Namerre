@@ -1,4 +1,4 @@
-import { PluginOptions, TmdbMatch } from './rename-api';
+import type { PluginOptions, TmdbMatch } from './rename-api';
 
 // Fake metadata used only to illustrate templates; the server renders the confirmed match.
 export const sampleMovie: TmdbMatch = {
@@ -42,11 +42,11 @@ export function tmdbTemplatePreview(
     if (options.changeFolder) {
       const baseFolder = options.baseFolder ?? '';
       folder =
-        (baseFolder ? baseFolder + '/' : '') +
+        (baseFolder ? `${baseFolder}/` : '') +
         render(options.folderTemplate ?? '{title} ({year})', match) +
         '/';
       if (options.seasonFolder && match.season !== null) {
-        folder += render(options.seasonFolderTemplate ?? 'Season {season}', match) + '/';
+        folder += `${render(options.seasonFolderTemplate ?? 'Season {season}', match)}/`;
       }
     }
     return { path: folder + stem + extension };
@@ -93,6 +93,6 @@ function metadataText(value: string): string {
     .replace(/[ .]+$/, '');
   if (!result) throw new Error('TMDB returned text that cannot form a filename.');
   return /^\.namerre-/i.test(result) || /^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\.|$)/i.test(result)
-    ? '_' + result
+    ? `_${result}`
     : result;
 }

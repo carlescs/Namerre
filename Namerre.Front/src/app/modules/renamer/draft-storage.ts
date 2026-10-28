@@ -1,5 +1,5 @@
-import { PluginInstance } from './rename-api';
-import { RenamerFile } from './renamer-file';
+import type { PluginInstance } from './rename-api';
+import type { RenamerFile } from './renamer-file';
 
 // The unfinished workflow survives reloads in this browser only. TMDB confirmations are not kept:
 // their tokens are bound to a preview, so matching is simply redone.

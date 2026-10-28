@@ -1,10 +1,10 @@
 import { Component, computed, ElementRef, inject, input, output } from '@angular/core';
 import {
-  MatchSuggestion,
-  StepTrace,
-  TmdbMatch,
-  TmdbMatchRow,
   isMatchingIssue,
+  type MatchSuggestion,
+  type StepTrace,
+  type TmdbMatch,
+  type TmdbMatchRow,
 } from '../../rename-api';
 import { tmdbFilename } from '../../tmdb-filename';
 
@@ -117,7 +117,7 @@ export class TmdbMatchingComponent {
     else status = 'confirmed';
     const match = suggestion?.inputPath === step?.inputPath ? suggestion?.match : null;
     return {
-      key: row.fileId + ':' + row.plugin.instanceId,
+      key: `${row.fileId}:${row.plugin.instanceId}`,
       row,
       name: row.fileId.slice(index + 1),
       folder: index > 0 ? row.fileId.slice(0, index) : '',

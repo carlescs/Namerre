@@ -1,5 +1,5 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { PluginDescriptor, PluginInstance } from '../../rename-api';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import type { PluginDescriptor, PluginInstance } from '../../rename-api';
 import { PluginEditorComponent } from './plugin-editor.component';
 
 const testCatalog: PluginDescriptor[] = [

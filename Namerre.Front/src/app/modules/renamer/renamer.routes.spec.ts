@@ -1,5 +1,5 @@
-import { Type } from '@angular/core';
-import { Route } from '@angular/router';
+import type { Type } from '@angular/core';
+import type { Route } from '@angular/router';
 import { routes as appRoutes } from '../../app.routes';
 import { RenamerComponent } from './components/renamer/renamer.component';
 import { RunHistoryComponent } from './components/run-history/run-history.component';

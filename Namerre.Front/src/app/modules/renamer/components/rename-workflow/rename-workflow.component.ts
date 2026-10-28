@@ -1,11 +1,11 @@
 import {
   afterNextRender,
   Component,
-  DestroyRef,
-  ElementRef,
-  Injector,
   computed,
+  DestroyRef,
+  type ElementRef,
   effect,
+  Injector,
   inject,
   input,
   output,
@@ -22,34 +22,34 @@ import {
   finalize,
   from,
   of,
-  Subscription,
+  type Subscription,
   switchMap,
   tap,
 } from 'rxjs';
+import { loadPipelineDraft, saveFilesDraft, savePipelineDraft } from '../../draft-storage';
+import { tmdbOptionsHash } from '../../options-hash';
 import {
-  MatchContext,
-  MatchSuggestion,
-  MetadataSelection,
-  PipelineRequest,
-  PlanView,
-  PluginDescriptor,
-  PluginInstance,
-  PreviewResult,
-  RenameApi,
-  StepTrace,
-  TmdbMatch,
-  TmdbMatchRow,
-  TmdbPickerState,
-  operationId,
   awaitingMetadata,
   isMatchingIssue,
+  type MatchContext,
+  type MatchSuggestion,
+  type MetadataSelection,
+  operationId,
+  type PipelineRequest,
+  type PlanView,
+  type PluginDescriptor,
+  type PluginInstance,
+  type PreviewResult,
+  RenameApi,
   renameError,
+  type StepTrace,
+  type TmdbMatch,
+  type TmdbMatchRow,
+  type TmdbPickerState,
 } from '../../rename-api';
-import { tmdbOptionsHash } from '../../options-hash';
 import { RenameEvents, refreshOn } from '../../rename-events';
+import type { RenamerFile } from '../../renamer-file';
 import { preferredTmdbMatch, tmdbFilename } from '../../tmdb-filename';
-import { RenamerFile } from '../../renamer-file';
-import { loadPipelineDraft, saveFilesDraft, savePipelineDraft } from '../../draft-storage';
 import { PluginConfigurationComponent } from '../plugin-configuration/plugin-configuration.component';
 import { RenameConfirmationComponent } from '../rename-confirmation/rename-confirmation.component';
 import { RenamePreviewComponent } from '../rename-preview/rename-preview.component';
@@ -519,8 +519,8 @@ export class RenameWorkflowComponent {
       return;
     }
     const rows = this.matchRows().filter(
-      (row) =>
-        row.step &&
+      (row): row is TmdbMatchRow & { step: StepTrace } =>
+        !!row.step &&
         (!row.step.error || isMatchingIssue(row.step.error.code)) &&
         !this.selections().some(
           (entry) => entry.fileId === row.fileId && entry.instanceId === row.plugin.instanceId,
@@ -542,9 +542,13 @@ export class RenameWorkflowComponent {
       .subscribe({ complete: () => this.suggesting.set(false) });
   }
 
-  private suggestFor(row: TmdbMatchRow, mediaType: string, searches: Map<string, TmdbMatch[]>) {
+  private suggestFor(
+    row: TmdbMatchRow & { step: StepTrace },
+    mediaType: string,
+    searches: Map<string, TmdbMatch[]>,
+  ) {
     return defer(() => {
-      const step = row.step!;
+      const { step } = row;
       const inferred = tmdbFilename(step.inputPath, mediaType);
       const binding = {
         fileId: row.fileId,

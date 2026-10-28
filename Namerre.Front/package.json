@@ -6,7 +6,9 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "lint": "biome check && prettier --check \"src/**/*.html\"",
+    "format": "biome check --write && prettier --write \"src/**/*.html\""
   },
   "private": true,
   "packageManager": "npm@11.13.0",
@@ -28,6 +30,7 @@
     "@angular/build": "^22.2.3",
     "@angular/cli": "^22.2.3",
     "@angular/compiler-cli": "^22.2.0",
+    "@biomejs/biome": "2.6.3",
     "@tailwindcss/postcss": "^4.1.0",
     "@vitest/coverage-v8": "^5.0.5",
     "jsdom": "^30.0.0",

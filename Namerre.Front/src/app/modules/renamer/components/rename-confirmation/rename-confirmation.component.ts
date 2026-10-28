@@ -1,5 +1,5 @@
 import { Component, computed, input, output } from '@angular/core';
-import { PlanView } from '../../rename-api';
+import type { PlanView } from '../../rename-api';
 import { NameChangeComponent } from '../name-change/name-change.component';
 
 @Component({

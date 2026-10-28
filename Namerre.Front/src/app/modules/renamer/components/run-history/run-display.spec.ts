@@ -1,4 +1,4 @@
-import { RunView } from '../../rename-api';
+import type { RunView } from '../../rename-api';
 import { historyEntries, optionEntries, runTitle, splitPath, statusLabel } from './run-display';
 
 function run(partial: Partial<RunView>, paths: [string, string][]): RunView {

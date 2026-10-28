@@ -1,10 +1,10 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { Router, provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { tmdbOptionsHash } from '../../options-hash';
-import {
+import type {
   MetadataSelection,
   PlanView,
   PluginInstance,
@@ -13,10 +13,10 @@ import {
 } from '../../rename-api';
 import { RenameEvents } from '../../rename-events';
 import { FakeRenameEvents } from '../../rename-events.testing';
-import { RenamerFile } from '../../renamer-file';
+import type { RenamerFile } from '../../renamer-file';
 import { PluginEditorComponent } from '../plugin-editor/plugin-editor.component';
-import { RenameWorkflowComponent } from './rename-workflow.component';
 import { TmdbPickerComponent } from '../tmdb-picker/tmdb-picker.component';
+import { RenameWorkflowComponent } from './rename-workflow.component';
 
 describe('RenameWorkflowComponent', () => {
   let fixture: ComponentFixture<RenameWorkflowComponent>;
@@ -311,7 +311,7 @@ describe('RenameWorkflowComponent', () => {
       verifyContent: false,
       deleteEmptyFolders: false,
     });
-    http.match('/api/rename-previews').forEach((request) => request.flush(tmdbPreview));
+    for (const request of http.match('/api/rename-previews')) request.flush(tmdbPreview);
   });
 
   it('keeps emptied folders by default', async () => {

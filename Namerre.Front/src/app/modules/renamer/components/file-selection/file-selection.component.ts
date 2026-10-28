@@ -3,8 +3,8 @@ import { Component, computed, input, output, signal } from '@angular/core';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faFolderOpen, faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import { formatFileSize } from '../../file-size';
-import { FolderListing } from '../../folder-listing';
-import { RenamerFile } from '../../renamer-file';
+import type { FolderListing } from '../../folder-listing';
+import type { RenamerFile } from '../../renamer-file';
 import { FolderPickerComponent } from '../folder-picker/folder-picker.component';
 
 @Component({
