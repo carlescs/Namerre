@@ -676,21 +676,44 @@ validated only through platform-independent string comparisons.
 The pipeline is split by purpose:
 
 - **Build and test** (`.github/workflows/backend.yml`) runs on pull requests to
-  `main` and pushes to `main`. It only builds the solution and runs the backend and
-  frontend tests; it never builds or publishes a Docker image.
+  `main` and `next`. It only builds the solution and runs the backend and frontend
+  tests; it never builds or publishes a Docker image.
+- **Check commit messages** (`.github/workflows/commits.yml`) runs on the same pull
+  requests and rejects any commit that does not follow
+  [Conventional Commits](https://www.conventionalcommits.org).
+- **Scan for secrets** (`.github/workflows/secrets.yml`) runs on the same pull
+  requests and on pushes to `main` and `next`. It scans the full Git history with a
+  pinned, checksum-verified [Betterleaks](https://github.com/betterleaks/betterleaks)
+  release and fails on any finding (redacted in the log). Mark a false positive with a
+  `betterleaks:allow` comment on the line, or add its fingerprint to
+  `.betterleaksignore`.
+- **Release** (`.github/workflows/release.yml`) runs on every push to `main` and
+  `next`. It reruns the tests, then [semantic-release](https://semantic-release.gitbook.io)
+  derives the next version from the commits since the last release: `fix:`/`perf:`
+  bump the patch version, `feat:` the minor version, and a `!` after the type or a
+  `BREAKING CHANGE:` footer the major version. Other types (`docs:`, `chore:`,
+  `refactor:`, `test:`, `ci:`, `build:`, `style:`) publish nothing. `main` produces
+  stable `vX.Y.Z` tags; `next` produces `vX.Y.Z-pre.N` pre-releases, and merging
+  `next` into `main` promotes them. It pushes the tag, creates the GitHub release with
+  a changelog grouped by commit type, and dispatches the Docker workflow for the tag.
+  Nothing is committed back to the repository.
 - **Build and publish Docker image** (`.github/workflows/docker.yml`) runs only for
   version tags (`vX.Y.Z` or `vX.Y.Z-pre.N`). It reruns the tests, publishes the image
-  to `ghcr.io` and creates the matching GitHub release. Stable tags are published as
-  `latest`; pre-release tags as `prerelease`. Both also get the version tag and the
-  commit SHA as image tags. Dispatching it on anything other than a version tag fails.
-  Release notes list every commit since the previous stable version (so a stable
-  release also covers what was first shipped in its pre-releases), followed by
-  GitHub's generated pull-request notes for the same range and the image tags and digest.
-- **Create version tag** (`.github/workflows/version-tag.yml`) is started manually
-  from the Actions tab. Choose the `major`/`minor`/`patch` increment relative to the
-  latest stable tag; tick **prerelease** to create the next `vX.Y.Z-pre.N` tag for
-  that version instead. It tags the selected commit and dispatches the Docker
-  workflow, so a pre-release image can be produced on demand from any branch.
+  to `ghcr.io` and appends the image tags and digest to the release notes (creating
+  the release with GitHub's generated notes if the tag was pushed by hand). Stable
+  tags are published as `latest`; pre-release tags as `prerelease`. Both also get the
+  version tag and the commit SHA as image tags. Dispatching it on anything other than
+  a version tag fails.
+
+Commit messages use the form `type(optional scope): summary`, for example
+`feat(tmdb): match episodes by air date` or `fix!: reject renames across devices`.
+Running `npm ci` in the repository root installs the release tooling and Git hooks
+([lefthook](https://lefthook.dev), configured in `lefthook.yml`): `commit-msg` checks
+the message, and `pre-commit` scans staged changes for secrets when `betterleaks` is
+on your `PATH` (install it from the
+[releases page](https://github.com/betterleaks/betterleaks/releases); without it the
+scan is skipped and left to CI). This is separate from the frontend's
+`npm ci --prefix .\Namerre.Front`.
 
 ## AI-assisted development
 

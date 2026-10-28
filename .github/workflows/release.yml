@@ -1,0 +1,51 @@
+name: Release
+
+# Every push to main (stable vX.Y.Z) or next (pre-release vX.Y.Z-pre.N) is built and tested, then
+# semantic-release derives the next version from the Conventional Commits since the last release.
+# Pushes without feat/fix/perf or breaking-change commits publish nothing.
+on:
+  push:
+    branches: [main, next]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    uses: ./.github/workflows/backend.yml
+    secrets:
+      CMEDIATOR_PACKAGES_TOKEN: ${{ secrets.CMEDIATOR_PACKAGES_TOKEN }}
+
+  release:
+    needs: tests
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write # dispatch the Docker pipeline for the new tag
+      contents: write # push the tag and create the GitHub release
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install release tooling
+        run: npm ci --ignore-scripts
+
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: npx semantic-release

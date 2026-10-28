@@ -1,7 +1,7 @@
 name: Build and publish Docker image
 
 # Images are built and published only for version tags (vX.Y.Z or vX.Y.Z-pre.N).
-# Tags pushed by the "Create version tag" workflow dispatch this workflow on the tag ref,
+# Tags created by semantic-release (release.yml) dispatch this workflow on the tag ref,
 # because pushes made with GITHUB_TOKEN do not trigger other workflows.
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           if [[ "$REF" != refs/tags/* || ! "$REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-pre\.[1-9][0-9]*)?$ ]]; then
-            echo "::error::Docker images are published only for version tags (vX.Y.Z or vX.Y.Z-pre.N); got $REF. Use the 'Create version tag' workflow to cut a release or pre-release."
+            echo "::error::Docker images are published only for version tags (vX.Y.Z or vX.Y.Z-pre.N); got $REF. Releases are cut by semantic-release when Conventional Commits land on main (stable) or next (pre-release)."
             exit 1
           fi
 
@@ -89,13 +89,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Check out release history
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Publish release with change summary
+      - name: Add the Docker image to the release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -106,49 +100,24 @@ jobs:
         run: |
           set -euo pipefail
 
-          release_tag="$REF_NAME"
-          release_title="$REF_NAME"
-          release_options=(--verify-tag)
-          if [[ "$REF_NAME" == *-* ]]; then
-            release_options+=(--prerelease --latest=false)
-          fi
+          image_notes=$(printf '## Docker image\n\n```text\n%s\n```\n\nDigest: `%s`\n' "$IMAGE_TAGS" "$IMAGE_DIGEST")
 
-          # Every release (stable or pre-release) lists everything it contains relative to the
-          # previous stable version reachable from this commit, so a stable release also includes
-          # the changes that were first shipped in its pre-releases.
-          # The baseline must be strictly older than this release's version: a pre-release
-          # vX.Y.Z-pre.N never uses vX.Y.Z (e.g. promoted on the same commit) or anything newer.
-          stable_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
-          release_version="${release_tag%%-*}"
-          previous_tag=""
-          while IFS= read -r tag; do
-            if [[ -n "$tag" && "$tag" != "$release_version" && "$tag" =~ $stable_pattern \
-              && "$(printf '%s\n%s\n' "$tag" "$release_version" | sort -V | head -n1)" == "$tag" ]]; then
-              previous_tag="$tag"
-              break
-            fi
-          done < <(git tag --merged "$COMMIT_SHA" --sort=-version:refname --list 'v*')
-
-          if [[ -n "$previous_tag" ]]; then
-            log_range="$previous_tag..$COMMIT_SHA"
-            changes_heading="Changes since $previous_tag"
-            release_options+=(--notes-start-tag "$previous_tag")
+          # semantic-release normally creates the release (with the Conventional Commits changelog)
+          # before dispatching this workflow; a tag pushed by hand gets a release with GitHub's
+          # generated notes instead.
+          if existing_notes=$(gh release view "$REF_NAME" --json body --jq .body 2>/dev/null); then
+            gh release edit "$REF_NAME" --notes "$(printf '%s\n\n%s\n' "$existing_notes" "$image_notes")"
           else
-            log_range="$COMMIT_SHA"
-            changes_heading="Changes"
+            release_options=(--verify-tag)
+            if [[ "$REF_NAME" == *-* ]]; then
+              release_options+=(--prerelease --latest=false)
+            fi
+            gh release create "$REF_NAME" \
+              --target "$COMMIT_SHA" \
+              --title "$REF_NAME" \
+              --generate-notes \
+              --notes "$image_notes" \
+              "${release_options[@]}"
           fi
 
-          changes=$(git log --no-merges --format='- %s (%h)' "$log_range")
-          if [[ -z "$changes" ]]; then
-            changes="- No code changes."
-          fi
-          release_notes=$(printf '## %s\n\n%s\n\n## Docker image\n\n```text\n%s\n```\n\nDigest: `%s`\n' \
-            "$changes_heading" "$changes" "$IMAGE_TAGS" "$IMAGE_DIGEST")
-          gh release create "$release_tag" \
-            --target "$COMMIT_SHA" \
-            --title "$release_title" \
-            --generate-notes \
-            --notes "$release_notes" \
-            "${release_options[@]}"
-
-          gh release view "$release_tag" --json body --jq .body >> "$GITHUB_STEP_SUMMARY"
+          gh release view "$REF_NAME" --json body --jq .body >> "$GITHUB_STEP_SUMMARY"
