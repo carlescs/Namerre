@@ -1,5 +1,22 @@
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.app-footer {
+  margin-top: auto;
+  border-top: 1px solid var(--app-border);
+  color: var(--app-muted);
+  font-size: 0.875rem;
+
+  a {
+    color: inherit;
+
+    &:hover {
+      color: var(--app-accent);
+    }
+  }
 }
 
 .nav-link {
