@@ -129,6 +129,10 @@ cleared on rebuild) — put static assets in `Namerre.Front/public`.
   100 columns. Keep the strict TypeScript and Angular compiler flags enabled.
 - Workload limits enforced server-side: ≤200 files and ≤32 plugin instances per run, ≤32 queued
   jobs, regex timeout 100 ms, TMDB HTTP timeout 15 s.
-- CI (`.github/workflows/backend.yml`, PRs and `main`) only builds/tests, on Ubuntu and Windows —
+- CI (`.github/workflows/backend.yml`, PRs to `main`/`next`; pushes via `release.yml`) only builds/tests, on Ubuntu and Windows —
   keep path handling cross-platform. Docker images are built and published only for version tags
-  (`docker.yml`); `version-tag.yml` (manual) creates stable or `-pre.N` tags and dispatches it.
+  (`docker.yml`); `release.yml` runs semantic-release (`release.config.mjs`) on pushes to `main`
+  (stable) and `next` (`-pre.N`), creates the tag and GitHub release, and dispatches it.
+- Commits follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, …; `!` or a
+  `BREAKING CHANGE:` footer for majors) — they drive the version bump. `commits.yml` lints PR
+  commits with commitlint; root `npm ci` installs the husky `commit-msg` hook.

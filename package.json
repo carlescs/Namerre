@@ -1,0 +1,22 @@
+{
+  "name": "namerre",
+  "private": true,
+  "description": "Release tooling: Conventional Commits checks and semantic-release. The app frontend lives in Namerre.Front.",
+  "packageManager": "npm@11.13.0",
+  "engines": {
+    "node": ">=24.10.0"
+  },
+  "scripts": {
+    "prepare": "husky",
+    "commitlint": "commitlint",
+    "release": "semantic-release"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@semantic-release/exec": "^7.1.0",
+    "conventional-changelog-conventionalcommits": "^10.4.1",
+    "husky": "^9.1.7",
+    "semantic-release": "^25.0.9"
+  }
+}

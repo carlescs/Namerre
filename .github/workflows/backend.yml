@@ -1,10 +1,9 @@
 name: Build and test application
 
 on:
+  # Pushes to main and next are tested by release.yml before semantic-release runs.
   pull_request:
-    branches: [main]
-  push:
-    branches: [main]
+    branches: [main, next]
   workflow_call:
     secrets:
       CMEDIATOR_PACKAGES_TOKEN:
