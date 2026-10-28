@@ -35,8 +35,14 @@ interface OptionField {
   hint?: string;
   placeholder?: string;
   list?: string;
-  /** Hidden (not removed) unless all of these boolean options are on; its value is still emitted. */
+  /** Spans the whole row instead of one column. Checkboxes always do. */
+  wide?: boolean;
+}
+interface OptionGroup {
+  heading?: string;
+  /** Hidden (not removed) unless all of these boolean options are on; its values are still emitted. */
   requires?: (keyof PluginOptions)[];
+  fields: OptionField[];
 }
 const scopeChoices: Choice[] = [
   { value: 'all', label: 'Every match' },
@@ -47,62 +53,81 @@ const caseChoices: Choice[] = [
   { value: 'lower', label: 'lowercase' },
   { value: 'title', label: 'Title Case' },
 ];
-const fields: Record<string, OptionField[]> = {
+const groups: Record<string, OptionGroup[]> = {
   literal: [
-    { key: 'search', label: 'Find text' },
-    { key: 'replacement', label: 'Replace with' },
-    { key: 'scope', label: 'Replace', choices: scopeChoices },
-    { key: 'ignoreCase', label: 'Ignore case', checkbox: true },
+    {
+      fields: [
+        { key: 'search', label: 'Find text' },
+        { key: 'replacement', label: 'Replace with' },
+        { key: 'scope', label: 'Replace', choices: scopeChoices },
+        { key: 'ignoreCase', label: 'Ignore case', checkbox: true },
+      ],
+    },
   ],
   regex: [
-    { key: 'pattern', label: 'Pattern', hint: '.NET regular expression syntax' },
     {
-      key: 'replacement',
-      label: 'Replace with',
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: ${name} is regex replacement syntax
-      hint: 'Use $1 or ${name} for captured groups',
+      fields: [
+        { key: 'pattern', label: 'Pattern', hint: '.NET regular expression syntax' },
+        {
+          key: 'replacement',
+          label: 'Replace with',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: ${name} is regex replacement syntax
+          hint: 'Use $1 or ${name} for captured groups',
+        },
+        { key: 'ignoreCase', label: 'Ignore case', checkbox: true },
+      ],
     },
-    { key: 'ignoreCase', label: 'Ignore case', checkbox: true },
   ],
-  case: [{ key: 'mode', label: 'Case', choices: caseChoices }],
+  case: [{ fields: [{ key: 'mode', label: 'Case', choices: caseChoices }] }],
   tmdb: [
     {
-      key: 'nameTemplate',
-      label: 'Filename template',
-      placeholder:
-        'Default: {title} ({year}) for movies, {title} - S{season}E{episode} - {episodeTitle} for episodes',
-      hint: 'Leave empty to use the default for each kind of file.',
+      heading: 'File name',
+      fields: [
+        {
+          key: 'nameTemplate',
+          label: 'Filename template',
+          wide: true,
+          placeholder: 'Leave empty to use the default',
+          hint: 'Defaults: {title} ({year}) for movies, {title} - S{season}E{episode} - {episodeTitle} for episodes.',
+        },
+        {
+          key: 'language',
+          label: 'Metadata language',
+          list: 'tmdb-languages',
+          hint: 'Sets the language of titles. Pick one or type your own.',
+        },
+      ],
     },
     {
-      key: 'language',
-      label: 'Metadata language',
-      list: 'tmdb-languages',
-      hint: 'Sets the language of titles. Pick one or type your own.',
+      heading: 'Folders',
+      fields: [{ key: 'changeFolder', label: 'Allow folder change', checkbox: true }],
     },
-    { key: 'changeFolder', label: 'Allow folder change', checkbox: true },
     {
-      key: 'baseFolder',
-      label: 'Base folder',
       requires: ['changeFolder'],
-      hint: 'Relative to the library root, with forward slashes, e.g. Movies/Archive. Leave empty to start at the root.',
+      fields: [
+        {
+          key: 'baseFolder',
+          label: 'Base folder',
+          placeholder: 'Library root',
+          hint: 'Relative to the library root, with forward slashes, e.g. Movies/Archive.',
+        },
+        {
+          key: 'folderTemplate',
+          label: 'Folder template',
+          hint: 'Creates a folder inside the base folder.',
+        },
+        { key: 'seasonFolder', label: 'Add season folder for episodes', checkbox: true },
+      ],
     },
     {
-      key: 'folderTemplate',
-      label: 'Folder template',
-      requires: ['changeFolder'],
-      hint: 'Creates a folder inside the base folder.',
-    },
-    {
-      key: 'seasonFolder',
-      label: 'Add season folder for episodes',
-      checkbox: true,
-      requires: ['changeFolder'],
-    },
-    {
-      key: 'seasonFolderTemplate',
-      label: 'Season folder template',
       requires: ['changeFolder', 'seasonFolder'],
-      hint: 'Season {season} gives Season 01, Season {seasonNumber} gives Season 1, S{season} gives S01. Movies ignore it.',
+      fields: [
+        {
+          key: 'seasonFolderTemplate',
+          label: 'Season folder template',
+          hint: 'Season {season} gives Season 01, Season {seasonNumber} gives Season 1, S{season} gives S01. Movies ignore it.',
+        },
+      ],
     },
   ],
 };
@@ -131,7 +156,7 @@ const locales = [
 
 interface Card {
   plugin: PluginInstance;
-  fields: OptionField[];
+  groups: OptionGroup[];
   form: FormGroup<Record<string, FormControl<string | boolean>>>;
   values: WritableSignal<Record<string, string | boolean>>;
 }
@@ -219,15 +244,21 @@ export class PluginEditorComponent implements OnInit {
     return descriptions[typeId] ?? fallbackDescription;
   }
 
-  protected visible(card: Card, field: OptionField): boolean {
+  protected visible(card: Card, group: OptionGroup): boolean {
     const values = card.values();
-    return (field.requires ?? []).every((key) => values[key] === true);
+    return (group.requires ?? []).every((key) => values[key] === true);
+  }
+
+  /** Lines a revealed group up under the text of the checkbox that revealed it. */
+  protected indent(group: OptionGroup): number {
+    const depth = group.requires?.length ?? 0;
+    return depth ? 0.5 + (depth - 1) * 1.625 : 0;
   }
 
   private card(plugin: PluginInstance): Card {
-    const optionFields = fields[plugin.typeId] ?? [];
+    const optionGroups = groups[plugin.typeId] ?? [];
     const controls: Record<string, FormControl<string | boolean>> = {};
-    for (const field of optionFields) {
+    for (const field of optionGroups.flatMap((group) => group.fields)) {
       controls[field.key] = new FormControl<string | boolean>(
         plugin.options[field.key] ?? (field.checkbox ? false : ''),
         { nonNullable: true },
@@ -235,7 +266,7 @@ export class PluginEditorComponent implements OnInit {
     }
     const form = new FormGroup(controls);
     const values = signal<Record<string, string | boolean>>(form.getRawValue());
-    const card: Card = { plugin, fields: optionFields, form, values };
+    const card: Card = { plugin, groups: optionGroups, form, values };
     form.valueChanges.subscribe(() => {
       values.set(form.getRawValue());
       card.plugin = { ...card.plugin, options: form.getRawValue() as PluginOptions };
