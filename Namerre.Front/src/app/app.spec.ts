@@ -115,6 +115,17 @@ describe('App', () => {
     expect(element.querySelector('app-account h2')?.textContent).toBe('Change password');
   });
 
+  it('shows the footer before and after signing in', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('footer')?.textContent).toContain('MIT License');
+    username.set('admin');
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('footer a')?.getAttribute('href')).toBe(
+      'https://github.com/carlescs/Namerre',
+    );
+  });
+
   it('removes protected content after signing out', async () => {
     username.set('admin');
     const fixture = TestBed.createComponent(App);
