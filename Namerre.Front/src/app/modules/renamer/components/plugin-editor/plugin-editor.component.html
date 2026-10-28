@@ -88,45 +88,64 @@
         <fa-icon [icon]="trashIcon" aria-hidden="true" />
       </button>
     </header>
-    <div class="mt-3 grid gap-x-6 sm:grid-cols-2" [formGroup]="card.form">
-      @for (field of card.fields; track field.key) {
-        @if (visible(card, field)) {
-          <div class="min-w-0">
-            @let fieldId = 'f-' + card.plugin.instanceId + '-' + field.key;
-            <label [class.flex]="field.checkbox" [class.items-center]="field.checkbox">
-              @if (field.checkbox) {
-                <input type="checkbox" [formControlName]="field.key" />
-                {{ field.label }}
-              } @else {
-                {{ field.label }}
-                @if (field.choices) {
-                  <select [formControlName]="field.key">
-                    @for (choice of field.choices; track choice.value) {
-                      <option [value]="choice.value">{{ choice.label }}</option>
+    <div class="mt-3" [formGroup]="card.form">
+      @for (group of card.groups; track $index) {
+        @if (visible(card, group)) {
+          @if (group.heading) {
+            <h5
+              class="m-0 mt-5 border-b border-slate-200 pb-1 text-xs font-semibold tracking-wide text-slate-500 uppercase first:mt-0 dark:border-slate-800 dark:text-slate-400"
+            >
+              {{ group.heading }}
+            </h5>
+          }
+          <div
+            class="grid items-start gap-x-6 sm:grid-cols-2"
+            [class]="
+              group.requires?.length
+                ? 'border-s-2 border-indigo-100 ps-4 dark:border-indigo-500/30'
+                : ''
+            "
+            [style.margin-inline-start.rem]="indent(group)"
+          >
+            @for (field of group.fields; track field.key) {
+              <div class="min-w-0" [class]="field.wide || field.checkbox ? 'sm:col-span-2' : ''">
+                @let fieldId = 'f-' + card.plugin.instanceId + '-' + field.key;
+                <label [class.flex]="field.checkbox" [class.items-center]="field.checkbox">
+                  @if (field.checkbox) {
+                    <input type="checkbox" [formControlName]="field.key" />
+                    {{ field.label }}
+                  } @else {
+                    {{ field.label }}
+                    @if (field.choices) {
+                      <select [formControlName]="field.key">
+                        @for (choice of field.choices; track choice.value) {
+                          <option [value]="choice.value">{{ choice.label }}</option>
+                        }
+                      </select>
+                    } @else {
+                      <input
+                        type="text"
+                        [formControlName]="field.key"
+                        [attr.list]="field.list ?? null"
+                        [attr.placeholder]="field.placeholder ?? null"
+                        [attr.aria-describedby]="field.hint ? fieldId : null"
+                      />
                     }
-                  </select>
-                } @else {
-                  <input
-                    type="text"
-                    [formControlName]="field.key"
-                    [attr.list]="field.list ?? null"
-                    [attr.placeholder]="field.placeholder ?? null"
-                    [attr.aria-describedby]="field.hint ? fieldId : null"
-                  />
+                  }
+                </label>
+                @if (field.hint) {
+                  <p [id]="fieldId" class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400">
+                    {{ field.hint }}
+                  </p>
                 }
-              }
-            </label>
-            @if (field.hint) {
-              <p [id]="fieldId" class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400">
-                {{ field.hint }}
-              </p>
+              </div>
             }
           </div>
         }
       }
     </div>
     @if (card.plugin.typeId === 'tmdb') {
-      <details class="mt-0">
+      <details class="mt-3">
         <summary>Template fields</summary>
         <p class="mb-0">
           Use these in templates, wrapped in braces: <code>{{ '{title}' }}</code
