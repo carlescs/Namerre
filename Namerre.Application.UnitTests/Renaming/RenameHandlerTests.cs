@@ -222,9 +222,11 @@ public sealed class RenameHandlerTests : IDisposable
     [Fact]
     public async Task PluginsQueryReturnsEngineCatalog()
     {
-        var result = await new GetRenamePluginsQueryHandler().Handle(new GetRenamePluginsQuery(), Token);
+        var engine = TestPipeline.Create(Substitute.For<ITmdbMetadata>(), Substitute.For<IRenameFileSystem>());
 
-        Assert.Same(PipelineEngine.Catalog, result);
+        var result = await new GetRenamePluginsQueryHandler(engine).Handle(new GetRenamePluginsQuery(), Token);
+
+        Assert.Same(engine.Catalog, result);
         Assert.Equal(["literal", "regex", "case", "tmdb"], result.Select(p => p.TypeId));
     }
 }

@@ -1,9 +1,5 @@
-using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Namerre.Application.Renaming.Metadata;
 using Namerre.Application.Renaming.Plugins;
 using Namerre.Application.Renaming.Previews;
 using Namerre.Domain.Renaming;
@@ -29,17 +25,27 @@ public interface IRenameFileSystem
     bool DeleteEmptyDirectory(string path);
 }
 
-public sealed class PipelineEngine(ITmdbMetadata metadata, IRenameFileSystem fileSystem)
+public sealed class PipelineEngine
 {
-    public static IReadOnlyList<PluginDescriptor> Catalog { get; } =
-    [
-        new("literal", 1, "Literal replacement", new { search = "", replacement = "", ignoreCase = false, scope = "all" }),
-        new("regex", 1, "Regular expression", new { pattern = "", replacement = "", ignoreCase = false }),
-        new("case", 1, "Case change", new { mode = "lower" }),
-        new("tmdb", 1, "TMDB metadata", new { nameTemplate = "", changeFolder = false,
-            baseFolder = "", folderTemplate = "{title} ({year})", seasonFolder = false,
-            seasonFolderTemplate = "Season {season}", language = "en-US" })
-    ];
+    private readonly IRenameFileSystem fileSystem;
+    private readonly Dictionary<(string TypeId, int Version), IRenamePlugin> plugins = [];
+
+    public PipelineEngine(IRenameFileSystem fileSystem, IEnumerable<IRenamePlugin> plugins)
+    {
+        this.fileSystem = fileSystem;
+        var registered = plugins.ToArray();
+        foreach (var plugin in registered)
+        {
+            var descriptor = plugin.Descriptor;
+            if (!this.plugins.TryAdd((descriptor.TypeId, descriptor.Version), plugin))
+                throw new InvalidOperationException(
+                    $"Rename plugin {descriptor.TypeId} v{descriptor.Version} is registered more than once.");
+        }
+        Catalog = registered.Select(p => p.Descriptor).ToArray();
+    }
+
+    /// <summary>Registered plugins in registration order, which is unrelated to execution order.</summary>
+    public IReadOnlyList<PluginDescriptor> Catalog { get; }
 
     public Task<PreviewResult> Preview(PipelineRequest request, CancellationToken cancellationToken)
     {
@@ -106,7 +112,7 @@ public sealed class PipelineEngine(ITmdbMetadata metadata, IRenameFileSystem fil
         return Task.FromResult(new PreviewResult(results, results.Count > 0 && results.All(f => f.Issues.Count == 0)));
     }
 
-    public static void ValidateRequest(PipelineRequest request)
+    public void ValidateRequest(PipelineRequest request)
     {
         if (request.Files is null || request.Plugins is null || request.Files.Count is < 1 or > NamingRules.MaxFiles
             || request.Plugins.Count > NamingRules.MaxPlugins)
@@ -120,7 +126,7 @@ public sealed class PipelineEngine(ITmdbMetadata metadata, IRenameFileSystem fil
             throw new RenameException("DuplicateInstance", "Each plugin instance needs a unique ID.");
         foreach (var p in request.Plugins)
         {
-            if (p.Version != 1 || !Catalog.Any(c => c.TypeId == p.TypeId) || p.Options.ValueKind != JsonValueKind.Object
+            if (!plugins.ContainsKey((p.TypeId, p.Version)) || p.Options.ValueKind != JsonValueKind.Object
                 || p.Options.GetRawText().Length > 8192)
                 throw new RenameException("InvalidPlugin", "Unknown plugin type, version, or invalid options.");
         }
@@ -128,97 +134,19 @@ public sealed class PipelineEngine(ITmdbMetadata metadata, IRenameFileSystem fil
             throw new RenameException("BatchLimit", "Too many metadata selections.");
     }
 
-    public static string OptionsHash(JsonElement options)
-    {
-        // Match approval binds metadata settings, not the templates used to render it.
-        var language = options.TryGetProperty("language", out var value)
-            ? value.GetString() ?? "en-US" : "en-US";
-        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(language)));
-    }
-
     private string Apply(FileInput file, PluginInstance plugin, string input, IReadOnlyList<MetadataSelection> selections)
     {
         var slash = input.LastIndexOf('/');
-        var folder = slash < 0 ? "" : input[..(slash + 1)];
         var name = input[(slash + 1)..];
         var extension = Path.GetExtension(name);
-        var stem = name[..(name.Length - extension.Length)];
-        var options = plugin.Options;
-        string S(string key, string fallback = "") => options.TryGetProperty(key, out var value)
-            ? value.GetString() ?? fallback : fallback;
-        bool B(string key) => options.TryGetProperty(key, out var value) && value.GetBoolean();
-        switch (plugin.TypeId)
-        {
-            case "literal":
-                stem = NamingRules.Literal(stem, S("search"), S("replacement"), B("ignoreCase"), S("scope", "all"));
-                break;
-            case "regex":
-                stem = NamingRules.RegexReplace(stem, S("pattern"), S("replacement"), B("ignoreCase"));
-                break;
-            case "case":
-                stem = NamingRules.ChangeCase(stem, S("mode", "lower"));
-                break;
-            case "tmdb":
-                var selection = selections.SingleOrDefault(s => s.FileId == file.Id && s.InstanceId == plugin.InstanceId);
-                if (selection is null || selection.InputPath != input || selection.OptionsHash != OptionsHash(options))
-                    throw new RenameException("MetadataRequired", "Explicitly confirm a TMDB match for this step's current input and metadata language.");
-                var match = metadata.Resolve(selection);
-                var defaultTemplate = match.MediaType == "tv"
-                    ? "{title} - S{season}E{episode} - {episodeTitle}" : "{title} ({year})";
-                var nameTemplate = S("nameTemplate");
-                stem = Render(string.IsNullOrWhiteSpace(nameTemplate) ? defaultTemplate : nameTemplate, match);
-                if (B("changeFolder"))
-                {
-                    var baseFolder = S("baseFolder");
-                    if (baseFolder.Length > 0) fileSystem.Validate(baseFolder);
-                    folder = (baseFolder.Length > 0 ? baseFolder + "/" : "")
-                        + Render(S("folderTemplate", "{title} ({year})"), match) + "/";
-                    // Season folders nest inside the show folder and only apply to episode matches.
-                    if (B("seasonFolder") && match.Season is not null)
-                        folder += Render(S("seasonFolderTemplate", "Season {season}"), match) + "/";
-                }
-                break;
-        }
-        if (stem.Length == 0 || stem.Contains('/') || stem.Contains('\\'))
+        var parts = new PathParts(slash < 0 ? "" : input[..(slash + 1)], name[..(name.Length - extension.Length)], extension);
+        var result = plugins[(plugin.TypeId, plugin.Version)]
+            .Apply(new(file, plugin.InstanceId, input, parts, plugin.Options, selections));
+        if (result.Extension != parts.Extension)
+            throw new InvalidOperationException($"Rename plugin {plugin.TypeId} changed the file extension.");
+        if (result.Stem.Length == 0 || result.Stem.Contains('/') || result.Stem.Contains('\\'))
             throw new RenameException("InvalidName", "The plugin produced an empty name or path separator.");
-        return folder + stem + extension;
-    }
-
-    private static string Render(string template, TmdbMatch match)
-    {
-        if (template.Length > 1000) throw new RenameException("InvalidTemplate", "Template is too long.");
-        var result = Regex.Replace(template, @"\{([^{}]+)\}", m => m.Groups[1].Value switch
-        {
-            "title" => MetadataText(match.Title),
-            "year" => match.Year is null ? "" : MetadataText(match.Year),
-            "season" => match.Season?.ToString("00") ?? throw new RenameException("InvalidTemplate", "Season is unavailable."),
-            "seasonNumber" => match.Season?.ToString(CultureInfo.InvariantCulture)
-                ?? throw new RenameException("InvalidTemplate", "Season is unavailable."),
-            "episode" => match.Episode?.ToString("00") ?? throw new RenameException("InvalidTemplate", "Episode is unavailable."),
-            "episodeTitle" => MetadataText(match.EpisodeTitle ?? throw new RenameException("InvalidTemplate", "Episode title is unavailable.")),
-            _ => throw new RenameException("InvalidTemplate", "Unknown template field.")
-        }, RegexOptions.CultureInvariant, NamingRules.RegexTimeout);
-        if (result.Contains('{') || result.Contains('}') || result.Contains('/') || result.Contains('\\'))
-            throw new RenameException("InvalidTemplate", "Templates must render a single path segment without braces.");
-        return result;
-    }
-
-    private static string MetadataText(string value)
-    {
-        var result = new string(value.Select(c => c switch
-        {
-            '{' => '(',
-            '}' => ')',
-            _ when c < 32 || "<>:\"/\\|?*".Contains(c) => '-',
-            _ => c
-        }).ToArray()).TrimEnd(' ', '.');
-        if (result.Length == 0)
-            throw new RenameException("InvalidMetadataName", "TMDB returned text that cannot form a filename.");
-        if (result.StartsWith(".namerre-", StringComparison.OrdinalIgnoreCase)
-            || Regex.IsMatch(result, @"^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\.|$)",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, NamingRules.RegexTimeout))
-            result = "_" + result;
-        return result;
+        return result.Folder + result.Stem + result.Extension;
     }
 
     private static RenameIssue Issue(Exception exception) => exception switch

@@ -75,9 +75,15 @@ feature folder; shared ones (`PipelineRequest`, `PluginInstance`, `RenameIssue`,
 the `IRenameService`/`ITmdbMetadata` contracts and `RenameException(code, message, status, fileId)`
 (which carries API error codes) stay directly in `Application/Renaming`.
 
-**Renaming pipeline.** `PipelineEngine` (Application) owns the plugin `Catalog`
-(`literal`, `regex`, `case`, `tmdb`, each versioned) and applies enabled plugin instances in the
-request's order — catalog order never determines execution order. Lifecycle:
+**Renaming pipeline.** Each plugin is an `IRenamePlugin` in `Application/Renaming/Plugins`
+(`LiteralPlugin`, `RegexPlugin`, `CasePlugin`, `TmdbPlugin`), usually derived from
+`RenamePlugin<TOptions>` (typed options, camelCase JSON). Its `PluginDescriptor` carries the type ID,
+version, name, description, default options and the option `Form` the frontend renders. Plugins are
+registered as singletons in `AddApplication()` (registration order = catalog order); `PipelineEngine`
+takes them via DI, keys them by `(TypeId, Version)`, and applies enabled plugin instances in the
+request's order — catalog order never determines execution order. Plugins return `PathParts`; the
+engine rejects changed extensions, empty stems and separators, then validates the path. Tests build
+the engine with the built-in plugins through `TestPipeline.Create`. Lifecycle:
 preview (no mutation) → prepare (hash every source file, persist an immutable plan) →
 execute (queued job) → optional rollback of selected files / explicit recovery. Run state changes
 must satisfy `Domain/Renaming/RunTransitions.Allows`; naming rules are in `Domain/Renaming/NamingRules.cs`.
@@ -107,7 +113,7 @@ private 256-entry, 10-minute `MemoryCache`), which takes a fresh typed `TmdbClie
 Polly pipeline (`TmdbResilience`: four-lookup concurrency limiter, 15 s total / 5 s attempt timeouts, retries
 that skip 429, circuit breaker) sits in front of it, and `TmdbClient` maps its rejections to API errors; requests carry
 `Namerre:Tmdb:ReadAccessToken` (never put the token in frontend config, plan snapshots or build args). Matches must be confirmed with a
-`ConfirmationToken` bound to `OptionsHash` — SHA-256 of the plugin's `language` only. The frontend
+`ConfirmationToken` bound to `TmdbPlugin.OptionsHash` — SHA-256 of the plugin's `language` only. The frontend
 reimplements this in `Namerre.Front/src/app/modules/renamer/options-hash.ts` (pure-JS SHA-256 so it
 works on plain-HTTP origins); keep both sides in sync. Confirmed metadata is snapshotted into the plan.
 

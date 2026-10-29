@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Namerre.Application.Renaming;
+using Namerre.Application.Renaming.Plugins;
 using Namerre.Application.Renaming.Metadata;
 using Namerre.Domain.Renaming;
 using NSubstitute;
@@ -23,7 +24,7 @@ public sealed class PipelineEngineTests
     [Fact]
     public async Task EmptyPipelineAndDisabledPipelinePreserveOriginal()
     {
-        var engine = new PipelineEngine(metadata, fileSystem);
+        var engine = TestPipeline.Create(metadata, fileSystem);
         foreach (var plugins in new IReadOnlyList<PluginInstance>[] { [],
             [Plugin("x", "literal", new { search = "", replacement = "invalid" }) with { Enabled = false }] })
         {
@@ -45,12 +46,12 @@ public sealed class PipelineEngineTests
             Plugin("second", "case", new { mode = "upper" }),
             Plugin("third", "literal", new { search = "OMEGA", replacement = "last" })
         };
-        var preview = await new PipelineEngine(metadata, fileSystem).Preview(Request(plugins), default);
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(Request(plugins), default);
         var file = Assert.Single(preview.Files);
         Assert.Equal("folder/last.BETA.MKV", file.TargetPath);
         Assert.Equal(["first", "second", "third"], file.Steps.Select(s => s.InstanceId));
         Assert.Equal(file.Steps[0].OutputPath, file.Steps[1].InputPath);
-        var reordered = await new PipelineEngine(metadata, fileSystem).Preview(Request(plugins.Reverse().ToArray()), default);
+        var reordered = await TestPipeline.Create(metadata, fileSystem).Preview(Request(plugins.Reverse().ToArray()), default);
         Assert.Equal("folder/ALPHA.BETA.MKV", Assert.Single(reordered.Files).TargetPath);
     }
 
@@ -68,7 +69,7 @@ public sealed class PipelineEngineTests
     [Fact]
     public async Task InvalidPluginBlocksDownstreamWithTrace()
     {
-        var preview = await new PipelineEngine(metadata, fileSystem).Preview(Request([
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(Request([
             Plugin("bad", "regex", new { pattern = "[", replacement = "" }),
             Plugin("skipped", "case", new { mode = "lower" })
         ]), default);
@@ -81,7 +82,7 @@ public sealed class PipelineEngineTests
     {
         var input = new string('a', 30000) + "!.mkv";
         fileSystem.Exists(input).Returns(true);
-        var preview = await new PipelineEngine(metadata, fileSystem).Preview(new(
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(new(
             [new("file", input)], [Plugin("r", "regex", new { pattern = "(a+)+$", replacement = "" })]), default);
         Assert.Equal("RegexTimeout", Assert.Single(Assert.Single(preview.Files).Issues).Code);
     }
@@ -90,11 +91,11 @@ public sealed class PipelineEngineTests
     public async Task MetadataSurvivesTemplateEditsButRequiresExactFileInstanceInputAndLanguageBinding()
     {
         var plugin = Plugin("tmdb", "tmdb", new { nameTemplate = "{title} ({year})" });
-        var engine = new PipelineEngine(metadata, fileSystem);
+        var engine = TestPipeline.Create(metadata, fileSystem);
         var absent = await engine.Preview(Request([plugin]), default);
         Assert.Equal("MetadataRequired", Assert.Single(Assert.Single(absent.Files).Issues).Code);
         var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
-            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+            TmdbPlugin.OptionsHash(plugin.Options), "confirmed");
         metadata.Resolve(selection).Returns(new TmdbMatch(10, "movie", "Resolved", "2000", null, null, null));
         var confirmed = await engine.Preview(Request([plugin]) with { Selections = [selection] }, default);
         Assert.Equal("folder/Resolved (2000).MKV", Assert.Single(confirmed.Files).TargetPath);
@@ -150,10 +151,10 @@ public sealed class PipelineEngineTests
             folderTemplate = "{title} ({year})"
         });
         var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
-            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+            TmdbPlugin.OptionsHash(plugin.Options), "confirmed");
         metadata.Resolve(selection).Returns(new TmdbMatch(10, "tv", "Show: A/B\\C?", "2000",
             2, 3, "Episode <one> \"two\"|*\n{end}. "));
-        var preview = await new PipelineEngine(metadata, fileSystem).Preview(Request([
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(Request([
             plugin, Plugin("case", "case", new { mode = "lower" })
         ]) with { Selections = [selection] }, default);
         Assert.True(preview.CanPrepare);
@@ -177,10 +178,10 @@ public sealed class PipelineEngineTests
             nameTemplate = "{title}", changeFolder, baseFolder, folderTemplate = "{title} ({year})"
         });
         var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
-            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+            TmdbPlugin.OptionsHash(plugin.Options), "confirmed");
         metadata.Resolve(selection).Returns(new TmdbMatch(10, "movie", "Resolved", "2000", null, null, null));
 
-        var preview = await new PipelineEngine(metadata, fileSystem).Preview(
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(
             Request([plugin]) with { Selections = [selection] }, default);
 
         Assert.True(preview.CanPrepare);
@@ -202,10 +203,10 @@ public sealed class PipelineEngineTests
             folderTemplate = "{title}", seasonFolder, seasonFolderTemplate
         });
         var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
-            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+            TmdbPlugin.OptionsHash(plugin.Options), "confirmed");
         metadata.Resolve(selection).Returns(new TmdbMatch(10, "tv", "Show", "2000", season, 5, "Pilot"));
 
-        var preview = await new PipelineEngine(metadata, fileSystem).Preview(
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(
             Request([plugin]) with { Selections = [selection] }, default);
 
         Assert.True(preview.CanPrepare);
@@ -223,10 +224,10 @@ public sealed class PipelineEngineTests
             nameTemplate = "{title}", changeFolder, seasonFolder = true, seasonFolderTemplate = "Season {season}"
         });
         var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
-            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+            TmdbPlugin.OptionsHash(plugin.Options), "confirmed");
         metadata.Resolve(selection).Returns(new TmdbMatch(10, mediaType, "Resolved", "2000", null, null, null));
 
-        var preview = await new PipelineEngine(metadata, fileSystem).Preview(
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(
             Request([plugin]) with { Selections = [selection] }, default);
 
         Assert.True(preview.CanPrepare);
@@ -244,10 +245,10 @@ public sealed class PipelineEngineTests
             changeFolder = true, folderTemplate = "{title}", seasonFolder = true, seasonFolderTemplate
         });
         var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
-            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+            TmdbPlugin.OptionsHash(plugin.Options), "confirmed");
         metadata.Resolve(selection).Returns(new TmdbMatch(10, "tv", "Show", "2000", 1, 2, "Pilot"));
 
-        var preview = await new PipelineEngine(metadata, fileSystem).Preview(
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(
             Request([plugin]) with { Selections = [selection] }, default);
 
         Assert.False(preview.CanPrepare);
@@ -270,10 +271,10 @@ public sealed class PipelineEngineTests
             .Do(call => NamingRules.ValidateRelativePath((string)call[0]));
         var plugin = Plugin("tmdb", "tmdb", new { changeFolder = true, baseFolder });
         var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
-            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+            TmdbPlugin.OptionsHash(plugin.Options), "confirmed");
         metadata.Resolve(selection).Returns(new TmdbMatch(10, "movie", "Resolved", "2000", null, null, null));
 
-        var preview = await new PipelineEngine(metadata, fileSystem).Preview(
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(
             Request([plugin]) with { Selections = [selection] }, default);
 
         Assert.False(preview.CanPrepare);
@@ -292,9 +293,9 @@ public sealed class PipelineEngineTests
             .Do(call => NamingRules.ValidateRelativePath((string)call[0]));
         var plugin = Plugin("tmdb", "tmdb", new { nameTemplate = "{title}" });
         var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
-            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+            TmdbPlugin.OptionsHash(plugin.Options), "confirmed");
         metadata.Resolve(selection).Returns(new TmdbMatch(10, "movie", title, "2000", null, null, null));
-        var preview = await new PipelineEngine(metadata, fileSystem).Preview(
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(
             Request([plugin]) with { Selections = [selection] }, default);
         Assert.True(preview.CanPrepare);
         Assert.Equal($"folder/{expected}.MKV", Assert.Single(preview.Files).TargetPath);
@@ -311,9 +312,9 @@ public sealed class PipelineEngineTests
             .Do(call => NamingRules.ValidateRelativePath((string)call[0]));
         var plugin = Plugin("tmdb", "tmdb", new { nameTemplate = template });
         var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
-            PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+            TmdbPlugin.OptionsHash(plugin.Options), "confirmed");
         metadata.Resolve(selection).Returns(new TmdbMatch(10, "movie", "A/B", "2000", null, null, null));
-        var preview = await new PipelineEngine(metadata, fileSystem).Preview(
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(
             Request([plugin]) with { Selections = [selection] }, default);
         Assert.Equal(code, Assert.Single(Assert.Single(preview.Files).Issues).Code);
     }
@@ -321,7 +322,7 @@ public sealed class PipelineEngineTests
     [Fact]
     public async Task RejectsLimitsDuplicateIdsAndVersionsBeforeProcessing()
     {
-        var engine = new PipelineEngine(metadata, fileSystem);
+        var engine = TestPipeline.Create(metadata, fileSystem);
         var files = Enumerable.Range(0, 201).Select(i => new FileInput(i.ToString(), i + ".txt")).ToArray();
         await Assert.ThrowsAsync<RenameException>(() => engine.Preview(new(files, []), default));
         await Assert.ThrowsAsync<RenameException>(() => engine.Preview(Request(
@@ -339,7 +340,7 @@ public sealed class PipelineEngineTests
         var files = Enumerable.Range(0, 200).Select(i => new FileInput(i.ToString(), i + ".txt")).ToArray();
         var plugins = Enumerable.Range(0, 32).Select(i => Plugin(i.ToString(), "case", new { mode = "upper" })
             with { Enabled = false }).ToArray();
-        var engine = new PipelineEngine(metadata, fileSystem);
+        var engine = TestPipeline.Create(metadata, fileSystem);
         var preview = await engine.Preview(new(files, plugins), default);
         Assert.True(preview.CanPrepare);
         Assert.Equal(200, preview.Files.Count);

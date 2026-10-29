@@ -964,7 +964,7 @@ public sealed class RenamingWorkflowTests : IDisposable
             var metadata = new NoMetadata();
             Fault = moveFailure > 0 ? new FaultFileSystem(filesystem, moveFailure, failAfter) : null;
             IRenameFileSystem mutation = Fault is null ? filesystem : Fault;
-            Service = new RenameService(Store, mutation, new PipelineEngine(metadata, mutation), NullLogger<RenameService>.Instance,
+            Service = new RenameService(Store, mutation, TestPipeline.Create(metadata, mutation), NullLogger<RenameService>.Instance,
                 notifier);
         }
         public void Dispose() => Store.Dispose();

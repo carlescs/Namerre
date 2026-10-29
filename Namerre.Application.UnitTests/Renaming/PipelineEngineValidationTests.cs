@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Namerre.Application.Renaming;
+using Namerre.Application.Renaming.Plugins;
 using Namerre.Application.Renaming.Metadata;
 using Namerre.Domain.Renaming;
 using NSubstitute;
@@ -28,7 +29,7 @@ public sealed class PipelineEngineValidationTests
             .Returns(call => string.Equals((string)call[0], (string)call[1], StringComparison.OrdinalIgnoreCase));
         fileSystem.When(fs => fs.Validate(Arg.Any<string>()))
             .Do(call => NamingRules.ValidateRelativePath((string)call[0]));
-        engine = new PipelineEngine(metadata, fileSystem);
+        engine = TestPipeline.Create(metadata, fileSystem);
     }
 
     [Fact]
@@ -260,19 +261,19 @@ public sealed class PipelineEngineValidationTests
     {
         static string Sha(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
 
-        Assert.Equal(Sha("en-US"), PipelineEngine.OptionsHash(JsonSerializer.SerializeToElement(new { })));
-        Assert.Equal(Sha("en-US"), PipelineEngine.OptionsHash(JsonDocument.Parse("{\"language\":null}").RootElement));
-        Assert.Equal(Sha("es-ES"), PipelineEngine.OptionsHash(JsonSerializer.SerializeToElement(
+        Assert.Equal(Sha("en-US"), TmdbPlugin.OptionsHash(JsonSerializer.SerializeToElement(new { })));
+        Assert.Equal(Sha("en-US"), TmdbPlugin.OptionsHash(JsonDocument.Parse("{\"language\":null}").RootElement));
+        Assert.Equal(Sha("es-ES"), TmdbPlugin.OptionsHash(JsonSerializer.SerializeToElement(
             new { language = "es-ES", nameTemplate = "{title}" })));
         Assert.Equal(
-            PipelineEngine.OptionsHash(JsonSerializer.SerializeToElement(new { language = "fr", nameTemplate = "a" })),
-            PipelineEngine.OptionsHash(JsonSerializer.SerializeToElement(new { language = "fr", nameTemplate = "b" })));
+            TmdbPlugin.OptionsHash(JsonSerializer.SerializeToElement(new { language = "fr", nameTemplate = "a" })),
+            TmdbPlugin.OptionsHash(JsonSerializer.SerializeToElement(new { language = "fr", nameTemplate = "b" })));
     }
 
     [Fact]
     public void OptionsHashMatchesTheFrontendFixture()
         => Assert.Equal("5c49f88dafe66e0ecdca8f682ae0b38c38ccd3ad464e3358e899beca88c18560",
-            PipelineEngine.OptionsHash(JsonSerializer.SerializeToElement(new { language = "en-US" })));
+            TmdbPlugin.OptionsHash(JsonSerializer.SerializeToElement(new { language = "en-US" })));
 
     public static TheoryData<PipelineRequest, string> InvalidRequests => new()
     {
@@ -299,17 +300,17 @@ public sealed class PipelineEngineValidationTests
     [Theory]
     [MemberData(nameof(InvalidRequests))]
     public void ValidateRequestRejectsMalformedRequests(PipelineRequest request, string code)
-        => Assert.Equal(code, Assert.Throws<RenameException>(() => PipelineEngine.ValidateRequest(request)).Code);
+        => Assert.Equal(code, Assert.Throws<RenameException>(() => engine.ValidateRequest(request)).Code);
 
     [Fact]
     public void ValidateRequestAcceptsDisabledPluginsAndTheMaximumSelectionCount()
-        => PipelineEngine.ValidateRequest(new([new("a", "src/a.txt")],
+        => engine.ValidateRequest(new([new("a", "src/a.txt")],
             [Plugin("p", "tmdb", new { }) with { Enabled = false }],
             Enumerable.Range(0, NamingRules.MaxFiles * NamingRules.MaxPlugins)
                 .Select(i => new MetadataSelection("a", i.ToString(), "src/a.txt", "", "")).ToArray()));
 
     private static MetadataSelection Selection(PluginInstance plugin, string input)
-        => new("file", plugin.InstanceId, input, PipelineEngine.OptionsHash(plugin.Options), "confirmed");
+        => new("file", plugin.InstanceId, input, TmdbPlugin.OptionsHash(plugin.Options), "confirmed");
 
     private static PluginInstance Plugin(string id, string type, object options)
         => new(id, type, 1, true, JsonSerializer.SerializeToElement(options));

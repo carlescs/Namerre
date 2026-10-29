@@ -23,7 +23,7 @@ public sealed class RollbackCheckProgressTests : IDisposable
         var bounded = new BoundedFileSystem(Root, workspace);
         var filesystem = new PausingFileSystem(bounded);
         using var store = new RenameStore(bounded, Data, workspace);
-        var service = new RenameService(store, filesystem, new PipelineEngine(new NoMetadata(), filesystem),
+        var service = new RenameService(store, filesystem, TestPipeline.Create(new NoMetadata(), filesystem),
             NullLogger<RenameService>.Instance);
         var pipeline = new PipelineRequest([new("a", "alpha.txt"), new("b", "bravo.txt")],
             [new("r", "literal", 1, true, JsonSerializer.SerializeToElement(new { search = "a", replacement = "z" }))]);

@@ -30,7 +30,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
 
     public async Task<JobAccepted> Prepare(PipelineRequest request, CancellationToken cancellationToken)
     {
-        PipelineEngine.ValidateRequest(request);
+        pipeline.ValidateRequest(request);
         await gate.WaitAsync(cancellationToken);
         try
         {
