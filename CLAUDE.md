@@ -134,13 +134,16 @@ cleared on rebuild) — put static assets in `Namerre.Front/public`.
   100 columns. Keep the strict TypeScript and Angular compiler flags enabled.
 - Workload limits enforced server-side: ≤200 files and ≤32 plugin instances per run, ≤32 queued
   jobs, regex timeout 100 ms, TMDB lookups 15 s overall (5 s per attempt).
-- CI (`.github/workflows/backend.yml`, PRs to `main`/`next`; pushes via `release.yml`) only builds/tests, on Ubuntu and Windows —
-  keep path handling cross-platform. Docker images are built and published only for version tags
-  (`docker.yml`); `release.yml` runs semantic-release (`release.config.mjs`) on pushes to `main`
-  (stable) and `next` (`-pre.N`), creates the tag and GitHub release, and dispatches it.
+- CI (`.github/workflows/ci.yml`: backend build/tests on Ubuntu and Windows, frontend lint/tests,
+  Betterleaks, commitlint on PRs) runs on PRs to `main`/`next` and is reused by `release.yml` and
+  `docker.yml` — keep path handling cross-platform. Shared Node setup is the
+  `.github/actions/setup-node` composite action. `release.yml` runs CI, then semantic-release
+  (`release.config.mjs`) on pushes to `main` (stable) and `next` (`-pre.N`), creates the tag and
+  GitHub release, and calls `docker.yml` for the new tag; Docker images are built and published
+  only for version tags (a hand-pushed tag runs CI in `docker.yml` first).
 - Commits follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, …; `!` or a
-  `BREAKING CHANGE:` footer for majors) — they drive the version bump. `commits.yml` lints PR
+  `BREAKING CHANGE:` footer for majors) — they drive the version bump. CI lints PR
   commits with commitlint; root `npm ci` installs the lefthook `commit-msg` hook (`lefthook.yml`).
-- `secrets.yml` scans the full Git history with a pinned Betterleaks release on PRs and pushes;
+- CI's `betterleaks` job scans the full Git history with a pinned Betterleaks release on PRs and pushes;
   the lefthook `pre-commit` hook scans staged changes when `betterleaks` is on PATH. Never commit
   real credentials; mark test fixtures with `betterleaks:allow` or add them to `.betterleaksignore`.

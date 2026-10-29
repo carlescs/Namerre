@@ -1,0 +1,142 @@
+name: CI
+
+# Every check a change must pass: backend build and tests (Ubuntu and Windows), frontend lint and
+# tests, a secret scan of the full history and, on pull requests, Conventional Commits linting.
+# Pushes to main and next and version tags run it through release.yml and docker.yml.
+on:
+  pull_request:
+    branches: [main, next]
+  workflow_call:
+    secrets:
+      CMEDIATOR_PACKAGES_TOKEN:
+        required: true
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      NuGetPackageSourceCredentials_Github: Username=${{ github.repository_owner }};Password=${{ secrets.CMEDIATOR_PACKAGES_TOKEN }};ValidAuthenticationTypes=Basic
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node.js and install frontend dependencies
+        uses: ./.github/actions/setup-node
+        with:
+          directory: Namerre.Front
+
+      - name: Restore
+        run: dotnet restore Namerre.slnx
+
+      - name: Build
+        run: dotnet build Namerre.slnx --configuration Release --no-restore
+
+      - name: Test with coverage
+        run: >-
+          dotnet test Namerre.slnx --configuration Release --no-build --no-restore
+          --collect:"XPlat Code Coverage" --logger trx --results-directory TestResults
+
+      - name: Upload backend test results and coverage
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backend-test-results-${{ matrix.os }}
+          path: TestResults/
+          if-no-files-found: error
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Namerre.Front
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js and install frontend dependencies
+        uses: ./.github/actions/setup-node
+        with:
+          directory: Namerre.Front
+
+      - name: Lint and check formatting
+        run: npm run lint
+
+      - name: Test with coverage
+        run: npm test -- --watch=false --coverage --coverage-reporters=text-summary --coverage-reporters=html --coverage-reporters=cobertura
+
+      - name: Upload frontend coverage
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frontend-coverage
+          path: Namerre.Front/coverage/
+          if-no-files-found: error
+
+  # Scans the full Git history with Betterleaks (https://github.com/betterleaks/betterleaks).
+  # Findings are redacted in the log. Silence a false positive with a `betterleaks:allow` comment
+  # on the line, or add its fingerprint to `.betterleaksignore`.
+  betterleaks:
+    runs-on: ubuntu-latest
+    env:
+      BETTERLEAKS_VERSION: 1.9.0
+      BETTERLEAKS_SHA256: f8b185a39ffcece2a1ca82bf3a4e7435cd81963ffd16b7a9128daf75f35f6de7
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Betterleaks
+        run: |
+          set -euo pipefail
+          archive="betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/betterleaks/betterleaks/releases/download/v${BETTERLEAKS_VERSION}/$archive"
+          echo "$BETTERLEAKS_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/betterleaks"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/betterleaks"
+          echo "$RUNNER_TEMP/betterleaks" >> "$GITHUB_PATH"
+
+      - name: Scan Git history
+        run: betterleaks git . --redact --verbose --no-banner --no-color
+
+  # semantic-release reads the version bump from the commits merged into main, so every commit in a
+  # pull request must follow Conventional Commits (https://www.conventionalcommits.org).
+  commitlint:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js and install commit tooling
+        uses: ./.github/actions/setup-node
+        with:
+          ci-args: --ignore-scripts
+
+      - name: Lint pull request commits
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose

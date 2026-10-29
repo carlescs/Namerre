@@ -671,43 +671,43 @@ The app is available at `http://localhost:8080`. The secret is mounted only for
 restore and is not stored in an image layer.
 
 Configure the repository Actions secret `CMEDIATOR_PACKAGES_TOKEN` with a token
-that can read the upstream packages. The backend and Docker workflows use it for
+that can read the upstream packages. CI and the Docker workflow use it for
 restore. Fork pull requests cannot access this secret and require a trusted run
 with package access; do not expose package credentials to untrusted code.
 Backend CI runs on both Windows and Linux so filesystem-sensitive behavior is not
 validated only through platform-independent string comparisons.
 
-The pipeline is split by purpose:
+The pipeline has three workflows; shared Node.js setup lives in the
+`.github/actions/setup-node` composite action:
 
-- **Build and test** (`.github/workflows/backend.yml`) runs on pull requests to
-  `main` and `next`. It only builds the solution and runs the backend and frontend
-  tests; it never builds or publishes a Docker image.
-- **Check commit messages** (`.github/workflows/commits.yml`) runs on the same pull
-  requests and rejects any commit that does not follow
-  [Conventional Commits](https://www.conventionalcommits.org).
-- **Scan for secrets** (`.github/workflows/secrets.yml`) runs on the same pull
-  requests and on pushes to `main` and `next`. It scans the full Git history with a
-  pinned, checksum-verified [Betterleaks](https://github.com/betterleaks/betterleaks)
-  release and fails on any finding (redacted in the log). Mark a false positive with a
-  `betterleaks:allow` comment on the line, or add its fingerprint to
-  `.betterleaksignore`.
+- **CI** (`.github/workflows/ci.yml`) runs on pull requests to `main` and `next`, and
+  is reused by the other two workflows. It never builds or publishes a Docker image.
+  Its jobs:
+  - `backend` builds the solution and runs the backend tests on Ubuntu and Windows;
+  - `frontend` lints and tests the Angular app;
+  - `betterleaks` scans the full Git history with a pinned, checksum-verified
+    [Betterleaks](https://github.com/betterleaks/betterleaks) release and fails on any
+    finding (redacted in the log). Mark a false positive with a `betterleaks:allow`
+    comment on the line, or add its fingerprint to `.betterleaksignore`;
+  - `commitlint` (pull requests only) rejects any commit that does not follow
+    [Conventional Commits](https://www.conventionalcommits.org).
 - **Release** (`.github/workflows/release.yml`) runs on every push to `main` and
-  `next`. It reruns the tests, then [semantic-release](https://semantic-release.gitbook.io)
+  `next`. It runs CI, then [semantic-release](https://semantic-release.gitbook.io)
   derives the next version from the commits since the last release: `fix:`/`perf:`
   bump the patch version, `feat:` the minor version, and a `!` after the type or a
   `BREAKING CHANGE:` footer the major version. Other types (`docs:`, `chore:`,
   `refactor:`, `test:`, `ci:`, `build:`, `style:`) publish nothing. `main` produces
   stable `vX.Y.Z` tags; `next` produces `vX.Y.Z-pre.N` pre-releases, and merging
   `next` into `main` promotes them. It pushes the tag, creates the GitHub release with
-  a changelog grouped by commit type, and dispatches the Docker workflow for the tag.
-  Nothing is committed back to the repository.
+  a changelog grouped by commit type, and then calls the Docker workflow for the tag
+  (without testing the same commit again). Nothing is committed back to the repository.
 - **Build and publish Docker image** (`.github/workflows/docker.yml`) runs only for
-  version tags (`vX.Y.Z` or `vX.Y.Z-pre.N`). It reruns the tests, publishes the image
-  to `ghcr.io` and appends the image tags and digest to the release notes (creating
-  the release with GitHub's generated notes if the tag was pushed by hand). Stable
-  tags are published as `latest`; pre-release tags as `prerelease`. Both also get the
-  version tag and the commit SHA as image tags. Dispatching it on anything other than
-  a version tag fails.
+  version tags (`vX.Y.Z` or `vX.Y.Z-pre.N`). It publishes the image to `ghcr.io` and
+  appends the image tags and digest to the release notes (creating the release with
+  GitHub's generated notes if the tag was pushed by hand). A tag pushed or dispatched
+  by hand runs CI first. Stable tags are published as `latest`; pre-release tags as
+  `prerelease`. Both also get the version tag and the commit SHA as image tags.
+  Dispatching it on anything other than a version tag fails.
 
 Commit messages use the form `type(optional scope): summary`, for example
 `feat(tmdb): match episodes by air date` or `fix!: reject renames across devices`.

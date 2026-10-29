@@ -1,0 +1,27 @@
+name: Set up Node.js and install dependencies
+description: Installs Node.js 24 with the npm cache for one package directory, then runs `npm ci` there.
+
+inputs:
+  directory:
+    description: Directory holding the package.json and package-lock.json to install.
+    default: .
+  ci-args:
+    description: Extra arguments for `npm ci`, such as `--ignore-scripts`.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: ${{ inputs.directory }}/package-lock.json
+
+    - name: Install dependencies
+      shell: bash
+      env:
+        DIRECTORY: ${{ inputs.directory }}
+        CI_ARGS: ${{ inputs.ci-args }}
+      run: npm ci --prefix "$DIRECTORY" $CI_ARGS
