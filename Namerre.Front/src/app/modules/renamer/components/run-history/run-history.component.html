@@ -159,7 +159,7 @@
                 <span
                   class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
                   [class]="statusClasses(entry.run.status)"
-                  >{{ statusLabel(entry.run.status) }}</span
+                  >{{ runStatusLabel(entry.run) }}</span
                 >
               </p>
               <a class="font-medium" [routerLink]="['/runs', entry.run.id]">{{
@@ -213,7 +213,7 @@
       <span
         class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
         [class]="statusClasses(current.status)"
-        >{{ statusLabel(current.status) }}</span
+        >{{ runStatusLabel(current) }}</span
       >
       <span
         >· {{ fileCount(current.files.length) }} ·

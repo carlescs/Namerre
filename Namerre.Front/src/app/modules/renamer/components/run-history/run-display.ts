@@ -54,6 +54,21 @@ export function statusLabel(status: string): string {
   return LABELS[status] ?? status;
 }
 
+/**
+ * A running run whose moved files have all reached their target is only doing follow-up work (removing
+ * emptied folders, writing the final record) and is about to complete.
+ */
+export function isFinishingUp(run: RunView): boolean {
+  if (run.status !== 'Running') return false;
+  const moved = run.files.filter((file) => file.sourcePath !== file.targetPath);
+  return moved.length > 0 && moved.every((file) => file.status === 'Completed');
+}
+
+/** Status text for a run, explaining the wait after the last file instead of "In progress". */
+export function runStatusLabel(run: RunView): string {
+  return isFinishingUp(run) ? 'Finishing up…' : statusLabel(run.status);
+}
+
 export function statusClasses(status: string): string {
   return PILL[TONES[status] ?? 'slate'];
 }

@@ -36,6 +36,7 @@ import {
   kindLabel,
   optionEntries,
   pluginName,
+  runStatusLabel,
   runTitle,
   showsStaging,
   splitPath,
@@ -125,6 +126,7 @@ export class RunHistoryComponent {
   protected readonly splitPath = splitPath;
   protected readonly statusClasses = statusClasses;
   protected readonly statusLabel = statusLabel;
+  protected readonly runStatusLabel = runStatusLabel;
   protected readonly trashIcon = faTrashCan;
   private polling?: Subscription;
   private action?: Subscription;
