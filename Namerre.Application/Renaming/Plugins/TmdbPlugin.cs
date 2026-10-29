@@ -79,7 +79,56 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
             if (options.SeasonFolder && match.Season is not null)
                 folder += Render(options.SeasonFolderTemplate, match) + "/";
         }
-        return context.Path with { Folder = folder, Stem = stem };
+        return context.Path with
+        {
+            Folder = folder,
+            Stem = stem + SubtitleSuffix(context.Path.Stem, context.Path.Extension)
+        };
+    }
+
+    private static readonly HashSet<string> SubtitleExtensions =
+        new(StringComparer.OrdinalIgnoreCase) { ".srt", ".ass", ".ssa", ".sub", ".idx", ".vtt" };
+
+    private static readonly HashSet<string> SubtitleFlags =
+        new(StringComparer.OrdinalIgnoreCase) { "hi", "sdh", "cc", "forced", "default" };
+
+    // ISO 639-1 codes; three-letter (639-2/3) codes are accepted in lower case only to limit false positives.
+    private static readonly HashSet<string> Iso6391 = new(
+        ("aa ab ae af ak am an ar as av ay az ba be bg bh bi bm bn bo br bs ca ce ch co cr cs cu cv cy da de dv dz "
+        + "ee el en eo es et eu fa ff fi fj fo fr fy ga gd gl gn gu gv ha he hi ho hr ht hu hy hz ia id ie ig ii ik "
+        + "io is it iu ja jv ka kg ki kj kk kl km kn ko kr ks ku kv kw ky la lb lg li ln lo lt lu lv mg mh mi mk ml "
+        + "mn mr ms mt my na nb nd ne ng nl nn no nr nv ny oc oj om or os pa pi pl ps pt qu rm rn ro ru rw sa sc sd "
+        + "se sg si sk sl sm sn so sq sr ss st su sv sw ta te tg th ti tk tl tn to tr ts tt tw ty ug uk ur uz ve vi "
+        + "vo wa wo xh yi yo za zh zu").Split(' '), StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// For subtitle files, the trailing language and flag tokens of the stem (for example <c>.en.hi</c> in
+    /// <c>Episode.en.hi.srt</c>), which belong to the compound extension and must survive renaming.
+    /// The first token is always the name itself and is never treated as a suffix.
+    /// </summary>
+    internal static string SubtitleSuffix(string stem, string extension)
+    {
+        if (!SubtitleExtensions.Contains(extension)) return "";
+        var tokens = stem.Split('.');
+        var start = tokens.Length;
+        while (start > 1 && IsSubtitleToken(tokens[start - 1])) start--;
+        return start == tokens.Length ? "" : "." + string.Join('.', tokens[start..]);
+    }
+
+    private static bool IsSubtitleToken(string token)
+    {
+        if (SubtitleFlags.Contains(token)) return true;
+        var separator = token.IndexOfAny(['-', '_']);
+        var language = separator < 0 ? token : token[..separator];
+        if (separator >= 0)
+        {
+            var region = token[(separator + 1)..];
+            var validRegion = region.Length == 2 && region.All(char.IsAsciiLetter)
+                || region.Length == 4 && region.All(char.IsAsciiLetter);
+            if (!validRegion) return false;
+        }
+        return language.Length == 2 ? Iso6391.Contains(language)
+            : language.Length == 3 && language.All(char.IsAsciiLetterLower);
     }
 
     private static string Render(string template, TmdbMatch match)

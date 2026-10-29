@@ -522,7 +522,10 @@ Local text/regex/case transformations do not require TMDB.
 Search for a movie or TV show, correct the query when necessary, and confirm the
 intended match. Episodes require a confirmed show, season, and episode. Metadata
 defaults to English; names default to `Movie Title (Year)` or
-`Show Title - S01E02 - Episode Title`, preserving the extension. Folder changes are
+`Show Title - S01E02 - Episode Title`, preserving the extension. For subtitle files
+(`.srt`, `.ass`, `.ssa`, `.sub`, `.idx`, `.vtt`) the trailing language and flag tokens
+before the extension (`.en`, `.pt-BR`, `.eng`, `.hi`, `.sdh`, `.cc`, `.forced`, `.default`) are kept too, so
+`Episode.en.hi.srt` becomes `Show Title - S01E02 - Episode Title.en.hi.srt`. Folder changes are
 optional and off by default. When folder changes are enabled, episodes can additionally
 be placed in a season folder inside the show folder (for example
 `TV/Show Title (2010)/Season 01/`). The season folder template defaults to
