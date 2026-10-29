@@ -39,27 +39,33 @@
       </p>
     }
     <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
-      <table class="min-w-xl">
+      <table class="sm:min-w-xl max-sm:block">
         <caption class="sr-only">
           Files, with their current and new names
         </caption>
-        <thead>
+        <thead class="max-sm:sr-only">
           <tr>
             <th scope="col">Current name</th>
             <th scope="col">New name</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody class="max-sm:block">
           @for (file of prepared.files; track file.id) {
-            <tr>
-              <td class="align-top">
+            <tr
+              class="max-sm:block max-sm:border-t max-sm:border-slate-200 max-sm:p-3 dark:max-sm:border-slate-800"
+            >
+              <td class="align-top max-sm:block max-sm:px-0 max-sm:py-1">
+                <span class="text-xs text-slate-500 sm:hidden dark:text-slate-400"
+                  >Current name</span
+                >
                 <app-name-change
                   [sourcePath]="file.sourcePath"
                   [targetPath]="file.targetPath"
                   side="from"
                 />
               </td>
-              <td class="align-top">
+              <td class="align-top max-sm:block max-sm:px-0 max-sm:py-1">
+                <span class="text-xs text-slate-500 sm:hidden dark:text-slate-400">New name</span>
                 @if (file.sourcePath === file.targetPath) {
                   <span class="text-slate-500 dark:text-slate-400">Stays the same</span>
                 } @else {

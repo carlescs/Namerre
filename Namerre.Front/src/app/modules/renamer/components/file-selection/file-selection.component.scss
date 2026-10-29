@@ -13,8 +13,20 @@ section.collection {
 }
 
 table {
-  min-width: 30rem;
   table-layout: fixed;
+}
+
+@media (max-width: 39.99rem) {
+  table,
+  tbody {
+    display: block;
+  }
+}
+
+@media (min-width: 40rem) {
+  table {
+    min-width: 30rem;
+  }
 }
 
 th:first-child {
