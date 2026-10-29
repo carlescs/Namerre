@@ -15,6 +15,7 @@ public sealed class TmdbMetadataTests : IDisposable
     private readonly string workspace = Path.Combine(Path.GetTempPath(), "namerre-infra-tests", Guid.NewGuid().ToString("N"));
     private readonly List<HttpRequestMessage> requests = [];
     private readonly RenameStore store;
+    private CachedTmdbClient? lookups;
     private Func<HttpRequestMessage, Task<HttpResponseMessage>> respond = _ => Task.FromResult(Json("""{"results":[]}"""));
 
     public TmdbMetadataTests()
@@ -25,6 +26,7 @@ public sealed class TmdbMetadataTests : IDisposable
 
     public void Dispose()
     {
+        lookups?.Dispose();
         store.Dispose();
         if (Directory.Exists(workspace)) Directory.Delete(workspace, true);
     }
@@ -195,7 +197,7 @@ public sealed class TmdbMetadataTests : IDisposable
     }
 
     [Fact]
-    public async Task CacheIsKeyedByQueryAndLanguageAndSurvivesEviction()
+    public async Task CacheIsKeyedByQueryAndLanguageAndBounded()
     {
         var metadata = Metadata();
 
@@ -204,10 +206,10 @@ public sealed class TmdbMetadataTests : IDisposable
         await metadata.Search(new("movie", "a", "en"), default);
         Assert.Equal(2, requests.Count);
 
-        // Filling the cache beyond its 256-entry bound clears it rather than growing without limit.
+        // Lookups past the 256-entry bound still succeed, but the cache never grows beyond it.
         for (var i = 0; i < 260; i++) await metadata.Search(new("movie", "q" + i), default);
-        await metadata.Search(new("movie", "a", "en"), default);
-        Assert.Equal(2 + 260 + 1, requests.Count);
+        Assert.Equal(2 + 260, requests.Count);
+        Assert.InRange(lookups!.Count, 1, 256);
     }
 
     [Fact]
@@ -343,7 +345,9 @@ public sealed class TmdbMetadataTests : IDisposable
             lock (requests) requests.Add(request);
             return respond(request);
         }));
-        return new(new CachedTmdbClient(() => new TmdbClient(client, options)), options, store);
+        lookups?.Dispose();
+        lookups = new CachedTmdbClient(() => new TmdbClient(client, options));
+        return new(lookups, options, store);
     }
 
     private static HttpResponseMessage Json(string json)

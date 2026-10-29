@@ -90,8 +90,8 @@ runs `Migrate()` on startup and refuses unknown applied migrations. Migrations l
 `Namerre.Infrastructure/Renaming/Migrations`. The single administrator account is stored in the
 same database (`Administrators` table).
 
-**TMDB.** `TmdbMetadata` calls TMDB server-side through `CachedTmdbClient` (singleton holding the
-10-minute cache and four-lookup limit), which takes a fresh typed `TmdbClient` per lookup; requests carry
+**TMDB.** `TmdbMetadata` calls TMDB server-side through `CachedTmdbClient` (singleton holding a
+private 256-entry, 10-minute `MemoryCache` and the four-lookup limit), which takes a fresh typed `TmdbClient` per lookup; requests carry
 `Namerre:Tmdb:ReadAccessToken` (never put the token in frontend config, plan snapshots or build args). Matches must be confirmed with a
 `ConfirmationToken` bound to `OptionsHash` — SHA-256 of the plugin's `language` only. The frontend
 reimplements this in `Namerre.Front/src/app/modules/renamer/options-hash.ts` (pure-JS SHA-256 so it

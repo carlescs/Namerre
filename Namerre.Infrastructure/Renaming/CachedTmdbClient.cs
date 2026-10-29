@@ -1,36 +1,43 @@
-using System.Collections.Concurrent;
 using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
 using Namerre.Application.Renaming;
 
 namespace Namerre.Infrastructure.Renaming;
 
 /// <summary>
-/// Shared front for TMDB lookups: caches successful responses for ten minutes and allows four lookups at once.
-/// Each lookup takes a fresh client from <paramref name="clients"/>, so the HTTP client factory can rotate handlers.
+/// Shared front for TMDB lookups: caches up to 256 successful responses for ten minutes and allows four lookups at
+/// once. Each lookup takes a fresh client from <paramref name="clients"/>, so the HTTP client factory can rotate handlers.
 /// </summary>
-public sealed class CachedTmdbClient(Func<ITmdbClient> clients) : ITmdbClient
+public sealed class CachedTmdbClient(Func<ITmdbClient> clients) : ITmdbClient, IDisposable
 {
+    // A private cache: its size limit requires every entry to declare a size, which a shared cache cannot promise.
+    private readonly MemoryCache cache = new(new MemoryCacheOptions { SizeLimit = 256 });
     private readonly SemaphoreSlim concurrency = new(4);
-    private readonly ConcurrentDictionary<string, (DateTimeOffset Expires, JsonElement Value)> cache = new();
+
+    internal int Count => cache.Count;
 
     public async Task<JsonElement> Get(string path, CancellationToken cancellationToken)
     {
-        if (cache.TryGetValue(path, out var entry) && entry.Expires > DateTimeOffset.UtcNow) return entry.Value;
+        if (cache.TryGetValue(path, out JsonElement cached)) return cached;
         if (!await concurrency.WaitAsync(0, cancellationToken))
             throw new RenameException("TmdbBusy", "Four TMDB lookups are already running. Try again shortly.", 429);
         try
         {
             var result = await clients().Get(path, cancellationToken);
-            if (cache.Count >= 256)
+            // When full, the entry is skipped and the cache compacts expired and least recently used entries.
+            cache.Set(path, result, new MemoryCacheEntryOptions
             {
-                var now = DateTimeOffset.UtcNow;
-                foreach (var (key, cached) in cache)
-                    if (cached.Expires <= now) cache.TryRemove(key, out _);
-                if (cache.Count >= 256) cache.Clear();
-            }
-            cache[path] = (DateTimeOffset.UtcNow.AddMinutes(10), result);
+                Size = 1,
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
+            });
             return result;
         }
         finally { concurrency.Release(); }
+    }
+
+    public void Dispose()
+    {
+        cache.Dispose();
+        concurrency.Dispose();
     }
 }
