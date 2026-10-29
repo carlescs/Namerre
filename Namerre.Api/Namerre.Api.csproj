@@ -14,8 +14,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.13" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.14" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.24.2-preview.1" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.20.1" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.20.1" />
@@ -30,11 +30,8 @@
     <ProjectReference Include="..\Namerre.Infrastructure\Namerre.Infrastructure.csproj" />
   </ItemGroup>
 
-  <Target Name="BuildAngularFrontend"
-          BeforeTargets="ResolveProjectStaticWebAssets;AssignTargetPaths"
-          Condition="'$(DesignTimeBuild)' != 'true' and '$(BuildFrontend)' != 'false'">
-    <Exec WorkingDirectory="$(MSBuildProjectDirectory)\..\Namerre.Front"
-          Command="npm run build" />
+  <Target Name="BuildAngularFrontend" BeforeTargets="ResolveProjectStaticWebAssets;AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true' and '$(BuildFrontend)' != 'false'">
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)\..\Namerre.Front" Command="npm run build" />
     <ItemGroup>
       <Content Remove="wwwroot\**" />
       <Content Include="wwwroot\**" CopyToPublishDirectory="PreserveNewest" />
