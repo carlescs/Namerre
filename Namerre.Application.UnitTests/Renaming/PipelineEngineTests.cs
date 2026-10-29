@@ -203,6 +203,7 @@ public sealed class PipelineEngineTests
     public async Task SubtitleLanguageAndFlagSuffixesAreKept(string stem, string extension, string expectedStem)
     {
         var path = "folder/" + stem + extension;
+        fileSystem.Exists(path).Returns(true);
         var plugin = Plugin("tmdb", "tmdb", new { nameTemplate = "{title}" });
         var selection = new MetadataSelection("file", "tmdb", path,
             TmdbPlugin.OptionsHash(plugin.Options), "confirmed");
@@ -211,6 +212,7 @@ public sealed class PipelineEngineTests
         var preview = await TestPipeline.Create(metadata, fileSystem).Preview(
             Request([plugin], path) with { Selections = [selection] }, default);
 
+        Assert.True(preview.CanPrepare);
         Assert.Equal("folder/" + expectedStem + extension, Assert.Single(preview.Files).TargetPath);
     }
 
