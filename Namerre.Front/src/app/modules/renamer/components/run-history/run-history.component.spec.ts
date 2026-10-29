@@ -563,8 +563,21 @@ describe('RunHistoryComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Cannot reach the server.');
   });
 
-  it('re-reads runs on pushed changes and polls only while they are active', async () => {
+  it('shows finishing up when every file is completed but the run is still running', async () => {
     http.expectOne('/api/rename-runs/run-1').flush({ ...run, status: 'Running' });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Finishing up…');
+    events.push('Run', 'run-1');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    http.expectOne('/api/rename-runs/run-1').flush({ ...run, status: 'Completed' });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('Finishing up…');
+    expect(fixture.nativeElement.textContent).toContain('Completed');
+  });
+
+  it('re-reads runs on pushed changes and polls only while they are active', async () => {
+    const moving = run.files.map((file) => ({ ...file, status: 'Staged' }));
+    http.expectOne('/api/rename-runs/run-1').flush({ ...run, status: 'Running', files: moving });
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('In progress');
     expect(events.polling).toBe(true);
@@ -984,6 +997,7 @@ describe('RunHistoryComponent', () => {
       kind: 'Rollback',
       parentRunId: 'rename-1',
       status: 'Running',
+      files: rename.files.map((file) => ({ ...file, status: 'Pending' })),
     };
     http
       .expectOne('/api/rename-runs?page=1&pageSize=20')

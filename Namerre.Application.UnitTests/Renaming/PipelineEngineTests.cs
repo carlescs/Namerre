@@ -189,6 +189,34 @@ public sealed class PipelineEngineTests
     }
 
     [Theory]
+    [InlineData("Ep.en.hi", ".srt", "Resolved.en.hi")]
+    [InlineData("Ep.es", ".srt", "Resolved.es")]
+    [InlineData("Ep.pt-BR", ".vtt", "Resolved.pt-BR")]
+    [InlineData("Ep.eng.forced", ".SRT", "Resolved.eng.forced")]
+    [InlineData("Ep.Forced", ".ass", "Resolved.Forced")]
+    [InlineData("Ep.en.SDH", ".ssa", "Resolved.en.SDH")]
+    [InlineData("Ep.Part.Two", ".srt", "Resolved")]
+    [InlineData("Ep.en.Part", ".srt", "Resolved")]
+    [InlineData("en.hi", ".srt", "Resolved.hi")]
+    [InlineData("Ep.en.hi", ".mkv", "Resolved")]
+    [InlineData("Ep.en", ".nfo", "Resolved")]
+    public async Task SubtitleLanguageAndFlagSuffixesAreKept(string stem, string extension, string expectedStem)
+    {
+        var path = "folder/" + stem + extension;
+        fileSystem.Exists(path).Returns(true);
+        var plugin = Plugin("tmdb", "tmdb", new { nameTemplate = "{title}" });
+        var selection = new MetadataSelection("file", "tmdb", path,
+            TmdbPlugin.OptionsHash(plugin.Options), "confirmed");
+        metadata.Resolve(selection).Returns(new TmdbMatch(10, "movie", "Resolved", "2000", null, null, null));
+
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(
+            Request([plugin], path) with { Selections = [selection] }, default);
+
+        Assert.True(preview.CanPrepare);
+        Assert.Equal("folder/" + expectedStem + extension, Assert.Single(preview.Files).TargetPath);
+    }
+
+    [Theory]
     [InlineData(true, "Season {season}", 2, "TV/Show/Season 02/Show - S02E05.MKV")]
     [InlineData(true, "Season {seasonNumber}", 2, "TV/Show/Season 2/Show - S02E05.MKV")]
     [InlineData(true, "S{season}", 2, "TV/Show/S02/Show - S02E05.MKV")]
@@ -418,6 +446,8 @@ public sealed class PipelineEngineTests
 
     private static PipelineRequest Request(IReadOnlyList<PluginInstance> plugins)
         => new([new("file", "folder/alpha.beta.MKV")], plugins);
+    private static PipelineRequest Request(IReadOnlyList<PluginInstance> plugins, string path)
+        => new([new("file", path)], plugins);
     private static PluginInstance Plugin(string id, string type, object options)
         => new(id, type, 1, true, JsonSerializer.SerializeToElement(options));
 }

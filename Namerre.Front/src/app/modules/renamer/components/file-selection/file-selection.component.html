@@ -81,7 +81,7 @@
         <caption class="sr-only">
           Files added for renaming
         </caption>
-        <thead>
+        <thead class="max-sm:sr-only">
           <tr>
             <th scope="col">Name</th>
             <th scope="col">Size</th>
@@ -89,27 +89,31 @@
             <th scope="col">Actions</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody class="max-sm:block">
           @for (file of filteredFiles(); track file.path) {
-            <tr>
-              <td>
-                <span class="block font-medium text-slate-900 dark:text-slate-100">{{
+            <tr
+              class="max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:gap-x-4 max-sm:gap-y-1 max-sm:border-t max-sm:border-slate-200 max-sm:p-3 dark:max-sm:border-slate-800"
+            >
+              <td class="max-sm:order-1 max-sm:w-full max-sm:p-0">
+                <span class="block font-medium break-all text-slate-900 dark:text-slate-100">{{
                   file.name
                 }}</span>
-                <span class="block text-xs text-slate-500 dark:text-slate-400">{{
+                <span class="block text-xs break-all text-slate-500 dark:text-slate-400">{{
                   file.folderPath || 'Server root'
                 }}</span>
               </td>
               <td
-                class="whitespace-nowrap tabular-nums"
+                class="whitespace-nowrap tabular-nums max-sm:order-2 max-sm:p-0"
                 [title]="(file.length | number) + ' bytes'"
               >
                 {{ formatSize(file.length) }}
               </td>
-              <td class="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
+              <td
+                class="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400 max-sm:order-3 max-sm:p-0"
+              >
                 {{ file.lastModifiedUtc | date: 'mediumDate' }}
               </td>
-              <td>
+              <td class="max-sm:order-4 max-sm:ml-auto max-sm:p-0">
                 <button
                   type="button"
                   class="text-slate-500 dark:text-slate-400 hover:text-rose-700 dark:hover:text-rose-400"
@@ -124,9 +128,6 @@
         </tbody>
       </table>
     </div>
-    <p class="mb-0 mt-2 text-xs text-slate-500 dark:text-slate-400 sm:hidden">
-      Scroll the table horizontally for details and file actions.
-    </p>
     @if (!filteredFiles().length) {
       <div class="py-8 text-center">
         <p class="font-medium text-slate-900 dark:text-slate-100">No files match your filter.</p>

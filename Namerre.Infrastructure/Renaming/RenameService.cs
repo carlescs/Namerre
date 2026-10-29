@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Plans;
@@ -312,7 +313,14 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             run = MoveJournaled(run, file.Id, file.StagingPath, file.TargetPath, "Place");
             run = ChangeFile(run, file.Id, "Completed");
         }
-        if (run.DeleteEmptyFolders) run = DeleteEmptyFolders(run, changed);
+        if (run.DeleteEmptyFolders)
+        {
+            // Every file is already placed, so this is the wait clients see as "Finishing up".
+            var started = Stopwatch.GetTimestamp();
+            run = DeleteEmptyFolders(run, changed);
+            logger.LogInformation("Empty folder cleanup for run {Id} took {Elapsed}", run.Id,
+                Stopwatch.GetElapsedTime(started));
+        }
         run = run with { Status = "Completed", Files = run.Files.Select(f => f with { Status = "Completed" }).ToArray() };
         Complete(run, "RolledBack");
     }
