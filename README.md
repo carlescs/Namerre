@@ -122,7 +122,9 @@ OpenTelemetry Collector (or any OTLP-compatible backend). It is disabled unless
 | `ServiceName` | `namerre` | Reported as `service.name`. |
 
 Exported signals: ASP.NET Core and outgoing `HttpClient` (TMDB) traces and metrics,
-.NET runtime metrics, and application logs. Query strings are redacted by the
+Entity Framework Core database command traces (the SQLite store; commands are
+parameterized and parameter values are not recorded), .NET runtime metrics, and
+application logs. Query strings are redacted by the
 instrumentation, but request paths and log messages may contain media file and folder
 names, so send telemetry only to a collector you trust. Invalid settings fail startup.
 

@@ -46,6 +46,8 @@ public static class TelemetrySetup
             .WithTracing(tracing => tracing
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
+                // One span per EF Core database command (the SQLite rename store).
+                .AddEntityFrameworkCoreInstrumentation()
                 .AddOtlpExporter(options => Configure(options, "/v1/traces")))
             .WithMetrics(metrics => metrics
                 .AddAspNetCoreInstrumentation()
