@@ -4,16 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Namerre is a self-hosted web file renamer: an ASP.NET Core (.NET 10) API that hosts an Angular 22
 SPA, with user-ordered rename pipelines, previews, durable journaled execution, persistent history
-(SQLite), selective rollback and recovery. `README.md` is the authoritative user/operator doc;
-`.github/copilot-instructions.md` holds older but mostly still valid conventions (its claim that
-renaming is "not yet implemented" and that Domain is empty is outdated).
+(SQLite), selective rollback and recovery. `README.md` is the authoritative user/operator doc.
 
 ## Commands
 
 Run from the repo root (PowerShell). The first restore needs GitHub Packages credentials for
 CMediator via `NuGetPackageSourceCredentials_Github`
 (`Username=...;Password=<PAT with read:packages>;ValidAuthenticationTypes=Basic`); `nuget.config`
-maps CMediator packages to the `Github` source.
+maps CMediator packages to the `Github` source (CI uses the `CMEDIATOR_PACKAGES_TOKEN` secret).
+The frontend declares `npm@11.13.0` as its package manager; use npm with the committed lockfiles.
 
 ```powershell
 npm ci --prefix .\Namerre.Front
@@ -23,11 +22,17 @@ dotnet test .\Namerre.Application.UnitTests\Namerre.Application.UnitTests.csproj
 $env:Namerre__RootPath = 'D:\Media'; $env:Namerre__DataPath = 'D:\NamerreData'
 dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https   # https://localhost:7151
 dotnet run --project .\Namerre.Api\Namerre.Api.csproj -- --hash-password       # interactive admin hash
+dotnet publish .\Namerre.Api\Namerre.Api.csproj -c Release -o .\artifacts\publish
 ```
 
-- `/p:BuildFrontend=false` skips the npm build when `wwwroot` is already built (used in Docker).
+- `BuildAngularFrontend` runs before content collection, so builds and publishes include the
+  freshly generated `wwwroot`. `/p:BuildFrontend=false` skips the npm build when `wwwroot` is
+  already built (used in Docker).
+- Launch profiles: `https` serves `https://localhost:7151` and `http://localhost:5251`; `http` uses 5251.
 - First run without configured credentials prints a one-time installation token to the console.
 - Docker: `docker build -f .\Namerre.Api\Dockerfile -t namerre --secret id=github_packages_credentials,env=NuGetPackageSourceCredentials_Github .`
+  then `docker run --rm -p 8080:8080 namerre` (`http://localhost:8080`). The Dockerfile builds Angular
+  in a Node stage, publishes the API in an SDK stage, and runs only ASP.NET Core in the final image.
 
 Frontend, from `Namerre.Front` (Angular unit-test builder with Vitest + jsdom — always go through
 `npm test`, never invoke Vitest directly):
@@ -37,10 +42,17 @@ npm test -- --watch=false
 npm test -- --watch=false --include=src/app/app.spec.ts --filter="should render title"
 npm run lint      # Biome (TS/CSS/SCSS lint + format) and Prettier (HTML templates)
 npm run format    # apply Biome safe fixes and formatting, Prettier on templates
+npm run watch     # development build in watch mode
+npm run ng -- generate component component-name
 ```
 
+Test globals come from `vitest/globals` (`tsconfig.spec.json`). Component tests import the
+standalone component into `TestBed`, create a fixture and `await fixture.whenStable()` before
+asserting on rendered content.
+
 `npm start` (port 4200) has no API proxy; for anything touching `/api`, run the API process,
-which serves Angular same-origin. Browser checks should target the API URL.
+which serves Angular same-origin. Browser checks should target the API URL; `.mcp.json` configures
+a headless, isolated Playwright MCP server for that.
 
 ## Architecture
 
@@ -110,28 +122,37 @@ export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless `OtlpEndp
 responses, requires authorization on all controllers, returns 404 for unmatched `/api/*`, and
 falls back to `index.html` otherwise. OpenAPI is exposed only in Development.
 
-**Frontend.** Standalone Angular app (signals, external templates, `app` selector prefix, SCSS
-component styles, Tailwind CSS v4 via PostCSS in `src/styles.css`). The root route lazy-loads
-`modules/renamer`; `rename-api.ts` is the HTTP client for the resource-style renaming endpoints
-(`/api/rename-plugins`, `/api/rename-previews`, `/api/rename-plans`, …). The workflow is a staged
-wizard (`rename-workflow` component) across file selection, plugin configuration, TMDB matching,
-preview, confirmation and run history. Angular builds into `Namerre.Api/wwwroot` (generated,
-cleared on rebuild) — put static assets in `Namerre.Front/public`.
+**Frontend.** Standalone Angular app (signals, explicit component imports, external templates +
+`styleUrl`, `app` selector prefix, SCSS component styles, Tailwind CSS v4 via PostCSS in
+`src/styles.css`). `src/main.ts` bootstraps `App` with `appConfig`; app-wide providers go in
+`src/app/app.config.ts`, routes in `src/app/app.routes.ts`. Use same-origin `/api/...` URLs.
+The root route lazy-loads `modules/renamer`; `rename-api.ts` is the HTTP client for the
+resource-style renaming endpoints (`/api/rename-plugins`, `/api/rename-previews`,
+`/api/rename-plans`, …). The workflow is a staged wizard (`rename-workflow` component) across file
+selection, plugin configuration, TMDB matching, preview, confirmation and run history. Angular builds into `Namerre.Api/wwwroot` with no `browser`
+subdirectory (generated, cleared on rebuild) — put static assets in `Namerre.Front/public`.
+Missing asset files stay 404 rather than falling back to `index.html`.
 
 ## Conventions
 
-- CMediator v1.1.3: requests are `sealed`, handlers are `internal sealed` and stay in Application
-  (the source generator only sees that compilation); registration comes from `AddApplication()` —
-  no manual handler registration or assembly scanning. `MED001/002/003/005` are build errors.
-  Pass the request `CancellationToken` through `ISender.Send`.
+- C# nullable reference types and implicit usings are enabled. Controllers use `[ApiController]`
+  and verb attributes.
+- CMediator v1.1.3 (its upstream code-fix package is named `CMediato.CodeFixes`): requests are
+  `sealed`, handlers are `internal sealed` and stay in Application (the source generator only sees
+  that compilation); registration comes from `AddApplication()` — no manual handler registration
+  or assembly scanning. `MED001/002/003/005` are build errors. Pass the request
+  `CancellationToken` through `ISender.Send`.
 - Don't make handlers public for tests; `InternalsVisibleTo` exposes them to
-  `Namerre.Application.UnitTests`. Unit tests use xUnit + NSubstitute (substitute collaborators,
-  not the class under test). `Namerre.Infrastructure.UnitTests` covers `TmdbMetadata` (stub
-  `HttpMessageHandler`) and `BoundedFileSystem` against temp directories. `Namerre.Api.Tests` holds
-  HTTP integration tests (`AuthWebApplicationFactory`).
+  `Namerre.Application.UnitTests`. `Namerre.Api.UnitTests` and `Namerre.Application.UnitTests` use
+  xUnit + NSubstitute (substitute collaborators, not the class under test).
+  `Namerre.Infrastructure.UnitTests` covers `TmdbMetadata` (stub `HttpMessageHandler`) and
+  `BoundedFileSystem` against temp directories. `Namerre.Api.Tests` holds HTTP integration tests
+  (`AuthWebApplicationFactory`).
 - Frontend linting/formatting: Biome (`biome.json`) for TS/CSS/SCSS, Prettier only for Angular
   `.html` templates (Biome can't parse Angular control flow yet); 2 spaces, single quotes,
-  100 columns. Keep the strict TypeScript and Angular compiler flags enabled.
+  100 columns, OS-native line endings. Keep the strict compiler flags enabled (TypeScript
+  `noImplicitOverride`, `noPropertyAccessFromIndexSignature`, `noImplicitReturns`,
+  `noFallthroughCasesInSwitch`; Angular strict injection parameters and input access modifiers).
 - Workload limits enforced server-side: ≤200 files and ≤32 plugin instances per run, ≤32 queued
   jobs, regex timeout 100 ms, TMDB lookups 15 s overall (5 s per attempt).
 - CI (`.github/workflows/ci.yml`: backend build/tests on Ubuntu and Windows, frontend lint/tests,
