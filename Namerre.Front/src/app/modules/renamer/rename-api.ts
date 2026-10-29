@@ -50,6 +50,8 @@ export interface PluginDescriptor {
   defaultOptions: PluginOptions;
   /** Option editor layout; keys refer to `defaultOptions`. */
   form: OptionGroup[];
+  /** At most one instance of this type per pipeline, enabled or not. */
+  singleInstance?: boolean;
 }
 export interface MetadataSelection {
   fileId: string;

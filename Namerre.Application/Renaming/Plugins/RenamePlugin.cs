@@ -17,8 +17,8 @@ public abstract class RenamePlugin<TOptions> : IRenamePlugin where TOptions : cl
     };
 
     protected RenamePlugin(string typeId, int version, string name, string description,
-        IReadOnlyList<OptionGroup> form)
-        => Descriptor = new(typeId, version, name, description, new TOptions(), form);
+        IReadOnlyList<OptionGroup> form, bool singleInstance = false)
+        => Descriptor = new(typeId, version, name, description, new TOptions(), form, singleInstance);
 
     public PluginDescriptor Descriptor { get; }
 

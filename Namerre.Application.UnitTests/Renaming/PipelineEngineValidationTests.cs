@@ -291,6 +291,11 @@ public sealed class PipelineEngineValidationTests
         { new([new("a", "src/a.txt")], [new("p", "case", 1, true, JsonSerializer.SerializeToElement("text"))]), "InvalidPlugin" },
         { new([new("a", "src/a.txt")], [Plugin("p", "regex", new { pattern = new string('x', 8200) })]), "InvalidPlugin" },
         {
+            new([new("a", "src/a.txt")],
+                [Plugin("t1", "tmdb", new { }), Plugin("t2", "tmdb", new { }) with { Enabled = false }]),
+            "SingleInstancePlugin"
+        },
+        {
             new([new("a", "src/a.txt")], [], Enumerable.Range(0, NamingRules.MaxFiles * NamingRules.MaxPlugins + 1)
                 .Select(i => new MetadataSelection("a", i.ToString(), "src/a.txt", "", "")).ToArray()),
             "BatchLimit"
@@ -308,6 +313,15 @@ public sealed class PipelineEngineValidationTests
             [Plugin("p", "tmdb", new { }) with { Enabled = false }],
             Enumerable.Range(0, NamingRules.MaxFiles * NamingRules.MaxPlugins)
                 .Select(i => new MetadataSelection("a", i.ToString(), "src/a.txt", "", "")).ToArray()));
+
+    [Fact]
+    public void ValidateRequestAcceptsRepeatedPluginsThatAllowSeveralInstances()
+        => engine.ValidateRequest(new([new("a", "src/a.txt")],
+            [Plugin("c1", "case", new { }), Plugin("t", "tmdb", new { }), Plugin("c2", "case", new { })]));
+
+    [Fact]
+    public void OnlyTheTmdbPluginIsLimitedToOneInstance()
+        => Assert.Equal(["tmdb"], engine.Catalog.Where(d => d.SingleInstance).Select(d => d.TypeId));
 
     private static MetadataSelection Selection(PluginInstance plugin, string input)
         => new("file", plugin.InstanceId, input, TmdbPlugin.OptionsHash(plugin.Options), "confirmed");
