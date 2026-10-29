@@ -31,10 +31,15 @@ public static class DependencyInjection
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.DataPath,
             provider.GetRequiredService<IHostEnvironment>().ContentRootPath));
         services.AddSingleton<IAdministratorStore, AdministratorStore>();
-        services.AddHttpClient("tmdb", client => client.Timeout = TimeSpan.FromSeconds(15));
-        services.AddSingleton<ITmdbMetadata>(provider => new TmdbMetadata(
-            provider.GetRequiredService<IHttpClientFactory>().CreateClient("tmdb"),
-            provider.GetRequiredService<IOptions<NamerreOptions>>(), provider.GetRequiredService<RenameStore>()));
+        // TmdbMetadata holds the lookup cache and concurrency limit, so one instance is shared; it keeps its client
+        // for the process lifetime and relies on pooled connection recycling instead of handler rotation for DNS changes.
+        services.AddHttpClient<TmdbMetadata>(client => client.Timeout = TimeSpan.FromSeconds(15))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+            })
+            .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
+        services.AddSingleton<ITmdbMetadata>(provider => provider.GetRequiredService<TmdbMetadata>());
         services.AddSingleton<RenameService>();
         services.AddSingleton<IRenameService>(provider => provider.GetRequiredService<RenameService>());
         services.AddHostedService<RenameWorker>();
