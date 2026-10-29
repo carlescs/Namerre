@@ -197,7 +197,7 @@ public sealed class PipelineEngineTests
     [InlineData("Ep.en.SDH", ".ssa", "Resolved.en.SDH")]
     [InlineData("Ep.Part.Two", ".srt", "Resolved")]
     [InlineData("Ep.en.Part", ".srt", "Resolved")]
-    [InlineData("en.hi", ".srt", "Resolved")]
+    [InlineData("en.hi", ".srt", "Resolved.hi")]
     [InlineData("Ep.en.hi", ".mkv", "Resolved")]
     [InlineData("Ep.en", ".nfo", "Resolved")]
     public async Task SubtitleLanguageAndFlagSuffixesAreKept(string stem, string extension, string expectedStem)
