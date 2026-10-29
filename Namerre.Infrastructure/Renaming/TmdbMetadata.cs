@@ -58,7 +58,10 @@ public sealed class TmdbMetadata(ITmdbClient client, IOptions<NamerreOptions> op
         var matches = new List<TmdbMatch>();
         if (result.TryGetProperty("results", out var results))
         {
-            foreach (var item in results.EnumerateArray().Take(20))
+            // TMDB search can list the same show or movie more than once; offer each ID only once.
+            var seen = new HashSet<int>();
+            foreach (var item in results.EnumerateArray()
+                         .Where(item => seen.Add(item.GetProperty("id").GetInt32())).Take(20))
             {
                 var date = Text(item, request.MediaType == "movie" ? "release_date" : "first_air_date");
                 matches.Add(new(item.GetProperty("id").GetInt32(), request.MediaType,
