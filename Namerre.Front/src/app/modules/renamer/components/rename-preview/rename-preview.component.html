@@ -63,11 +63,11 @@
       }
     </div>
     <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
-      <table class="min-w-xl">
+      <table class="sm:min-w-xl max-sm:block">
         <caption class="sr-only">
           Files, with their current and new names
         </caption>
-        <thead>
+        <thead class="max-sm:sr-only">
           <tr>
             <th scope="col">Status</th>
             <th scope="col">Current name</th>
@@ -76,9 +76,11 @@
         </thead>
         @for (file of visibleFiles(); track file.id) {
           @let state = status(file);
-          <tbody>
-            <tr>
-              <td class="w-32 align-top">
+          <tbody class="max-sm:block">
+            <tr
+              class="max-sm:block max-sm:border-t max-sm:border-slate-200 max-sm:p-3 dark:max-sm:border-slate-800"
+            >
+              <td class="w-32 align-top max-sm:block max-sm:px-0 max-sm:py-1">
                 <span
                   class="badge"
                   [class]="
@@ -99,14 +101,18 @@
                   }}</span
                 >
               </td>
-              <td class="align-top">
+              <td class="align-top max-sm:block max-sm:px-0 max-sm:py-1">
+                <span class="text-xs text-slate-500 sm:hidden dark:text-slate-400"
+                  >Current name</span
+                >
                 <app-name-change
                   [sourcePath]="file.sourcePath"
                   [targetPath]="file.targetPath"
                   side="from"
                 />
               </td>
-              <td class="align-top">
+              <td class="align-top max-sm:block max-sm:px-0 max-sm:py-1">
+                <span class="text-xs text-slate-500 sm:hidden dark:text-slate-400">New name</span>
                 @if (awaitingMetadata(file)) {
                   <p class="m-0 text-slate-500 dark:text-slate-400">
                     The new name appears once TMDB matching is complete.
@@ -129,9 +135,9 @@
               </td>
             </tr>
             @if (file.steps.length) {
-              <tr>
-                <td class="border-t-0 py-1"></td>
-                <td colspan="2" class="border-t-0 py-1">
+              <tr class="max-sm:block max-sm:px-3 max-sm:pb-3">
+                <td class="border-t-0 py-1 max-sm:hidden"></td>
+                <td colspan="2" class="border-t-0 py-1 max-sm:block max-sm:p-0">
                   <details class="m-0 border-0 bg-transparent p-0 dark:bg-transparent">
                     <summary class="text-xs">
                       How this name was built ({{ file.steps.length }}
@@ -168,9 +174,9 @@
             }
           </tbody>
         } @empty {
-          <tbody>
-            <tr>
-              <td colspan="3" class="text-slate-500 dark:text-slate-400">
+          <tbody class="max-sm:block">
+            <tr class="max-sm:block">
+              <td colspan="3" class="max-sm:block text-slate-500 dark:text-slate-400">
                 No files match this filter.
               </td>
             </tr>
