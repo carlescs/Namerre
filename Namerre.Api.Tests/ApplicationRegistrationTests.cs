@@ -43,6 +43,7 @@ public sealed class ApplicationRegistrationTests
         services.AddSingleton<IFolderBrowser>(new ServerFolderBrowser(null, Path.GetTempPath()));
         services.AddSingleton<IRenameService>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddSingleton<ITmdbMetadata>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
+        services.AddSingleton<IRenameFileSystem>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         using var provider = services.BuildServiceProvider(
             new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
         using var scope = provider.CreateScope();

@@ -1,5 +1,6 @@
 using CMediator;
 using Microsoft.Extensions.DependencyInjection;
+using Namerre.Application.Renaming;
 
 namespace Namerre.Application;
 
@@ -9,6 +10,7 @@ public static class DependencyInjection
     {
         services.AddInProcessMediator();
         services.AddGeneratedMediator();
+        services.AddSingleton<PipelineEngine>();
 
         return services;
     }

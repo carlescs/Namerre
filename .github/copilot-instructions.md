@@ -97,9 +97,9 @@ in `tsconfig.spec.json`.
   belong in `src\app\app.config.ts`, and routes in `src\app\app.routes.ts`.
   `App` imports `RouterOutlet`; the root route lazy-loads the renamer feature.
   Folder browsing uses same-origin `HttpClient` requests to `/api/folders`.
-- The API uses ASP.NET Core controllers. `Program.cs` registers controllers
-  and OpenAPI, exposes OpenAPI only in Development, enables HTTPS redirection
-  and authorization middleware, and serves default/static files from `wwwroot`.
+- The API uses ASP.NET Core controllers. `AddApi()` (`DependencyInjection.cs`)
+  registers controllers and OpenAPI; `Program.cs` exposes OpenAPI only in
+  Development, enables HTTPS redirection and authorization middleware, and serves default/static files from `wwwroot`.
   Controllers use an `api/` prefix in their route attributes so routing and
   generated OpenAPI paths agree.
 - Use same-origin `/api/...` URLs for frontend API calls

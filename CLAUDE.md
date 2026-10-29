@@ -47,7 +47,9 @@ which serves Angular same-origin. Browser checks should target the API URL.
 Clean architecture, dependencies point inward:
 `Domain` ← `Application` ← `Infrastructure` ← `Api` (composition root; also references Application).
 Application must not reference Infrastructure or ASP.NET Core; define interfaces in Application,
-implement in Infrastructure, register in `Namerre.Api/Program.cs`.
+implement in Infrastructure. Each project registers its own services through a `DependencyInjection`
+extension — `AddApplication()`, `AddInfrastructure(configuration)` and the Api's `AddApi()` (web host
+services, incl. the `IRenameNotifier` implementation) — and `Namerre.Api/Program.cs` only calls them.
 
 **Request flow.** Controllers (`Namerre.Api/Controllers`, namespace `Namerre.Controllers`,
 routes always start with `api/` — `RenamingController` uses per-action routes like
@@ -88,8 +90,11 @@ runs `Migrate()` on startup and refuses unknown applied migrations. Migrations l
 `Namerre.Infrastructure/Renaming/Migrations`. The single administrator account is stored in the
 same database (`Administrators` table).
 
-**TMDB.** `TmdbMetadata` calls TMDB server-side with `Namerre:Tmdb:ReadAccessToken` (never put the
-token in frontend config, plan snapshots or build args). Matches must be confirmed with a
+**TMDB.** `TmdbMetadata` calls TMDB server-side through `CachedTmdbClient` (singleton holding a
+private 256-entry, 10-minute `MemoryCache`), which takes a fresh typed `TmdbClient` per lookup. The client's
+Polly pipeline (`TmdbResilience`: four-lookup concurrency limiter, 15 s total / 5 s attempt timeouts, retries
+that skip 429, circuit breaker) sits in front of it, and `TmdbClient` maps its rejections to API errors; requests carry
+`Namerre:Tmdb:ReadAccessToken` (never put the token in frontend config, plan snapshots or build args). Matches must be confirmed with a
 `ConfirmationToken` bound to `OptionsHash` — SHA-256 of the plugin's `language` only. The frontend
 reimplements this in `Namerre.Front/src/app/modules/renamer/options-hash.ts` (pure-JS SHA-256 so it
 works on plain-HTTP origins); keep both sides in sync. Confirmed metadata is snapshotted into the plan.
@@ -128,7 +133,7 @@ cleared on rebuild) — put static assets in `Namerre.Front/public`.
   `.html` templates (Biome can't parse Angular control flow yet); 2 spaces, single quotes,
   100 columns. Keep the strict TypeScript and Angular compiler flags enabled.
 - Workload limits enforced server-side: ≤200 files and ≤32 plugin instances per run, ≤32 queued
-  jobs, regex timeout 100 ms, TMDB HTTP timeout 15 s.
+  jobs, regex timeout 100 ms, TMDB lookups 15 s overall (5 s per attempt).
 - CI (`.github/workflows/backend.yml`, PRs to `main`/`next`; pushes via `release.yml`) only builds/tests, on Ubuntu and Windows —
   keep path handling cross-platform. Docker images are built and published only for version tags
   (`docker.yml`); `release.yml` runs semantic-release (`release.config.mjs`) on pushes to `main`
