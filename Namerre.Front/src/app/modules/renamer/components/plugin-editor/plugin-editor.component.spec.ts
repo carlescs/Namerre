@@ -1,28 +1,16 @@
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { casePlugin, literalPlugin, regexPlugin, tmdbPlugin } from '../../plugin-catalog.testing';
 import type { PluginDescriptor, PluginInstance } from '../../rename-api';
 import { PluginEditorComponent } from './plugin-editor.component';
 
+// Case defaults to 'upper' here so a fresh card differs from restored drafts.
 const testCatalog: PluginDescriptor[] = [
+  literalPlugin,
+  { ...casePlugin, defaultOptions: { mode: 'upper' } },
   {
-    typeId: 'literal',
-    version: 1,
-    name: 'Literal replacement',
-    defaultOptions: { search: '', replacement: '', ignoreCase: false, scope: 'all' },
-  },
-  { typeId: 'case', version: 1, name: 'Case change', defaultOptions: { mode: 'upper' } },
-  {
-    typeId: 'tmdb',
-    version: 1,
+    ...tmdbPlugin,
     name: 'TMDB',
-    defaultOptions: {
-      nameTemplate: '{title} ({year})',
-      changeFolder: false,
-      baseFolder: '',
-      folderTemplate: '{title} ({year})',
-      seasonFolder: false,
-      seasonFolderTemplate: 'Season {season}',
-      language: 'en-US',
-    },
+    defaultOptions: { ...tmdbPlugin.defaultOptions, nameTemplate: '{title} ({year})' },
   },
 ];
 
@@ -39,7 +27,7 @@ describe('PluginEditorComponent', () => {
     await fixture.whenStable();
   });
 
-  it('restores saved plugins without focusing them and drops unknown types', async () => {
+  it('restores saved plugins without focusing them and drops unknown types and versions', async () => {
     const saved: PluginInstance = {
       instanceId: 'saved-case',
       typeId: 'case',
@@ -52,6 +40,7 @@ describe('PluginEditorComponent', () => {
     restored.componentRef.setInput('initialPlugins', [
       saved,
       { ...saved, instanceId: 'gone', typeId: 'removed-type' },
+      { ...saved, instanceId: 'retired', version: 9 },
     ]);
     let emitted: PluginInstance[] | undefined;
     restored.componentInstance.pluginsChanged.subscribe((value) => (emitted = value));
@@ -79,7 +68,10 @@ describe('PluginEditorComponent', () => {
     await fixture.whenStable();
     expect(plugins.map((plugin) => plugin.typeId)).toEqual(['literal', 'literal']);
     expect(plugins[0].instanceId).not.toBe(plugins[1].instanceId);
-    expect(plugins.map((plugin) => plugin.options.search)).toEqual(['first', 'second']);
+    expect(plugins.map((plugin) => plugin.options)).toEqual([
+      expect.objectContaining({ search: 'first' }),
+      expect.objectContaining({ search: 'second' }),
+    ]);
   });
 
   it('emits exact visible order, maintains configuration after disabling, and removes instances', async () => {
@@ -96,7 +88,7 @@ describe('PluginEditorComponent', () => {
     input.dispatchEvent(new Event('input'));
     await fixture.whenStable();
     expect(plugins[1].enabled).toBe(false);
-    expect(plugins[1].options.search).toBe('still configured');
+    expect(plugins[1].options).toMatchObject({ search: 'still configured' });
     expect(plugins[1].instanceId).toBe(literalId);
     button('Remove plugin 1').click();
     await fixture.whenStable();
@@ -161,12 +153,17 @@ describe('PluginEditorComponent', () => {
     select.value = 'title';
     select.dispatchEvent(new Event('change'));
     await fixture.whenStable();
-    expect(plugins[0].options.mode).toBe('title');
+    expect(plugins[0].options).toMatchObject({ mode: 'title' });
   });
 
   it('keeps hidden TMDB values and offers locale suggestions', async () => {
     await add('tmdb');
-    expect(fixture.nativeElement.querySelectorAll('datalist#tmdb-languages option').length).toBe(
+    const language = [...fixture.nativeElement.querySelectorAll('label')]
+      .find((element) => element.textContent?.includes('Metadata language'))
+      .querySelector('input') as HTMLInputElement;
+    const list = language.getAttribute('list');
+    expect(list).toBeTruthy();
+    expect(fixture.nativeElement.querySelectorAll(`datalist[id="${list}"] option`)).toHaveLength(
       12,
     );
     expect(plugins[0].options.folderTemplate).toBe('{title} ({year})');
@@ -260,7 +257,7 @@ describe('PluginEditorComponent', () => {
   it('edits choice options and defaults missing option values', async () => {
     fixture.componentRef.setInput('catalog', [
       ...testCatalog,
-      { typeId: 'regex', version: 1, name: 'Regular expression', defaultOptions: {} },
+      { ...regexPlugin, defaultOptions: {} },
     ]);
     await fixture.whenStable();
     await add('case');
@@ -269,7 +266,7 @@ describe('PluginEditorComponent', () => {
     mode.value = 'title';
     mode.dispatchEvent(new Event('change'));
     await fixture.whenStable();
-    expect(plugins[0].options.mode).toBe('title');
+    expect(plugins[0].options).toMatchObject({ mode: 'title' });
     await add('regex');
     const regex = fixture.nativeElement.querySelectorAll('article')[1] as HTMLElement;
     const texts = [...regex.querySelectorAll('input[type="text"]')] as HTMLInputElement[];
@@ -284,7 +281,14 @@ describe('PluginEditorComponent', () => {
 
   it('accepts catalog types without editable options', async () => {
     fixture.componentRef.setInput('catalog', [
-      { typeId: 'future', version: 2, name: 'Future plugin', defaultOptions: { mode: 'x' } },
+      {
+        typeId: 'future',
+        version: 2,
+        name: 'Future plugin',
+        description: 'Not editable',
+        defaultOptions: { mode: 'x' },
+        form: [],
+      },
     ]);
     await fixture.whenStable();
     await add('future');
@@ -292,6 +296,49 @@ describe('PluginEditorComponent', () => {
       expect.objectContaining({ typeId: 'future', version: 2, options: { mode: 'x' } }),
     ]);
     expect(fixture.nativeElement.querySelector('article').textContent).toContain('Future plugin');
+  });
+
+  it('renders forms the server describes for plugins it has no code for', async () => {
+    fixture.componentRef.setInput('catalog', [
+      {
+        typeId: 'affix',
+        version: 1,
+        name: 'Prefix / suffix',
+        description: 'Add text around the name',
+        defaultOptions: { prefix: 'new-', position: 'start', trim: false },
+        form: [
+          {
+            heading: 'Text',
+            fields: [
+              { key: 'prefix', label: 'Prefix', kind: 'text', hint: 'Added before the name' },
+              {
+                key: 'position',
+                label: 'Position',
+                kind: 'select',
+                choices: [
+                  { value: 'start', label: 'Start' },
+                  { value: 'end', label: 'End' },
+                ],
+              },
+              { key: 'trim', label: 'Trim spaces', kind: 'checkbox' },
+            ],
+          },
+        ],
+      },
+    ] satisfies PluginDescriptor[]);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Add text around the name');
+    await add('affix');
+    const card = fixture.nativeElement.querySelector('article') as HTMLElement;
+    expect(card.textContent).toContain('Text');
+    expect(card.textContent).toContain('Added before the name');
+    const prefix = card.querySelector('input[type="text"]') as HTMLInputElement;
+    expect(prefix.value).toBe('new-');
+    prefix.value = 'old-';
+    prefix.dispatchEvent(new Event('input'));
+    (card.querySelector('input[type="checkbox"]:not(.sr-only)') as HTMLInputElement).click();
+    await fixture.whenStable();
+    expect(plugins[0].options).toEqual({ prefix: 'old-', position: 'start', trim: true });
   });
 
   async function add(type: string): Promise<void> {

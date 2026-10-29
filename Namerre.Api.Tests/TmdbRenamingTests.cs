@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging.Abstractions;
 using Namerre.Application.Renaming;
+using Namerre.Application.Renaming.Plugins;
 using Namerre.Application.Renaming.Metadata;
 using Namerre.Application.Renaming.Plans;
 using Namerre.Infrastructure.Configuration;
@@ -46,16 +47,16 @@ public sealed class TmdbRenamingTests : IDisposable
             var options = JsonSerializer.SerializeToElement(new { nameTemplate = "", changeFolder = true,
                 baseFolder, folderTemplate = "{title} ({year})" });
             var result = await metadata.Search(new("movie", "", Id: 42, FileId: "file", InstanceId: "tmdb1",
-                InputPath: "input.mkv", OptionsHash: PipelineEngine.OptionsHash(options)), default);
+                InputPath: "input.mkv", OptionsHash: TmdbPlugin.OptionsHash(options)), default);
             var match = Assert.Single(result.Matches);
             Assert.Equal("A Movie", match.Title);
             Assert.NotNull(match.ConfirmationToken);
-            selection = new("file", "tmdb1", "input.mkv", PipelineEngine.OptionsHash(options), match.ConfirmationToken);
+            selection = new("file", "tmdb1", "input.mkv", TmdbPlugin.OptionsHash(options), match.ConfirmationToken);
             Assert.Equal("A Movie", metadata.Resolve(selection).Title);
             Assert.Throws<RenameException>(() => metadata.Resolve(selection with { InstanceId = "different" }));
             var pipeline = new PipelineRequest([new("file", "input.mkv")],
                 [new("tmdb1", "tmdb", 1, true, options)], [selection]);
-            var engine = new PipelineEngine(metadata, filesystem);
+            var engine = TestPipeline.Create(metadata, filesystem);
             var preview = await engine.Preview(pipeline, default);
             Assert.Equal(destination, Assert.Single(preview.Files).TargetPath);
             Assert.False(Directory.Exists(Path.Combine(Root, "A Movie (2001)")));
@@ -81,7 +82,7 @@ public sealed class TmdbRenamingTests : IDisposable
         {
             var metadata = Metadata(client, Config(""), store);
             Assert.Equal("A Movie", metadata.Resolve(selection).Title);
-            var service = new RenameService(store, filesystem, new PipelineEngine(metadata, filesystem), NullLogger<RenameService>.Instance);
+            var service = new RenameService(store, filesystem, TestPipeline.Create(metadata, filesystem), NullLogger<RenameService>.Instance);
             var job = await service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
             await service.ProcessNext(default);
             var run = await service.GetRun(job.Id, default);
@@ -106,7 +107,7 @@ public sealed class TmdbRenamingTests : IDisposable
         using var store = new RenameStore(filesystem, Data, workspace);
         using var client = MovieClient();
         var metadata = Metadata(client, Config("secret"), store);
-        var service = new RenameService(store, filesystem, new PipelineEngine(metadata, filesystem), NullLogger<RenameService>.Instance);
+        var service = new RenameService(store, filesystem, TestPipeline.Create(metadata, filesystem), NullLogger<RenameService>.Instance);
         var id = await MoveMovie(service, metadata, deleteEmptyFolders);
 
         var run = await service.GetRun(id, default);
@@ -138,7 +139,7 @@ public sealed class TmdbRenamingTests : IDisposable
         using var store = new RenameStore(filesystem, Data, workspace);
         using var client = MovieClient();
         var metadata = Metadata(client, Config("secret"), store);
-        var service = new RenameService(store, filesystem, new PipelineEngine(metadata, filesystem), NullLogger<RenameService>.Instance);
+        var service = new RenameService(store, filesystem, TestPipeline.Create(metadata, filesystem), NullLogger<RenameService>.Instance);
         var id = await MoveMovie(service, metadata, !deleteEmptyFolders);
 
         var second = await service.Rollback(id, new(["file"], Guid.NewGuid().ToString(), deleteEmptyFolders), default);
@@ -159,7 +160,7 @@ public sealed class TmdbRenamingTests : IDisposable
         using var store = new RenameStore(filesystem, Data, workspace);
         using var client = MovieClient();
         var metadata = Metadata(client, Config("secret"), store);
-        var service = new RenameService(store, filesystem, new PipelineEngine(metadata, filesystem), NullLogger<RenameService>.Instance);
+        var service = new RenameService(store, filesystem, TestPipeline.Create(metadata, filesystem), NullLogger<RenameService>.Instance);
         var id = await MoveMovie(service, metadata, deleteEmptyFolders: true);
 
         var run = await service.GetRun(id, default);
@@ -183,7 +184,7 @@ public sealed class TmdbRenamingTests : IDisposable
         using var store = new RenameStore(bounded, Data, workspace);
         using var client = MovieClient();
         var metadata = Metadata(client, Config("secret"), store);
-        var service = new RenameService(store, filesystem, new PipelineEngine(metadata, filesystem), NullLogger<RenameService>.Instance);
+        var service = new RenameService(store, filesystem, TestPipeline.Create(metadata, filesystem), NullLogger<RenameService>.Instance);
         var id = await MoveMovie(service, metadata, deleteEmptyFolders: true);
 
         var run = await service.GetRun(id, default);
@@ -227,7 +228,7 @@ public sealed class TmdbRenamingTests : IDisposable
         {
             using var client = MovieClient();
             var metadata = Metadata(client, Config("secret"), store);
-            var service = new RenameService(store, filesystem, new PipelineEngine(metadata, filesystem), NullLogger<RenameService>.Instance);
+            var service = new RenameService(store, filesystem, TestPipeline.Create(metadata, filesystem), NullLogger<RenameService>.Instance);
             id = await MoveMovie(service, metadata, deleteEmptyFolders: true);
             Assert.True(fired);
             Assert.Equal("RecoveryRequired", (await service.GetRun(id, default)).Status);
@@ -236,7 +237,7 @@ public sealed class TmdbRenamingTests : IDisposable
         {
             using var client = new HttpClient();
             var service = new RenameService(store, filesystem,
-                new PipelineEngine(Metadata(client, Config(""), store), filesystem), NullLogger<RenameService>.Instance);
+                TestPipeline.Create(Metadata(client, Config(""), store), filesystem), NullLogger<RenameService>.Instance);
             var evidence = await service.PreviewRecovery(id, default);
             Assert.True(evidence.CanRecover, JsonSerializer.Serialize(evidence));
             await service.Recover(id, new("RestoreOriginal", Guid.NewGuid().ToString()), default);
@@ -260,14 +261,14 @@ public sealed class TmdbRenamingTests : IDisposable
         var metadata = Metadata(client, Config("secret"), store);
         var options = JsonSerializer.SerializeToElement(new { nameTemplate = "" });
         var query = new TmdbSearchRequest("tv", "", Id: 42, FileId: "file", InstanceId: "step",
-            InputPath: "input.mkv", OptionsHash: PipelineEngine.OptionsHash(options));
+            InputPath: "input.mkv", OptionsHash: TmdbPlugin.OptionsHash(options));
         Assert.Equal("EpisodeRequired", (await Assert.ThrowsAsync<RenameException>(
             () => metadata.Search(query, default))).Code);
         var confirmed = await metadata.Search(query with { Season = 1, Episode = 2 }, default);
         var token = Assert.Single(confirmed.Matches).ConfirmationToken!;
-        var preview = await new PipelineEngine(metadata, filesystem).Preview(new([new("file", "input.mkv")],
+        var preview = await TestPipeline.Create(metadata, filesystem).Preview(new([new("file", "input.mkv")],
             [new("step", "tmdb", 1, true, options)], [new("file", "step", "input.mkv",
-                PipelineEngine.OptionsHash(options), token)]), default);
+                TmdbPlugin.OptionsHash(options), token)]), default);
         Assert.Equal("The Show - S01E02 - The Episode.mkv", Assert.Single(preview.Files).TargetPath);
     }
 
@@ -365,7 +366,7 @@ public sealed class TmdbRenamingTests : IDisposable
     {
         var options = JsonSerializer.SerializeToElement(new { nameTemplate = "", changeFolder = true,
             folderTemplate = "{title} ({year})" });
-        var hash = PipelineEngine.OptionsHash(options);
+        var hash = TmdbPlugin.OptionsHash(options);
         var token = Assert.Single((await metadata.Search(new("movie", "", Id: 42, FileId: "file", InstanceId: "tmdb1",
             InputPath: "Downloads/Release/input.mkv", OptionsHash: hash), default)).Matches).ConfirmationToken!;
         var prepared = await service.Prepare(new([new("file", "Downloads/Release/input.mkv")],

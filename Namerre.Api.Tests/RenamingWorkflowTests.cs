@@ -92,7 +92,7 @@ public sealed class RenamingWorkflowTests : IDisposable
         using (var client = await AuthWebApplicationFactory.AuthenticatedClient(factory))
         {
             var catalog = await client.GetFromJsonAsync<PluginDescriptor[]>("/api/rename-plugins");
-            Assert.Equal(["literal", "regex", "case", "tmdb"], catalog!.Select(p => p.TypeId));
+            Assert.Equal(["literal", "regex", "case", "affix", "tmdb"], catalog!.Select(p => p.TypeId));
             var request = Request(["alpha.txt"], [Plugin("case", "case", new { mode = "upper" })]);
             using var response = await client.PostAsJsonAsync("/api/rename-previews", request);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -964,7 +964,7 @@ public sealed class RenamingWorkflowTests : IDisposable
             var metadata = new NoMetadata();
             Fault = moveFailure > 0 ? new FaultFileSystem(filesystem, moveFailure, failAfter) : null;
             IRenameFileSystem mutation = Fault is null ? filesystem : Fault;
-            Service = new RenameService(Store, mutation, new PipelineEngine(metadata, mutation), NullLogger<RenameService>.Instance,
+            Service = new RenameService(Store, mutation, TestPipeline.Create(metadata, mutation), NullLogger<RenameService>.Instance,
                 notifier);
         }
         public void Dispose() => Store.Dispose();

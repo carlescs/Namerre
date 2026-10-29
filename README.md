@@ -312,13 +312,14 @@ Synology's `@eaDir`, plus `Thumbs.db`, `desktop.ini` and recycle-bin folders) ar
 skipped unless **Show hidden files and folders** is ticked in the picker.
 The collection can contain files from multiple folders. Start with an empty plugin
 stack and add as many independently configured instances as needed: text replacement,
-regular-expression replacement, case change, or TMDB resolution. Repeated plugin
+regular-expression replacement, case change, prefix and suffix, or TMDB resolution. Repeated plugin
 types are allowed. Move instances up or down to choose the execution order; the
 catalog order does not determine execution order.
 
 Plugins run on the server. Each enabled instance receives the preceding instance's
 output, and the preview shows the intermediate names and final relative destination.
-Text, regex, and case steps preserve the extension and folder. Regex replacements
+Text, regex, case, and prefix/suffix steps preserve the extension and folder; a
+prefix or suffix is added around the name, before the extension. Regex replacements
 use .NET syntax, including `$1` and `${name}` captures. TMDB matches require explicit
 confirmation and can optionally change the destination folder through templates.
 No files or directories are changed by previews.

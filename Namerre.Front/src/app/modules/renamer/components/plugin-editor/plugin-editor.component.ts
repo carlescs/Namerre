@@ -16,143 +16,13 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faArrowDown, faArrowUp, faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import {
+  type OptionGroup,
   operationId,
   type PluginDescriptor,
   type PluginInstance,
   type PluginOptions,
 } from '../../rename-api';
 import { sampleEpisode, sampleMovie, tmdbTemplatePreview } from '../../tmdb-template-preview';
-
-interface Choice {
-  value: string;
-  label: string;
-}
-interface OptionField {
-  key: keyof PluginOptions;
-  label: string;
-  choices?: Choice[];
-  checkbox?: boolean;
-  hint?: string;
-  placeholder?: string;
-  list?: string;
-  /** Spans the whole row instead of one column. Checkboxes always do. */
-  wide?: boolean;
-}
-interface OptionGroup {
-  heading?: string;
-  /** Hidden (not removed) unless all of these boolean options are on; its values are still emitted. */
-  requires?: (keyof PluginOptions)[];
-  fields: OptionField[];
-}
-const scopeChoices: Choice[] = [
-  { value: 'all', label: 'Every match' },
-  { value: 'first', label: 'First match only' },
-];
-const caseChoices: Choice[] = [
-  { value: 'upper', label: 'UPPERCASE' },
-  { value: 'lower', label: 'lowercase' },
-  { value: 'title', label: 'Title Case' },
-];
-const groups: Record<string, OptionGroup[]> = {
-  literal: [
-    {
-      fields: [
-        { key: 'search', label: 'Find text' },
-        { key: 'replacement', label: 'Replace with' },
-        { key: 'scope', label: 'Replace', choices: scopeChoices },
-        { key: 'ignoreCase', label: 'Ignore case', checkbox: true },
-      ],
-    },
-  ],
-  regex: [
-    {
-      fields: [
-        { key: 'pattern', label: 'Pattern', hint: '.NET regular expression syntax' },
-        {
-          key: 'replacement',
-          label: 'Replace with',
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: ${name} is regex replacement syntax
-          hint: 'Use $1 or ${name} for captured groups',
-        },
-        { key: 'ignoreCase', label: 'Ignore case', checkbox: true },
-      ],
-    },
-  ],
-  case: [{ fields: [{ key: 'mode', label: 'Case', choices: caseChoices }] }],
-  tmdb: [
-    {
-      heading: 'File name',
-      fields: [
-        {
-          key: 'nameTemplate',
-          label: 'Filename template',
-          wide: true,
-          placeholder: 'Leave empty to use the default',
-          hint: 'Defaults: {title} ({year}) for movies, {title} - S{season}E{episode} - {episodeTitle} for episodes.',
-        },
-        {
-          key: 'language',
-          label: 'Metadata language',
-          list: 'tmdb-languages',
-          hint: 'Sets the language of titles. Pick one or type your own.',
-        },
-      ],
-    },
-    {
-      heading: 'Folders',
-      fields: [{ key: 'changeFolder', label: 'Allow folder change', checkbox: true }],
-    },
-    {
-      requires: ['changeFolder'],
-      fields: [
-        {
-          key: 'baseFolder',
-          label: 'Base folder',
-          placeholder: 'Library root',
-          hint: 'Relative to the library root, with forward slashes, e.g. Movies/Archive.',
-        },
-        {
-          key: 'folderTemplate',
-          label: 'Folder template',
-          hint: 'Creates a folder inside the base folder.',
-        },
-        { key: 'seasonFolder', label: 'Add season folder for episodes', checkbox: true },
-      ],
-    },
-    {
-      requires: ['changeFolder', 'seasonFolder'],
-      fields: [
-        {
-          key: 'seasonFolderTemplate',
-          label: 'Season folder template',
-          hint: 'Season {season} gives Season 01, Season {seasonNumber} gives Season 1, S{season} gives S01. Movies ignore it.',
-        },
-      ],
-    },
-  ],
-};
-
-const descriptions: Record<string, string> = {
-  literal: 'Replace a piece of text',
-  regex: 'Advanced pattern replace',
-  case: 'UPPER, lower or Title Case',
-  tmdb: 'Name movies and episodes from The Movie Database',
-};
-const fallbackDescription = 'Add this step to the recipe';
-const locales = [
-  'en-US',
-  'en-GB',
-  'es-ES',
-  'ca-ES',
-  'fr-FR',
-  'de-DE',
-  'it-IT',
-  'pt-PT',
-  'pt-BR',
-  'ja-JP',
-  'ko-KR',
-  'zh-CN',
-];
 
 interface Card {
   plugin: PluginInstance;
@@ -173,7 +43,6 @@ export class PluginEditorComponent implements OnInit {
   readonly initialPlugins = input<PluginInstance[]>([]);
   readonly pluginsChanged = output<PluginInstance[]>();
   protected readonly maxPlugins = 32;
-  protected readonly locales = locales;
   protected readonly upIcon = faArrowUp;
   protected readonly downIcon = faArrowDown;
   protected readonly trashIcon = faTrashCan;
@@ -188,9 +57,7 @@ export class PluginEditorComponent implements OnInit {
   private readonly firstAddButton = viewChild<ElementRef<HTMLButtonElement>>('addButton');
 
   ngOnInit(): void {
-    const restored = this.initialPlugins().filter((plugin) =>
-      this.catalog().some((descriptor) => descriptor.typeId === plugin.typeId),
-    );
+    const restored = this.initialPlugins().filter((plugin) => this.descriptor(plugin));
     if (!restored.length) {
       if (this.initialPlugins().length) this.emit();
       return;
@@ -240,10 +107,6 @@ export class PluginEditorComponent implements OnInit {
     return this.catalog().find((plugin) => plugin.typeId === typeId)?.name ?? typeId;
   }
 
-  protected description(typeId: string): string {
-    return descriptions[typeId] ?? fallbackDescription;
-  }
-
   protected visible(card: Card, group: OptionGroup): boolean {
     const values = card.values();
     return (group.requires ?? []).every((key) => values[key] === true);
@@ -256,11 +119,11 @@ export class PluginEditorComponent implements OnInit {
   }
 
   private card(plugin: PluginInstance): Card {
-    const optionGroups = groups[plugin.typeId] ?? [];
+    const optionGroups = this.descriptor(plugin)?.form ?? [];
     const controls: Record<string, FormControl<string | boolean>> = {};
     for (const field of optionGroups.flatMap((group) => group.fields)) {
       controls[field.key] = new FormControl<string | boolean>(
-        plugin.options[field.key] ?? (field.checkbox ? false : ''),
+        plugin.options[field.key] ?? (field.kind === 'checkbox' ? false : ''),
         { nonNullable: true },
       );
     }
@@ -273,6 +136,12 @@ export class PluginEditorComponent implements OnInit {
       this.emit();
     });
     return card;
+  }
+
+  private descriptor(plugin: PluginInstance): PluginDescriptor | undefined {
+    return this.catalog().find(
+      (descriptor) => descriptor.typeId === plugin.typeId && descriptor.version === plugin.version,
+    );
   }
 
   private emit(): void {

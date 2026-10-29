@@ -33,11 +33,12 @@ public sealed class RenamingControllerTests : IDisposable
     [Fact]
     public async Task PluginsReturnsCatalog()
     {
-        sender.Send(Arg.Any<GetRenamePluginsQuery>(), Token).Returns(PipelineEngine.Catalog);
+        IReadOnlyList<PluginDescriptor> catalog = [new("case", 1, "Case change", "Change case", new { }, [])];
+        sender.Send(Arg.Any<GetRenamePluginsQuery>(), Token).Returns(catalog);
 
         var result = await controller.Plugins(Token);
 
-        Assert.Same(PipelineEngine.Catalog, Assert.IsType<OkObjectResult>(result).Value);
+        Assert.Same(catalog, Assert.IsType<OkObjectResult>(result).Value);
     }
 
     [Fact]

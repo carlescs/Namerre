@@ -4,6 +4,7 @@ import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { tmdbOptionsHash } from '../../options-hash';
+import { casePlugin } from '../../plugin-catalog.testing';
 import type {
   MetadataSelection,
   PlanView,
@@ -140,7 +141,7 @@ describe('RenameWorkflowComponent', () => {
     await fixture.whenStable();
     http
       .expectOne('/api/rename-plugins')
-      .flush([{ typeId: 'case', version: 1, name: 'Case', defaultOptions: { mode: 'upper' } }]);
+      .flush([{ ...casePlugin, defaultOptions: { mode: 'upper' } }]);
     await fixture.whenStable();
   });
 
