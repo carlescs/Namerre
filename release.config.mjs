@@ -3,8 +3,9 @@
  *
  * - `main` publishes stable versions (vX.Y.Z); `next` publishes pre-releases (vX.Y.Z-pre.N).
  * - Only a tag and a GitHub release are created; nothing is committed back to the repository.
- * - Tags pushed with GITHUB_TOKEN do not trigger other workflows, so the Docker pipeline is
- *   dispatched explicitly for the new tag; it appends the image details to the release notes.
+ * - The new tag is written to the step's GITHUB_OUTPUT so release.yml can call docker.yml for it
+ *   (tags pushed with GITHUB_TOKEN do not trigger other workflows); docker.yml appends the image
+ *   details to the release notes.
  */
 export default {
   branches: ['main', { name: 'next', prerelease: 'pre' }],
@@ -18,7 +19,7 @@ export default {
     ],
     [
       '@semantic-release/exec',
-      { successCmd: 'gh workflow run docker.yml --ref "${nextRelease.gitTag}"' },
+      { successCmd: 'echo "tag=${nextRelease.gitTag}" >> "$GITHUB_OUTPUT"' },
     ],
   ],
 };
