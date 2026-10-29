@@ -14,11 +14,13 @@
         class="flex-col !items-start !justify-start !gap-0 text-left"
         [attr.data-plugin-type]="plugin.typeId"
         (click)="add(plugin)"
-        [disabled]="cards().length >= maxPlugins"
+        [disabled]="!canAdd(plugin)"
       >
         <span class="font-semibold text-slate-900 dark:text-slate-100">{{ plugin.name }}</span>
         <span class="text-xs font-normal text-slate-500 dark:text-slate-400">{{
-          plugin.description
+          plugin.singleInstance && included(plugin)
+            ? 'Already added; a recipe can use this step only once.'
+            : plugin.description
         }}</span>
       </button>
     }

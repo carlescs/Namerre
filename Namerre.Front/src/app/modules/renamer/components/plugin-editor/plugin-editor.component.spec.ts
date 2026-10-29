@@ -96,10 +96,9 @@ describe('PluginEditorComponent', () => {
     expect(plugins[0].instanceId).toBe(literalId);
   });
 
-  it('emits an optional base folder independently for each TMDB plugin', async () => {
+  it('emits an optional base folder for the TMDB plugin', async () => {
     await add('tmdb');
-    await add('tmdb');
-    expect(plugins.map((plugin) => plugin.options.baseFolder)).toEqual(['', '']);
+    expect(plugins.map((plugin) => plugin.options.baseFolder)).toEqual(['']);
     expect(plugins[0].options.changeFolder).toBe(false);
     const card = fixture.nativeElement.querySelector('article') as HTMLElement;
     const input = (label: string) =>
@@ -117,7 +116,6 @@ describe('PluginEditorComponent', () => {
 
     expect(plugins[0].options.changeFolder).toBe(true);
     expect(plugins[0].options.baseFolder).toBe('Library/Movies');
-    expect(plugins[1].options.baseFolder).toBe('');
     expect(fixture.nativeElement.textContent).toContain('Relative to the library root');
 
     changeFolder.click();
@@ -221,6 +219,49 @@ describe('PluginEditorComponent', () => {
     template.dispatchEvent(new Event('input'));
     await fixture.whenStable();
     expect(preview()).toContain('Episode is unavailable.');
+  });
+
+  it('allows a single TMDB step and offers it again once that step is removed', async () => {
+    await add('tmdb');
+    const tmdb = fixture.nativeElement.querySelector(
+      'button[data-plugin-type="tmdb"]',
+    ) as HTMLButtonElement;
+    expect(tmdb.disabled).toBe(true);
+    expect(tmdb.textContent).toContain('Already added');
+    tmdb.disabled = false;
+    tmdb.click();
+    await fixture.whenStable();
+    expect(plugins.map((plugin) => plugin.typeId)).toEqual(['tmdb']);
+    await add('case');
+    await add('case');
+    expect(plugins.map((plugin) => plugin.typeId)).toEqual(['tmdb', 'case', 'case']);
+    button('Remove plugin 1').click();
+    await fixture.whenStable();
+    expect(tmdb.disabled).toBe(false);
+    expect(tmdb.textContent).toContain('Name movies and episodes');
+  });
+
+  it('keeps only the first TMDB step of a restored draft', async () => {
+    const step = (instanceId: string): PluginInstance => ({
+      instanceId,
+      typeId: 'tmdb',
+      version: 1,
+      enabled: true,
+      options: { ...tmdbPlugin.defaultOptions },
+    });
+    const restored = TestBed.createComponent(PluginEditorComponent);
+    restored.componentRef.setInput('catalog', testCatalog);
+    restored.componentRef.setInput('initialPlugins', [
+      step('first'),
+      step('second'),
+      step('third'),
+    ]);
+    let emitted: PluginInstance[] | undefined;
+    restored.componentInstance.pluginsChanged.subscribe((value) => (emitted = value));
+    await restored.whenStable();
+    expect(emitted?.map((plugin) => plugin.instanceId)).toEqual(['first']);
+    expect(restored.nativeElement.querySelectorAll('article')).toHaveLength(1);
+    restored.destroy();
   });
 
   it('limits the recipe to 32 plugins', async () => {

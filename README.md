@@ -313,7 +313,8 @@ skipped unless **Show hidden files and folders** is ticked in the picker.
 The collection can contain files from multiple folders. Start with an empty plugin
 stack and add as many independently configured instances as needed: text replacement,
 regular-expression replacement, case change, prefix and suffix, or TMDB resolution. Repeated plugin
-types are allowed. Move instances up or down to choose the execution order; the
+types are allowed, except TMDB: a recipe holds at most one TMDB step, since each one needs its own
+confirmed match for every file. Move instances up or down to choose the execution order; the
 catalog order does not determine execution order.
 
 Plugins run on the server. Each enabled instance receives the preceding instance's

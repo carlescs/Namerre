@@ -130,6 +130,10 @@ public sealed class PipelineEngine
                 || p.Options.GetRawText().Length > 8192)
                 throw new RenameException("InvalidPlugin", "Unknown plugin type, version, or invalid options.");
         }
+        var repeated = request.Plugins.Select(p => plugins[(p.TypeId, p.Version)].Descriptor)
+            .Where(d => d.SingleInstance).GroupBy(d => d.TypeId).FirstOrDefault(g => g.Count() > 1);
+        if (repeated is not null)
+            throw new RenameException("SingleInstancePlugin", $"Add {repeated.First().Name} only once per pipeline.");
         if ((request.Selections?.Count ?? 0) > NamingRules.MaxFiles * NamingRules.MaxPlugins)
             throw new RenameException("BatchLimit", "Too many metadata selections.");
     }

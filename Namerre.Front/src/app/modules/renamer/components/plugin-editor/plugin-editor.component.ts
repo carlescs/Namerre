@@ -57,7 +57,15 @@ export class PluginEditorComponent implements OnInit {
   private readonly firstAddButton = viewChild<ElementRef<HTMLButtonElement>>('addButton');
 
   ngOnInit(): void {
-    const restored = this.initialPlugins().filter((plugin) => this.descriptor(plugin));
+    const single = new Set<string>();
+    const restored = this.initialPlugins().filter((plugin) => {
+      const descriptor = this.descriptor(plugin);
+      if (!descriptor?.singleInstance) return !!descriptor;
+      // Drafts saved before a type became single-instance keep only its first step.
+      if (single.has(plugin.typeId)) return false;
+      single.add(plugin.typeId);
+      return true;
+    });
     if (!restored.length) {
       if (this.initialPlugins().length) this.emit();
       return;
@@ -66,8 +74,20 @@ export class PluginEditorComponent implements OnInit {
     if (restored.length !== this.initialPlugins().length) this.emit();
   }
 
+  protected canAdd(descriptor: PluginDescriptor): boolean {
+    return (
+      this.cards().length < this.maxPlugins &&
+      !(descriptor.singleInstance && this.included(descriptor))
+    );
+  }
+
+  /** Whether the recipe already has a step of this type. */
+  protected included(descriptor: PluginDescriptor): boolean {
+    return this.cards().some((card) => card.plugin.typeId === descriptor.typeId);
+  }
+
   protected add(descriptor: PluginDescriptor): void {
-    if (this.cards().length >= this.maxPlugins) return;
+    if (!this.canAdd(descriptor)) return;
     const card = this.card({
       instanceId: operationId(),
       typeId: descriptor.typeId,

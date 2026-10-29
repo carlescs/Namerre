@@ -78,11 +78,13 @@ the `IRenameService`/`ITmdbMetadata` contracts and `RenameException(code, messag
 **Renaming pipeline.** Each plugin is an `IRenamePlugin` in `Application/Renaming/Plugins`
 (`LiteralPlugin`, `RegexPlugin`, `CasePlugin`, `AffixPlugin`, `TmdbPlugin`), usually derived from
 `RenamePlugin<TOptions>` (typed options, camelCase JSON). Its `PluginDescriptor` carries the type ID,
-version, name, description, default options and the option `Form` the frontend renders. Plugins are
-registered as singletons in `AddApplication()` (registration order = catalog order); `PipelineEngine`
-takes them via DI, keys them by `(TypeId, Version)`, and applies enabled plugin instances in the
-request's order — catalog order never determines execution order. Plugins return `PathParts`; the
-engine rejects changed extensions, empty stems and separators, then validates the path. Tests build
+version, name, description, default options, the option `Form` the frontend renders and
+`SingleInstance` (at most one instance per pipeline, enforced by the engine and the editor; set
+for TMDB). Plugins are registered as singletons in `AddApplication()` (registration order =
+catalog order); `PipelineEngine` takes them via DI, keys them by `(TypeId, Version)`, and applies
+enabled plugin instances in the request's order — catalog order never determines execution order.
+Plugins return `PathParts`; the engine rejects changed extensions, empty stems and separators,
+then validates the path. Tests build
 the engine with the built-in plugins through `TestPipeline.Create`. Lifecycle:
 preview (no mutation) → prepare (hash every source file, persist an immutable plan) →
 execute (queued job) → optional rollback of selected files / explicit recovery. Run state changes

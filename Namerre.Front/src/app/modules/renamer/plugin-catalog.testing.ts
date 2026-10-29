@@ -100,6 +100,7 @@ export const tmdbPlugin: PluginDescriptor = {
   version: 1,
   name: 'TMDB metadata',
   description: 'Name movies and episodes from The Movie Database',
+  singleInstance: true,
   defaultOptions: {
     nameTemplate: '',
     changeFolder: false,

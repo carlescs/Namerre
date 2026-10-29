@@ -32,7 +32,9 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
                 new("seasonFolderTemplate", "Season folder template",
                     Hint: "Season {season} gives Season 01, Season {seasonNumber} gives Season 1, S{season} gives S01. Movies ignore it.")
             ], Requires: ["changeFolder", "seasonFolder"])
-        ])
+        ],
+        // A second TMDB step would ask for every file to be matched again and repeat each matching row.
+        singleInstance: true)
 {
     public sealed class Options
     {
