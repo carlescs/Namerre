@@ -8,8 +8,6 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
-using Namerre.Application.Authentication;
-using Namerre.Infrastructure.Authentication;
 
 namespace Namerre.Authentication;
 
@@ -22,7 +20,6 @@ public static class AuthenticationSetup
 
     public static IServiceCollection AddAdminAuthentication(this IServiceCollection services)
     {
-        services.AddSingleton<IAdministratorStore, AdministratorStore>();
         services.AddSingleton<AdminAccount>();
         services.AddSingleton<OidcLogin>();
         services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

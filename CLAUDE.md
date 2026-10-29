@@ -47,7 +47,9 @@ which serves Angular same-origin. Browser checks should target the API URL.
 Clean architecture, dependencies point inward:
 `Domain` ← `Application` ← `Infrastructure` ← `Api` (composition root; also references Application).
 Application must not reference Infrastructure or ASP.NET Core; define interfaces in Application,
-implement in Infrastructure, register in `Namerre.Api/Program.cs`.
+implement in Infrastructure. Each project registers its own services through a `DependencyInjection`
+extension — `AddApplication()`, `AddInfrastructure(configuration)` and the Api's `AddApi()` (web host
+services, incl. the `IRenameNotifier` implementation) — and `Namerre.Api/Program.cs` only calls them.
 
 **Request flow.** Controllers (`Namerre.Api/Controllers`, namespace `Namerre.Controllers`,
 routes always start with `api/` — `RenamingController` uses per-action routes like
