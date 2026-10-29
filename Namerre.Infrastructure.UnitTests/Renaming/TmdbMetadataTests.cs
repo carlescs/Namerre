@@ -114,6 +114,18 @@ public sealed class TmdbMetadataTests : IDisposable
     }
 
     [Fact]
+    public async Task RepeatedResultsAreListedOnceBeforeCapping()
+    {
+        var items = string.Join(',', Enumerable.Range(1, 22).SelectMany(i => new[] { i, i }).Select(i =>
+            $$"""{"id":{{i}},"name":"Show {{i}}","first_air_date":"2001-01-01"}"""));
+        respond = _ => Task.FromResult(Json($$"""{"results":[{{items}}]}"""));
+
+        var result = await Metadata().Search(new("tv", "show"), default);
+
+        Assert.Equal(Enumerable.Range(1, 20), result.Matches.Select(match => match.Id));
+    }
+
+    [Fact]
     public async Task MissingOrMalformedFieldsBecomeEmptyValues()
     {
         respond = _ => Task.FromResult(Json("""{"results":[{"id":7,"title":null,"release_date":"99"},{"id":8}]}"""));
