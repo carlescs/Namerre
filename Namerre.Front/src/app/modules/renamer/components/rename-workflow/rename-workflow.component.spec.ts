@@ -310,27 +310,27 @@ describe('RenameWorkflowComponent', () => {
     expect(JSON.parse(localStorage.getItem('namerre.draft.pipeline.v1') ?? 'null')).toEqual({
       plugins: [tmdb],
       verifyContent: false,
-      deleteEmptyFolders: false,
+      deleteEmptyFolders: true,
     });
     for (const request of http.match('/api/rename-previews')) request.flush(tmdbPreview);
   });
 
-  it('keeps emptied folders by default', async () => {
+  it('deletes emptied folders by default', async () => {
     await showPreview();
     button('Check files and continue').click();
-    expect(http.expectOne('/api/rename-plans').request.body.deleteEmptyFolders).toBe(false);
+    expect(http.expectOne('/api/rename-plans').request.body.deleteEmptyFolders).toBe(true);
   });
 
-  it('prepares a plan that deletes emptied folders when requested', async () => {
+  it('prepares a plan that keeps emptied folders when requested', async () => {
     await showPreview();
     const folders = fixture.nativeElement.querySelector(
       '#delete-empty-folders',
     ) as HTMLInputElement;
-    expect(folders.checked).toBe(false);
+    expect(folders.checked).toBe(true);
     folders.click();
     await fixture.whenStable();
     button('Check files and continue').click();
-    expect(http.expectOne('/api/rename-plans').request.body.deleteEmptyFolders).toBe(true);
+    expect(http.expectOne('/api/rename-plans').request.body.deleteEmptyFolders).toBe(false);
   });
 
   it('prepares a quick-check plan without content hashing by default', async () => {
