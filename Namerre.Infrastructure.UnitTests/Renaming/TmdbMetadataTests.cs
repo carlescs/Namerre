@@ -332,17 +332,19 @@ public sealed class TmdbMetadataTests : IDisposable
     private static TmdbSearchRequest Confirm() => new("movie", "", Id: 5, FileId: "file", InstanceId: "step",
         InputPath: "movie.mkv", OptionsHash: Hash);
 
-    private TmdbMetadata Metadata(string? language = "en") => new(
-        new HttpClient(new StubHandler(request =>
+    private TmdbMetadata Metadata(string? language = "en")
+    {
+        var options = Options.Create(new NamerreOptions
+        {
+            Tmdb = new TmdbOptions { ReadAccessToken = "server-secret", Language = language }
+        });
+        var client = new HttpClient(new StubHandler(request =>
         {
             lock (requests) requests.Add(request);
             return respond(request);
-        })),
-        Options.Create(new NamerreOptions
-        {
-            Tmdb = new TmdbOptions { ReadAccessToken = "server-secret", Language = language }
-        }),
-        store);
+        }));
+        return new(new CachedTmdbClient(() => new TmdbClient(client, options)), options, store);
+    }
 
     private static HttpResponseMessage Json(string json)
         => new(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
