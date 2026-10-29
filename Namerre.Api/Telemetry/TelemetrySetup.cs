@@ -51,6 +51,8 @@ public static class TelemetrySetup
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
                 .AddRuntimeInstrumentation()
+                // Retries, rejections and circuit state from the TMDB resilience pipeline.
+                .AddMeter("Polly")
                 .AddOtlpExporter(options => Configure(options, "/v1/metrics")))
             .WithLogging(logging => logging
                 .AddOtlpExporter(options => Configure(options, "/v1/logs")));

@@ -552,7 +552,9 @@ which types to use or their order; repeated instances are independently configur
 Larger collections can still be browsed, but must be split before preparing a run.
 The durable queue accepts up to 32 queued jobs and reports overload explicitly.
 Up to four previews and four TMDB calls can run concurrently.
-Regex matching has a 100 ms timeout; TMDB HTTP requests have a 15-second timeout.
+Regex matching has a 100 ms timeout. Each TMDB lookup gets 15 seconds overall and 5 seconds per attempt;
+transient failures (network errors, timeouts, 408 and 5xx responses) are retried twice with backoff, TMDB rate
+limits (429) are reported immediately, and after repeated failures TMDB calls pause for 30 seconds.
 History is paginated (at most 100 runs per page) and is not automatically pruned.
 
 ## Backend architecture

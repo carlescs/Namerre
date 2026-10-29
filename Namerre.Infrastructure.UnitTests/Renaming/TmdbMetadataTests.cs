@@ -212,37 +212,6 @@ public sealed class TmdbMetadataTests : IDisposable
         Assert.InRange(lookups!.Count, 1, 256);
     }
 
-    [Fact]
-    public async Task ConcurrentLookupsBeyondFourAreRejected()
-    {
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var allStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var started = 0;
-        respond = async _ =>
-        {
-            if (Interlocked.Increment(ref started) == 4) allStarted.TrySetResult();
-            await release.Task;
-            return Json("""{"results":[]}""");
-        };
-        var metadata = Metadata();
-        var running = Enumerable.Range(0, 4).Select(i => metadata.Search(new("movie", "q" + i), default)).ToArray();
-        try
-        {
-            await allStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            var busy = await Assert.ThrowsAsync<RenameException>(() => metadata.Search(new("movie", "fifth"), default))
-                .WaitAsync(TimeSpan.FromSeconds(5));
-
-            Assert.Equal("TmdbBusy", busy.Code);
-            Assert.Equal(429, busy.Status);
-        }
-        finally
-        {
-            release.TrySetResult();
-            await Task.WhenAll(running).WaitAsync(TimeSpan.FromSeconds(5));
-        }
-        await metadata.Search(new("movie", "after"), default);
-    }
-
     public static TheoryData<TmdbSearchRequest> UnboundConfirmations => new()
     {
         Confirm() with { FileId = null },

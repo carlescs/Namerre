@@ -31,7 +31,9 @@ public static class DependencyInjection
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.DataPath,
             provider.GetRequiredService<IHostEnvironment>().ContentRootPath));
         services.AddSingleton<IAdministratorStore, AdministratorStore>();
-        services.AddHttpClient<TmdbClient>(client => client.Timeout = TimeSpan.FromSeconds(15));
+        // TmdbResilience bounds each lookup (15 s overall); HttpClient's own 100 s default remains only as a backstop.
+        services.AddHttpClient<TmdbClient>()
+            .AddResilienceHandler(TmdbResilience.PipelineName, TmdbResilience.Configure);
         services.AddSingleton<ITmdbClient>(provider => new CachedTmdbClient(() => provider.GetRequiredService<TmdbClient>()));
         services.AddSingleton<ITmdbMetadata, TmdbMetadata>();
         services.AddSingleton<RenameService>();
