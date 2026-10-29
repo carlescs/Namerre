@@ -126,10 +126,10 @@ falls back to `index.html` otherwise. OpenAPI is exposed only in Development.
 `styleUrl`, `app` selector prefix, SCSS component styles, Tailwind CSS v4 via PostCSS in
 `src/styles.css`). `src/main.ts` bootstraps `App` with `appConfig`; app-wide providers go in
 `src/app/app.config.ts`, routes in `src/app/app.routes.ts`. Use same-origin `/api/...` URLs.
-The root route lazy-loads `modules/renamer`; `rename-api.ts` is the HTTP client for the resource-style renaming endpoints
-(`/api/rename-plugins`, `/api/rename-previews`, `/api/rename-plans`, …). The workflow is a staged
-wizard (`rename-workflow` component) across file selection, plugin configuration, TMDB matching,
-preview, confirmation and run history. Angular builds into `Namerre.Api/wwwroot` with no `browser`
+The root route lazy-loads `modules/renamer`; `rename-api.ts` is the HTTP client for the
+resource-style renaming endpoints (`/api/rename-plugins`, `/api/rename-previews`,
+`/api/rename-plans`, …). The workflow is a staged wizard (`rename-workflow` component) across file
+selection, plugin configuration, TMDB matching, preview, confirmation and run history. Angular builds into `Namerre.Api/wwwroot` with no `browser`
 subdirectory (generated, cleared on rebuild) — put static assets in `Namerre.Front/public`.
 Missing asset files stay 404 rather than falling back to `index.html`.
 
@@ -138,14 +138,16 @@ Missing asset files stay 404 rather than falling back to `index.html`.
 - C# nullable reference types and implicit usings are enabled. Controllers use `[ApiController]`
   and verb attributes.
 - CMediator v1.1.3 (its upstream code-fix package is named `CMediato.CodeFixes`): requests are
-  `sealed`, handlers are `internal sealed` and stay in Application (the source generator only sees that compilation); registration comes from `AddApplication()` —
-  no manual handler registration or assembly scanning. `MED001/002/003/005` are build errors.
-  Pass the request `CancellationToken` through `ISender.Send`.
+  `sealed`, handlers are `internal sealed` and stay in Application (the source generator only sees
+  that compilation); registration comes from `AddApplication()` — no manual handler registration
+  or assembly scanning. `MED001/002/003/005` are build errors. Pass the request
+  `CancellationToken` through `ISender.Send`.
 - Don't make handlers public for tests; `InternalsVisibleTo` exposes them to
   `Namerre.Application.UnitTests`. `Namerre.Api.UnitTests` and `Namerre.Application.UnitTests` use
-  xUnit + NSubstitute (substitute collaborators, not the class under test). `Namerre.Infrastructure.UnitTests` covers `TmdbMetadata` (stub
-  `HttpMessageHandler`) and `BoundedFileSystem` against temp directories. `Namerre.Api.Tests` holds
-  HTTP integration tests (`AuthWebApplicationFactory`).
+  xUnit + NSubstitute (substitute collaborators, not the class under test).
+  `Namerre.Infrastructure.UnitTests` covers `TmdbMetadata` (stub `HttpMessageHandler`) and
+  `BoundedFileSystem` against temp directories. `Namerre.Api.Tests` holds HTTP integration tests
+  (`AuthWebApplicationFactory`).
 - Frontend linting/formatting: Biome (`biome.json`) for TS/CSS/SCSS, Prettier only for Angular
   `.html` templates (Biome can't parse Angular control flow yet); 2 spaces, single quotes,
   100 columns, OS-native line endings. Keep the strict compiler flags enabled (TypeScript
