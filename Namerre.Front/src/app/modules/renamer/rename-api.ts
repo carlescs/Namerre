@@ -1,13 +1,10 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 
+export type PluginOptionValue = string | boolean;
 export interface PluginOptions {
-  search?: string;
-  replacement?: string;
-  ignoreCase?: boolean;
-  scope?: string;
-  pattern?: string;
-  mode?: string;
+  [key: string]: PluginOptionValue | undefined;
+  // TMDB options read outside the generic editor (matching stage, template preview, options hash).
   nameTemplate?: string;
   changeFolder?: boolean;
   baseFolder?: string;
@@ -23,11 +20,36 @@ export interface PluginInstance {
   enabled: boolean;
   options: PluginOptions;
 }
+export interface OptionChoice {
+  value: string;
+  label: string;
+}
+export interface OptionField {
+  key: string;
+  label: string;
+  kind: 'text' | 'checkbox' | 'select';
+  choices?: OptionChoice[];
+  hint?: string;
+  placeholder?: string;
+  /** Values offered while typing in a text field. */
+  suggestions?: string[];
+  /** Spans the whole row instead of one column. Checkboxes always do. */
+  wide?: boolean;
+}
+export interface OptionGroup {
+  heading?: string;
+  /** Hidden (not removed) unless all of these checkbox options are on; its values are still sent. */
+  requires?: string[];
+  fields: OptionField[];
+}
 export interface PluginDescriptor {
   typeId: string;
   version: number;
   name: string;
+  description: string;
   defaultOptions: PluginOptions;
+  /** Option editor layout; keys refer to `defaultOptions`. */
+  form: OptionGroup[];
 }
 export interface MetadataSelection {
   fileId: string;

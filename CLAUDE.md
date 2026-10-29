@@ -135,7 +135,9 @@ falls back to `index.html` otherwise. OpenAPI is exposed only in Development.
 The root route lazy-loads `modules/renamer`; `rename-api.ts` is the HTTP client for the
 resource-style renaming endpoints (`/api/rename-plugins`, `/api/rename-previews`,
 `/api/rename-plans`, …). The workflow is a staged wizard (`rename-workflow` component) across file
-selection, plugin configuration, TMDB matching, preview, confirmation and run history. Angular builds into `Namerre.Api/wwwroot` with no `browser`
+selection, plugin configuration, TMDB matching, preview, confirmation and run history. The
+`plugin-editor` renders each step's options from the descriptor's `form`, so a new plugin needs no
+frontend change unless it has extra UI (like TMDB's template preview). Angular builds into `Namerre.Api/wwwroot` with no `browser`
 subdirectory (generated, cleared on rebuild) — put static assets in `Namerre.Front/public`.
 Missing asset files stay 404 rather than falling back to `index.html`.
 

@@ -18,7 +18,7 @@
       >
         <span class="font-semibold text-slate-900 dark:text-slate-100">{{ plugin.name }}</span>
         <span class="text-xs font-normal text-slate-500 dark:text-slate-400">{{
-          description(plugin.typeId)
+          plugin.description
         }}</span>
       </button>
     }
@@ -34,11 +34,6 @@
     </p>
   </div>
 }
-<datalist id="tmdb-languages">
-  @for (locale of locales; track locale) {
-    <option [value]="locale"></option>
-  }
-</datalist>
 @for (card of cards(); track card.plugin.instanceId; let i = $index) {
   <article [attr.aria-labelledby]="'plugin-' + card.plugin.instanceId">
     <header class="flex flex-wrap items-center gap-2">
@@ -108,15 +103,16 @@
             [style.margin-inline-start.rem]="indent(group)"
           >
             @for (field of group.fields; track field.key) {
-              <div class="min-w-0" [class]="field.wide || field.checkbox ? 'sm:col-span-2' : ''">
+              @let checkbox = field.kind === 'checkbox';
+              <div class="min-w-0" [class]="field.wide || checkbox ? 'sm:col-span-2' : ''">
                 @let fieldId = 'f-' + card.plugin.instanceId + '-' + field.key;
-                <label [class.flex]="field.checkbox" [class.items-center]="field.checkbox">
-                  @if (field.checkbox) {
+                <label [class.flex]="checkbox" [class.items-center]="checkbox">
+                  @if (checkbox) {
                     <input type="checkbox" [formControlName]="field.key" />
                     {{ field.label }}
                   } @else {
                     {{ field.label }}
-                    @if (field.choices) {
+                    @if (field.kind === 'select') {
                       <select [formControlName]="field.key">
                         @for (choice of field.choices; track choice.value) {
                           <option [value]="choice.value">{{ choice.label }}</option>
@@ -126,10 +122,17 @@
                       <input
                         type="text"
                         [formControlName]="field.key"
-                        [attr.list]="field.list ?? null"
+                        [attr.list]="field.suggestions?.length ? fieldId + '-suggestions' : null"
                         [attr.placeholder]="field.placeholder ?? null"
                         [attr.aria-describedby]="field.hint ? fieldId : null"
                       />
+                      @if (field.suggestions?.length) {
+                        <datalist [id]="fieldId + '-suggestions'">
+                          @for (suggestion of field.suggestions; track suggestion) {
+                            <option [value]="suggestion"></option>
+                          }
+                        </datalist>
+                      }
                     }
                   }
                 </label>
