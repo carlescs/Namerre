@@ -1,5 +1,13 @@
 import type { RunView } from '../../rename-api';
-import { historyEntries, optionEntries, runTitle, splitPath, statusLabel } from './run-display';
+import {
+  historyEntries,
+  isFinishingUp,
+  optionEntries,
+  runStatusLabel,
+  runTitle,
+  splitPath,
+  statusLabel,
+} from './run-display';
 
 function run(partial: Partial<RunView>, paths: [string, string][]): RunView {
   return {
@@ -45,6 +53,22 @@ describe('run display helpers', () => {
     expect(statusLabel('RecoveryRequired')).toBe('Needs recovery');
     expect(statusLabel('Running')).toBe('In progress');
     expect(statusLabel('Unheard')).toBe('Unheard');
+  });
+
+  it('reports finishing up once every moved file is completed but the run is still running', () => {
+    const files: [string, string][] = [
+      ['a/x.mkv', 'a/y.mkv'],
+      ['a/same.mkv', 'a/same.mkv'],
+    ];
+    const finishing = run({ status: 'Running' }, files);
+    finishing.files[1].status = 'Pending';
+    expect(isFinishingUp(finishing)).toBe(true);
+    expect(runStatusLabel(finishing)).toBe('Finishing up…');
+    finishing.files[0].status = 'Staged';
+    expect(isFinishingUp(finishing)).toBe(false);
+    expect(runStatusLabel(finishing)).toBe('In progress');
+    expect(runStatusLabel(run({ status: 'Completed' }, files))).toBe('Completed');
+    expect(isFinishingUp(run({ status: 'Running' }, []))).toBe(false);
   });
 
   it('leaves an undo at the top level when its rename is not on the page', () => {
