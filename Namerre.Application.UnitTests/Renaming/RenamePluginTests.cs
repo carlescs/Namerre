@@ -24,6 +24,7 @@ public sealed class RenamePluginTests
                 """{"search":"","replacement":"","ignoreCase":false,"scope":"all"}""",
                 """{"pattern":"","replacement":"","ignoreCase":false}""",
                 """{"mode":"lower"}""",
+                """{"prefix":"","suffix":""}""",
                 """{"nameTemplate":"","changeFolder":false,"baseFolder":"","folderTemplate":"{title} ({year})","seasonFolder":false,"seasonFolderTemplate":"Season {season}","language":"en-US"}"""
             ],
             catalog.Select(p => JsonSerializer.Serialize(p.DefaultOptions, Web)));

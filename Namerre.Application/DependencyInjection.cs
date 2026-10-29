@@ -15,6 +15,7 @@ public static class DependencyInjection
         services.AddSingleton<IRenamePlugin, LiteralPlugin>();
         services.AddSingleton<IRenamePlugin, RegexPlugin>();
         services.AddSingleton<IRenamePlugin, CasePlugin>();
+        services.AddSingleton<IRenamePlugin, AffixPlugin>();
         services.AddSingleton<IRenamePlugin, TmdbPlugin>();
         services.AddSingleton<PipelineEngine>();
 

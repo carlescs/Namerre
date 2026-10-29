@@ -349,6 +349,49 @@ public sealed class PipelineEngineTests
     }
 
     [Theory]
+    [InlineData("new-", "", "folder/new-alpha.beta.MKV")]
+    [InlineData("", " (copy)", "folder/alpha.beta (copy).MKV")]
+    [InlineData("[", "]", "folder/[alpha.beta].MKV")]
+    [InlineData("", "", "folder/alpha.beta.MKV")]
+    public async Task AffixAddsTextAroundTheNameAndKeepsFolderAndExtension(string prefix, string suffix, string expected)
+    {
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(Request([
+            Plugin("affix", "affix", new { prefix, suffix })]), default);
+
+        var file = Assert.Single(preview.Files);
+        Assert.Equal(expected, file.TargetPath);
+        Assert.Empty(file.Issues);
+    }
+
+    [Fact]
+    public async Task AffixRunsInUserOrderWithOtherPlugins()
+    {
+        var plugins = new[]
+        {
+            Plugin("affix", "affix", new { prefix = "x-" }),
+            Plugin("case", "case", new { mode = "upper" })
+        };
+        var engine = TestPipeline.Create(metadata, fileSystem);
+
+        var preview = await engine.Preview(Request(plugins), default);
+        var reordered = await engine.Preview(Request(plugins.Reverse().ToArray()), default);
+
+        Assert.Equal("folder/X-ALPHA.BETA.MKV", Assert.Single(preview.Files).TargetPath);
+        Assert.Equal("folder/x-ALPHA.BETA.MKV", Assert.Single(reordered.Files).TargetPath);
+    }
+
+    [Theory]
+    [InlineData("sub/", "")]
+    [InlineData("", "\\x")]
+    public async Task AffixCannotIntroducePathSeparators(string prefix, string suffix)
+    {
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(Request([
+            Plugin("affix", "affix", new { prefix, suffix })]), default);
+
+        Assert.Equal("InvalidName", Assert.Single(Assert.Single(preview.Files).Issues).Code);
+    }
+
+    [Theory]
     [InlineData("Queued", "Running", true)]
     [InlineData("Running", "Completed", true)]
     [InlineData("Running", "RecoveryRequired", true)]

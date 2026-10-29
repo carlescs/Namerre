@@ -76,7 +76,7 @@ the `IRenameService`/`ITmdbMetadata` contracts and `RenameException(code, messag
 (which carries API error codes) stay directly in `Application/Renaming`.
 
 **Renaming pipeline.** Each plugin is an `IRenamePlugin` in `Application/Renaming/Plugins`
-(`LiteralPlugin`, `RegexPlugin`, `CasePlugin`, `TmdbPlugin`), usually derived from
+(`LiteralPlugin`, `RegexPlugin`, `CasePlugin`, `AffixPlugin`, `TmdbPlugin`), usually derived from
 `RenamePlugin<TOptions>` (typed options, camelCase JSON). Its `PluginDescriptor` carries the type ID,
 version, name, description, default options and the option `Form` the frontend renders. Plugins are
 registered as singletons in `AddApplication()` (registration order = catalog order); `PipelineEngine`

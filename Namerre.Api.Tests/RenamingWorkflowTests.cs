@@ -92,7 +92,7 @@ public sealed class RenamingWorkflowTests : IDisposable
         using (var client = await AuthWebApplicationFactory.AuthenticatedClient(factory))
         {
             var catalog = await client.GetFromJsonAsync<PluginDescriptor[]>("/api/rename-plugins");
-            Assert.Equal(["literal", "regex", "case", "tmdb"], catalog!.Select(p => p.TypeId));
+            Assert.Equal(["literal", "regex", "case", "affix", "tmdb"], catalog!.Select(p => p.TypeId));
             var request = Request(["alpha.txt"], [Plugin("case", "case", new { mode = "upper" })]);
             using var response = await client.PostAsJsonAsync("/api/rename-previews", request);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);

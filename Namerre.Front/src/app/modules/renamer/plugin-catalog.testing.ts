@@ -74,6 +74,27 @@ export const casePlugin: PluginDescriptor = {
   ],
 };
 
+export const affixPlugin: PluginDescriptor = {
+  typeId: 'affix',
+  version: 1,
+  name: 'Prefix and suffix',
+  description: 'Add text before or after the name',
+  defaultOptions: { prefix: '', suffix: '' },
+  form: [
+    {
+      fields: [
+        { key: 'prefix', label: 'Prefix', kind: 'text', hint: 'Added before the name' },
+        {
+          key: 'suffix',
+          label: 'Suffix',
+          kind: 'text',
+          hint: 'Added after the name, before the extension',
+        },
+      ],
+    },
+  ],
+};
+
 export const tmdbPlugin: PluginDescriptor = {
   typeId: 'tmdb',
   version: 1,
