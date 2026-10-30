@@ -66,14 +66,82 @@
               </td>
               <td class="align-top max-sm:block max-sm:px-0 max-sm:py-1">
                 <span class="text-xs text-slate-500 sm:hidden dark:text-slate-400">New name</span>
-                @if (file.sourcePath === file.targetPath) {
-                  <span class="text-slate-500 dark:text-slate-400">Stays the same</span>
+                @if (editing() === file.id && canEdit()) {
+                  <form
+                    class="flex items-center gap-1"
+                    (submit)="$event.preventDefault(); saveEdit(file.id, file.targetPath)"
+                  >
+                    <input
+                      #editor
+                      type="text"
+                      class="min-w-0 flex-1 font-mono text-sm"
+                      aria-label="New path for {{ file.sourcePath }}"
+                      spellcheck="false"
+                      autocomplete="off"
+                      [value]="draft()"
+                      (input)="draft.set(editor.value)"
+                      (keydown.escape)="cancelEdit()"
+                    />
+                    <button
+                      type="submit"
+                      class="icon-button text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400"
+                      title="Use this name"
+                      aria-label="Use this name"
+                      [disabled]="!draft().trim()"
+                    >
+                      <fa-icon [icon]="saveIcon" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-button text-slate-500 dark:text-slate-400 hover:text-rose-700 dark:hover:text-rose-400"
+                      title="Cancel"
+                      aria-label="Cancel editing"
+                      (click)="cancelEdit()"
+                    >
+                      <fa-icon [icon]="cancelIcon" aria-hidden="true" />
+                    </button>
+                  </form>
                 } @else {
-                  <app-name-change
-                    [sourcePath]="file.sourcePath"
-                    [targetPath]="file.targetPath"
-                    side="to"
-                  />
+                  <div class="flex items-start gap-1">
+                    <div class="min-w-0 flex-1">
+                      @if (file.sourcePath === file.targetPath) {
+                        <span class="text-slate-500 dark:text-slate-400">Stays the same</span>
+                      } @else {
+                        <app-name-change
+                          [sourcePath]="file.sourcePath"
+                          [targetPath]="file.targetPath"
+                          side="to"
+                        />
+                      }
+                      @if (overridden().has(file.id)) {
+                        <div class="text-xs text-indigo-700 dark:text-indigo-300">
+                          Edited by hand
+                        </div>
+                      }
+                    </div>
+                    <button
+                      type="button"
+                      class="icon-button text-slate-500 dark:text-slate-400 hover:text-indigo-700 dark:hover:text-indigo-400"
+                      title="Edit the new name"
+                      aria-label="Edit the new name of {{ file.sourcePath }}"
+                      [disabled]="!canEdit()"
+                      (click)="startEdit(file.id, file.targetPath)"
+                    >
+                      <fa-icon [icon]="pencilIcon" aria-hidden="true" />
+                    </button>
+                    @if (overridden().has(file.id)) {
+                      <button
+                        type="button"
+                        class="icon-button text-slate-500 dark:text-slate-400 hover:text-indigo-700 dark:hover:text-indigo-400"
+                        title="Restore the calculated name"
+                        aria-label="Restore the calculated name of {{ file.sourcePath }}"
+                        [disabled]="!canEdit()"
+                        (click)="editReset.emit(file.id)"
+                      >
+                        <fa-icon [icon]="resetIcon" aria-hidden="true" />
+                      </button>
+                    }
+                  </div>
                 }
               </td>
             </tr>
@@ -81,6 +149,9 @@
         </tbody>
       </table>
     </div>
+    @if (checkingEdit()) {
+      <p role="status">Checking the edited name…</p>
+    }
     <details>
       <summary>Technical details</summary>
       <dl class="mt-3 mb-0 text-xs">

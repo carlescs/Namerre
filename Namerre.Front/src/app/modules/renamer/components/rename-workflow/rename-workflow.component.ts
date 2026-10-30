@@ -43,6 +43,7 @@ import {
   RenameApi,
   renameError,
   type StepTrace,
+  type TargetOverride,
   type TmdbMatch,
   type TmdbMatchRow,
   type TmdbPickerState,
@@ -130,6 +131,9 @@ export class RenameWorkflowComponent {
   protected readonly restoredPlugins = this.draft?.plugins ?? [];
   protected readonly plugins = signal<PluginInstance[]>(this.restoredPlugins);
   protected readonly selections = signal<MetadataSelection[]>([]);
+  /** Hand-edited target paths; dropped whenever the plugins or matches change the computed names. */
+  protected readonly overrides = signal<TargetOverride[]>([]);
+  protected readonly checkingOverride = signal(false);
   protected readonly verifyContent = signal(this.draft?.verifyContent ?? false);
   protected readonly deleteEmptyFolders = signal(this.draft?.deleteEmptyFolders ?? true);
   protected readonly preview = signal<PreviewResult | null>(null);
@@ -307,6 +311,7 @@ export class RenameWorkflowComponent {
       }
     }
     this.plugins.set(plugins);
+    this.overrides.set([]);
     this.invalidate();
   }
 
@@ -409,8 +414,51 @@ export class RenameWorkflowComponent {
       !this.plan()?.issues.length &&
       !this.preparing() &&
       !this.loadingPreview() &&
+      !this.checkingOverride() &&
       !this.executing()
     );
+  }
+
+  /**
+   * Replaces the computed new name of one file (or restores it when `targetPath` is null). The
+   * edited pipeline is previewed first, so a rejected name leaves the prepared plan untouched;
+   * an accepted one prepares the plan again.
+   */
+  protected overrideTarget(fileId: string, targetPath: string | null): void {
+    if (!this.canConfirm()) return;
+    const overrides = [
+      ...this.overrides().filter((entry) => entry.fileId !== fileId),
+      ...(targetPath === null ? [] : [{ fileId, targetPath }]),
+    ];
+    const revision = this.revision;
+    this.checkingOverride.set(true);
+    this.error.set('');
+    this.request?.unsubscribe();
+    this.request = this.api
+      .preview({ ...this.snapshot(), overrides })
+      .pipe(
+        finalize(() => this.checkingOverride.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (preview) => {
+          if (revision !== this.revision) return;
+          const issue = preview.files.find((file) => file.id === fileId)?.issues[0];
+          if (issue) {
+            this.error.set(`The new name cannot be used: ${issue.message}`);
+            return;
+          }
+          this.overrides.set(overrides);
+          this.invalidate(true);
+          this.preview.set(preview);
+          this.previewRevision = this.revision;
+          if (this.canPrepare()) this.prepare();
+          else this.goTo('preview');
+        },
+        error: (error: unknown) => {
+          if (revision === this.revision) this.error.set(renameError(error));
+        },
+      });
   }
 
   protected confirm(): void {
@@ -500,6 +548,7 @@ export class RenameWorkflowComponent {
       selection,
     ]);
     this.matching.set(null);
+    this.overrides.set([]);
     this.invalidate();
   }
 
@@ -675,6 +724,7 @@ export class RenameWorkflowComponent {
       ),
       ...accepted,
     ]);
+    this.overrides.set([]);
     this.invalidate();
   }
 
@@ -694,10 +744,12 @@ export class RenameWorkflowComponent {
       selections: this.selections(),
       verifyContent: this.verifyContent(),
       deleteEmptyFolders: this.deleteEmptyFolders(),
+      overrides: this.overrides(),
     };
   }
 
-  private invalidate(): void {
+  /** `overriding` keeps the confirmation stage open: the caller supplies the fresh preview. */
+  private invalidate(overriding = false): void {
     this.revision++;
     this.previewRevision = -1;
     this.planRevision = -1;
@@ -717,6 +769,7 @@ export class RenameWorkflowComponent {
     this.error.set('');
     this.executeOperation = '';
     const files = new Set(this.files().map((file) => file.path));
+    this.overrides.update((overrides) => overrides.filter((entry) => files.has(entry.fileId)));
     const plugins = new Map(
       this.plugins()
         .filter((plugin) => plugin.typeId === 'tmdb')
@@ -746,6 +799,7 @@ export class RenameWorkflowComponent {
         }
       }
     }
+    if (overriding) return;
     if (this.stage() === 'confirmation') this.goTo('preview');
     if (this.stage() === 'matching' && !this.tmdbPlugins().length) this.goTo('plugins');
     if (

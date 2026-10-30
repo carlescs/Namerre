@@ -299,13 +299,56 @@ public sealed class PipelineEngineValidationTests
             new([new("a", "src/a.txt")], [], Enumerable.Range(0, NamingRules.MaxFiles * NamingRules.MaxPlugins + 1)
                 .Select(i => new MetadataSelection("a", i.ToString(), "src/a.txt", "", "")).ToArray()),
             "BatchLimit"
-        }
+        },
+        { new([new("a", "src/a.txt")], [], Overrides: [new("b", "src/x.txt")]), "InvalidOverride" },
+        { new([new("a", "src/a.txt")], [], Overrides: [new("a", null!)]), "InvalidOverride" },
+        { new([new("a", "src/a.txt")], [], Overrides: [new("a", new string('x', 2049))]), "InvalidOverride" },
+        { new([new("a", "src/a.txt")], [], Overrides: [new("a", "src/x.txt"), new("a", "src/y.txt")]), "InvalidOverride" }
     };
 
     [Theory]
     [MemberData(nameof(InvalidRequests))]
     public void ValidateRequestRejectsMalformedRequests(PipelineRequest request, string code)
         => Assert.Equal(code, Assert.Throws<RenameException>(() => engine.ValidateRequest(request)).Code);
+
+    [Fact]
+    public async Task OverridesReplaceTheComputedPathIncludingFolderAndExtension()
+    {
+        var preview = await engine.Preview(new([new("a", "src/a.txt"), new("b", "src/b.txt")],
+            [Plugin("p", "case", new { mode = "upper" })], Overrides: [new("a", "other/Manual name.md")]), default);
+
+        Assert.True(preview.CanPrepare);
+        var file = preview.Files[0];
+        Assert.Equal("other/Manual name.md", file.TargetPath);
+        Assert.False(file.Unchanged);
+        var step = file.Steps[^1];
+        Assert.Equal(PipelineEngine.OverrideStepId, step.TypeId);
+        Assert.Equal(("src/A.txt", "other/Manual name.md"), (step.InputPath, step.OutputPath));
+        Assert.Equal("src/B.txt", preview.Files[1].TargetPath);
+    }
+
+    [Fact]
+    public async Task OverrideBackToTheSourceLeavesTheFileUnchanged()
+    {
+        var preview = await engine.Preview(new([new("a", "src/a.txt")],
+            [Plugin("p", "case", new { mode = "upper" })], Overrides: [new("a", "src/a.txt")]), default);
+
+        Assert.True(Assert.Single(preview.Files).Unchanged);
+    }
+
+    [Theory]
+    [InlineData("../escape.txt", "InvalidConfiguration")]
+    [InlineData("src/", "InvalidConfiguration")]
+    [InlineData("src/taken.txt", "TargetExists")]
+    [InlineData("src/b.txt", "DuplicateTarget")]
+    public async Task InvalidOrConflictingOverridesBlockPreparation(string target, string code)
+    {
+        var preview = await engine.Preview(new([new("a", "src/a.txt"), new("b", "src/b.txt")], [],
+            Overrides: [new("a", target)]), default);
+
+        Assert.False(preview.CanPrepare);
+        Assert.Contains(preview.Files[0].Issues, issue => issue.Code == code);
+    }
 
     [Fact]
     public void ValidateRequestAcceptsDisabledPluginsAndTheMaximumSelectionCount()
