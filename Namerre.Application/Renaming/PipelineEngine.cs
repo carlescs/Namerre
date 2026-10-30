@@ -40,6 +40,7 @@ public sealed class PipelineEngine
         foreach (var plugin in registered)
         {
             var descriptor = plugin.Descriptor;
+            OptionBinding.ValidateForm(descriptor);
             if (!this.plugins.TryAdd((descriptor.TypeId, descriptor.Version), plugin))
                 throw new InvalidOperationException(
                     $"Rename plugin {descriptor.TypeId} v{descriptor.Version} is registered more than once.");

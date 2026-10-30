@@ -5,8 +5,8 @@ namespace Namerre.Application.Renaming.Plugins;
 
 /// <summary>
 /// Base for plugins with typed options. Options bind camelCase properties case-sensitively; absent keys and
-/// JSON nulls for strings keep the defaults of <typeparamref name="TOptions"/>, and a value of the wrong type
-/// fails the step as invalid configuration.
+/// JSON nulls for strings keep the defaults of <typeparamref name="TOptions"/>. Values are first checked against
+/// the form (see <see cref="OptionBinding"/>), and a value of the wrong type fails the step as invalid configuration.
 /// </summary>
 public abstract class RenamePlugin<TOptions> : IRenamePlugin where TOptions : class, new()
 {
@@ -23,8 +23,20 @@ public abstract class RenamePlugin<TOptions> : IRenamePlugin where TOptions : cl
     public PluginDescriptor Descriptor { get; }
 
     public PathParts Apply(PluginContext context)
-        => Apply(context, context.Options.Deserialize<TOptions>(Json)
-            ?? throw new JsonException("Plugin options must be an object."));
+    {
+        OptionBinding.Validate(context.Options, Descriptor.Form);
+        TOptions? options;
+        try
+        {
+            options = context.Options.Deserialize<TOptions>(Json);
+        }
+        catch (JsonException exception)
+        {
+            throw new RenameException("InvalidConfiguration",
+                $"The {Descriptor.Name} options do not match their expected types.", innerException: exception);
+        }
+        return Apply(context, options ?? throw new RenameException("InvalidConfiguration", "Plugin options must be an object."));
+    }
 
     protected abstract PathParts Apply(PluginContext context, TOptions options);
 

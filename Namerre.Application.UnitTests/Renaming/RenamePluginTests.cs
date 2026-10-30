@@ -42,11 +42,17 @@ public sealed class RenamePluginTests
             foreach (var field in fields)
             {
                 Assert.True(defaults.TryGetProperty(field.Key, out var value), $"{descriptor.TypeId}.{field.Key}");
-                Assert.Equal(field.Kind == OptionFieldKind.Checkbox
-                    ? JsonValueKind.False : JsonValueKind.String, value.ValueKind);
+                Assert.Equal(field.Kind switch
+                {
+                    OptionFieldKind.Checkbox => JsonValueKind.False,
+                    OptionFieldKind.Number => JsonValueKind.Number,
+                    OptionFieldKind.List or OptionFieldKind.MultiSelect => JsonValueKind.Array,
+                    _ => JsonValueKind.String
+                }, value.ValueKind);
                 if (field.Kind == OptionFieldKind.Select)
                     Assert.Contains(value.GetString(), field.Choices!.Select(c => c.Value));
             }
+            OptionBinding.Validate(defaults, descriptor.Form);
             foreach (var key in descriptor.Form.SelectMany(g => g.Requires ?? []))
                 Assert.Contains(fields, f => f.Key == key && f.Kind == OptionFieldKind.Checkbox);
         }

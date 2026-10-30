@@ -1,7 +1,11 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 
-export type PluginOptionValue = string | boolean;
+/** Value of one column in a row of a `list` option. */
+export type PluginOptionCell = string | boolean | number | string[] | null;
+export type PluginOptionRow = Record<string, PluginOptionCell>;
+/** `number` options hold a number (null while the editor's input is empty), `multiSelect` a string array. */
+export type PluginOptionValue = PluginOptionCell | PluginOptionRow[];
 export interface PluginOptions {
   [key: string]: PluginOptionValue | undefined;
   // TMDB options read outside the generic editor (matching stage, template preview, options hash).
@@ -24,17 +28,33 @@ export interface OptionChoice {
   value: string;
   label: string;
 }
+export type OptionFieldKind =
+  | 'text'
+  | 'checkbox'
+  | 'select'
+  | 'number'
+  | 'textarea'
+  | 'list'
+  | 'multiSelect';
 export interface OptionField {
   key: string;
   label: string;
-  kind: 'text' | 'checkbox' | 'select';
+  kind: OptionFieldKind;
+  /** Options of a `select` or `multiSelect` field. */
   choices?: OptionChoice[];
   hint?: string;
   placeholder?: string;
   /** Values offered while typing in a text field. */
   suggestions?: string[];
-  /** Spans the whole row instead of one column. Checkboxes always do. */
+  /** Spans the whole row instead of one column. Checkboxes, text areas and lists always do. */
   wide?: boolean;
+  /** Bounds of a `number` field. */
+  min?: number;
+  max?: number;
+  /** A `number` field accepts `min` (or 0) plus multiples of this. */
+  step?: number;
+  /** Columns of each row of a `list` field; lists do not nest. */
+  fields?: OptionField[];
 }
 export interface OptionGroup {
   heading?: string;

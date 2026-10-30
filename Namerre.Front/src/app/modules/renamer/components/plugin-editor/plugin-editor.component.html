@@ -105,43 +105,96 @@
             [style.margin-inline-start.rem]="indent(group)"
           >
             @for (field of group.fields; track field.key) {
-              @let checkbox = field.kind === 'checkbox';
-              <div class="min-w-0" [class]="field.wide || checkbox ? 'sm:col-span-2' : ''">
-                @let fieldId = 'f-' + card.plugin.instanceId + '-' + field.key;
-                <label [class.flex]="checkbox" [class.items-center]="checkbox">
-                  @if (checkbox) {
-                    <input type="checkbox" [formControlName]="field.key" />
-                    {{ field.label }}
-                  } @else {
-                    {{ field.label }}
-                    @if (field.kind === 'select') {
-                      <select [formControlName]="field.key">
-                        @for (choice of field.choices; track choice.value) {
-                          <option [value]="choice.value">{{ choice.label }}</option>
-                        }
-                      </select>
-                    } @else {
-                      <input
-                        type="text"
-                        [formControlName]="field.key"
-                        [attr.list]="field.suggestions?.length ? fieldId + '-suggestions' : null"
-                        [attr.placeholder]="field.placeholder ?? null"
-                        [attr.aria-describedby]="field.hint ? fieldId : null"
-                      />
-                      @if (field.suggestions?.length) {
-                        <datalist [id]="fieldId + '-suggestions'">
-                          @for (suggestion of field.suggestions; track suggestion) {
-                            <option [value]="suggestion"></option>
+              @let fieldId = 'f-' + card.plugin.instanceId + '-' + field.key;
+              <div class="min-w-0" [class]="wide(field) ? 'sm:col-span-2' : ''">
+                @if (field.kind === 'list') {
+                  @let listRows = rows(card, field.key);
+                  <fieldset
+                    class="m-0 mb-3 min-w-0 border-0 p-0"
+                    [attr.aria-describedby]="field.hint ? fieldId : null"
+                  >
+                    <legend class="mb-2 p-0">{{ field.label }}</legend>
+                    @for (row of listRows.controls; track row; let r = $index) {
+                      <div
+                        role="group"
+                        class="mb-2 rounded-lg border border-slate-200 p-3 pb-0 dark:border-slate-800"
+                        [id]="fieldId + '-' + r"
+                        [attr.aria-label]="field.label + ' row ' + (r + 1)"
+                      >
+                        <div class="grid items-start gap-x-4 sm:grid-cols-2">
+                          @for (column of field.fields; track column.key) {
+                            <div class="min-w-0" [class]="wide(column) ? 'sm:col-span-2' : ''">
+                              <ng-container
+                                [ngTemplateOutlet]="optionField"
+                                [ngTemplateOutletContext]="{
+                                  field: column,
+                                  control: row.controls[column.key],
+                                  id: fieldId + '-' + r + '-' + column.key,
+                                }"
+                              />
+                            </div>
                           }
-                        </datalist>
-                      }
+                        </div>
+                        <div class="mb-3 flex justify-end gap-2">
+                          <button
+                            type="button"
+                            class="!min-h-8 !px-2.5 !py-1"
+                            title="Move up"
+                            (click)="moveRow(card, field, r, -1)"
+                            [disabled]="r === 0"
+                            [attr.aria-label]="'Move ' + field.label + ' row ' + (r + 1) + ' up'"
+                          >
+                            <fa-icon [icon]="upIcon" aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            class="!min-h-8 !px-2.5 !py-1"
+                            title="Move down"
+                            (click)="moveRow(card, field, r, 1)"
+                            [disabled]="r === listRows.length - 1"
+                            [attr.aria-label]="'Move ' + field.label + ' row ' + (r + 1) + ' down'"
+                          >
+                            <fa-icon [icon]="downIcon" aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            class="!min-h-8 !px-2.5 !py-1 text-slate-500 hover:text-rose-700 dark:text-slate-400 dark:hover:text-rose-400"
+                            title="Remove"
+                            (click)="removeRow(card, field, r)"
+                            [attr.aria-label]="'Remove ' + field.label + ' row ' + (r + 1)"
+                          >
+                            <fa-icon [icon]="trashIcon" aria-hidden="true" />
+                          </button>
+                        </div>
+                      </div>
+                    } @empty {
+                      <p class="mt-0 mb-2 text-xs text-slate-500 dark:text-slate-400">
+                        No rows yet.
+                      </p>
                     }
+                    <button
+                      type="button"
+                      class="!min-h-8 !px-2.5 !py-1"
+                      (click)="addRow(card, field)"
+                      [attr.aria-label]="'Add ' + field.label + ' row'"
+                    >
+                      Add row
+                    </button>
+                  </fieldset>
+                  @if (field.hint) {
+                    <p [id]="fieldId" class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400">
+                      {{ field.hint }}
+                    </p>
                   }
-                </label>
-                @if (field.hint) {
-                  <p [id]="fieldId" class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400">
-                    {{ field.hint }}
-                  </p>
+                } @else {
+                  <ng-container
+                    [ngTemplateOutlet]="optionField"
+                    [ngTemplateOutletContext]="{
+                      field,
+                      control: control(card, field.key),
+                      id: fieldId,
+                    }"
+                  />
                 }
               </div>
             }
@@ -202,3 +255,95 @@
     }
   </article>
 }
+<ng-template #optionField let-field="field" let-control="control" let-id="id">
+  @if (field.kind === 'checkbox') {
+    <label class="flex items-center">
+      <input
+        type="checkbox"
+        [formControl]="control"
+        [attr.aria-describedby]="describedBy(field, control, id)"
+      />
+      {{ field.label }}
+    </label>
+  } @else if (field.kind === 'multiSelect') {
+    <fieldset
+      class="m-0 mb-3 min-w-0 border-0 p-0"
+      [attr.aria-describedby]="describedBy(field, control, id)"
+    >
+      <legend class="mb-1 p-0">{{ field.label }}</legend>
+      <div class="flex flex-wrap gap-x-4">
+        @for (choice of field.choices; track choice.value) {
+          <label class="flex items-center">
+            <input
+              #choiceBox
+              type="checkbox"
+              [checked]="selected(control, choice.value)"
+              (change)="toggle(control, field, choice.value, choiceBox.checked)"
+            />
+            {{ choice.label }}
+          </label>
+        }
+      </div>
+    </fieldset>
+  } @else {
+    <label>
+      {{ field.label }}
+      @switch (field.kind) {
+        @case ('select') {
+          <select [formControl]="control" [attr.aria-describedby]="describedBy(field, control, id)">
+            @for (choice of field.choices; track choice.value) {
+              <option [value]="choice.value">{{ choice.label }}</option>
+            }
+          </select>
+        }
+        @case ('textarea') {
+          <textarea
+            rows="3"
+            [formControl]="control"
+            [attr.placeholder]="field.placeholder ?? null"
+            [attr.aria-describedby]="describedBy(field, control, id)"
+          ></textarea>
+        }
+        @case ('number') {
+          <input
+            type="number"
+            [formControl]="control"
+            [attr.min]="field.min ?? null"
+            [attr.max]="field.max ?? null"
+            [attr.step]="field.step ?? 'any'"
+            [attr.placeholder]="field.placeholder ?? null"
+            [attr.aria-invalid]="control.invalid"
+            [attr.aria-describedby]="describedBy(field, control, id)"
+          />
+        }
+        @default {
+          <input
+            type="text"
+            [formControl]="control"
+            [attr.list]="field.suggestions?.length ? id + '-suggestions' : null"
+            [attr.placeholder]="field.placeholder ?? null"
+            [attr.aria-describedby]="describedBy(field, control, id)"
+          />
+          @if (field.suggestions?.length) {
+            <datalist [id]="id + '-suggestions'">
+              @for (suggestion of field.suggestions; track suggestion) {
+                <option [value]="suggestion"></option>
+              }
+            </datalist>
+          }
+        }
+      }
+    </label>
+  }
+  @let message = error(field, control);
+  @if (message) {
+    <p [id]="id + '-error'" class="-mt-2 mb-3 text-xs text-red-700 dark:text-rose-400">
+      {{ message }}
+    </p>
+  }
+  @if (field.hint) {
+    <p [id]="id" class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400">
+      {{ field.hint }}
+    </p>
+  }
+</ng-template>

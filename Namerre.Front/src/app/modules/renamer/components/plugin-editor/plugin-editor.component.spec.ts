@@ -382,6 +382,182 @@ describe('PluginEditorComponent', () => {
     expect(plugins[0].options).toEqual({ prefix: 'old-', position: 'start', trim: true });
   });
 
+  describe('number, textarea, list and multi-select fields', () => {
+    const kindsPlugin: PluginDescriptor = {
+      typeId: 'kinds',
+      version: 1,
+      name: 'Kinds',
+      description: 'Every field kind',
+      defaultOptions: { width: 2, notes: 'a', tags: ['b'], pairs: [] },
+      form: [
+        {
+          fields: [
+            { key: 'width', label: 'Pad width', kind: 'number', min: 1, max: 10, step: 1 },
+            { key: 'notes', label: 'Notes', kind: 'textarea', hint: 'One per line' },
+            {
+              key: 'tags',
+              label: 'Tags',
+              kind: 'multiSelect',
+              choices: [
+                { value: 'a', label: 'Alpha' },
+                { value: 'b', label: 'Beta' },
+                { value: 'c', label: 'Gamma' },
+              ],
+            },
+            {
+              key: 'pairs',
+              label: 'Pairs',
+              kind: 'list',
+              fields: [
+                { key: 'find', label: 'Find', kind: 'text' },
+                { key: 'count', label: 'Count', kind: 'number', min: 0 },
+                { key: 'whole', label: 'Whole name', kind: 'checkbox' },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    beforeEach(async () => {
+      fixture.componentRef.setInput('catalog', [kindsPlugin]);
+      await fixture.whenStable();
+    });
+
+    function card(): HTMLElement {
+      return fixture.nativeElement.querySelector('article');
+    }
+
+    function labelled(label: string, root: HTMLElement = card()): HTMLElement {
+      return [...root.querySelectorAll('label, fieldset')].find((element) =>
+        (element.matches('label')
+          ? element.textContent
+          : element.querySelector('legend')?.textContent
+        )?.includes(label),
+      ) as HTMLElement;
+    }
+
+    async function type(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
+      input.value = value;
+      input.dispatchEvent(new Event('input'));
+      await fixture.whenStable();
+    }
+
+    it('renders each kind with the descriptor defaults', async () => {
+      await add('kinds');
+      const width = card().querySelector('input[type="number"]') as HTMLInputElement;
+      expect(width.value).toBe('2');
+      expect([width.min, width.max, width.step]).toEqual(['1', '10', '1']);
+      expect((card().querySelector('textarea') as HTMLTextAreaElement).value).toBe('a');
+      const tags = [...labelled('Tags').querySelectorAll('input')] as HTMLInputElement[];
+      expect(tags.map((tag) => tag.checked)).toEqual([false, true, false]);
+      expect(card().textContent).toContain('No rows yet.');
+      expect(plugins[0].options).toEqual({ width: 2, notes: 'a', tags: ['b'], pairs: [] });
+    });
+
+    it('edits numbers, text areas and choices', async () => {
+      await add('kinds');
+      await type(card().querySelector('input[type="number"]') as HTMLInputElement, '7');
+      await type(card().querySelector('textarea') as HTMLTextAreaElement, 'x\ny');
+      const tags = [...labelled('Tags').querySelectorAll('input')] as HTMLInputElement[];
+      tags[2].click();
+      tags[0].click();
+      tags[1].click();
+      await fixture.whenStable();
+      expect(plugins[0].options).toMatchObject({ width: 7, notes: 'x\ny', tags: ['a', 'c'] });
+    });
+
+    it('explains out-of-range, fractional and empty numbers', async () => {
+      await add('kinds');
+      const width = card().querySelector('input[type="number"]') as HTMLInputElement;
+      for (const [value, message] of [
+        ['0', 'Use 1 or more.'],
+        ['11', 'Use 10 or less.'],
+        ['2.5', 'Use a whole number.'],
+        ['', 'Enter a number.'],
+      ]) {
+        await type(width, value);
+        const error = card().querySelector(`[id="${width.getAttribute('aria-describedby')}"]`);
+        expect(error?.textContent?.trim()).toBe(message);
+        expect(width.getAttribute('aria-invalid')).toBe('true');
+      }
+      await type(width, '3');
+      expect(width.getAttribute('aria-invalid')).toBe('false');
+      expect(width.getAttribute('aria-describedby')).toBeNull();
+      expect(plugins[0].options).toMatchObject({ width: 3 });
+    });
+
+    it('adds, edits, reorders and removes list rows', async () => {
+      await add('kinds');
+      button('Add Pairs row').click();
+      await fixture.whenStable();
+      button('Add Pairs row').click();
+      await fixture.whenStable();
+      const rows = () => [...card().querySelectorAll('[role="group"]')] as HTMLElement[];
+      expect(rows()).toHaveLength(2);
+      expect(rows()[1].contains(document.activeElement)).toBe(true);
+      await type(labelled('Find', rows()[0]).querySelector('input')!, 'one');
+      await type(labelled('Find', rows()[1]).querySelector('input')!, 'two');
+      labelled('Whole name', rows()[1]).querySelector('input')!.click();
+      await fixture.whenStable();
+      expect(plugins[0].options).toMatchObject({
+        pairs: [
+          { find: 'one', count: 0, whole: false },
+          { find: 'two', count: 0, whole: true },
+        ],
+      });
+      button('Move Pairs row 2 up').click();
+      await fixture.whenStable();
+      expect(plugins[0].options).toMatchObject({
+        pairs: [
+          { find: 'two', count: 0, whole: true },
+          { find: 'one', count: 0, whole: false },
+        ],
+      });
+      await type(labelled('Count', rows()[1]).querySelector('input')!, '-1');
+      expect(rows()[1].textContent).toContain('Use 0 or more.');
+      button('Remove Pairs row 1').click();
+      await fixture.whenStable();
+      expect(plugins[0].options).toMatchObject({
+        pairs: [{ find: 'one', count: -1, whole: false }],
+      });
+    });
+
+    it('round-trips saved options and repairs values of the wrong shape', async () => {
+      const saved: PluginInstance = {
+        instanceId: 'saved',
+        typeId: 'kinds',
+        version: 1,
+        enabled: true,
+        options: {
+          width: 4,
+          notes: 'kept',
+          tags: ['c', 'gone', 'a'],
+          pairs: [{ find: 'x', count: 2, whole: true }],
+        },
+      };
+      const restored = TestBed.createComponent(PluginEditorComponent);
+      restored.componentRef.setInput('catalog', [kindsPlugin]);
+      restored.componentRef.setInput('initialPlugins', [
+        saved,
+        { ...saved, instanceId: 'broken', options: { width: '4', tags: 'a', pairs: [1, {}] } },
+      ]);
+      let emitted: PluginInstance[] = [];
+      restored.componentInstance.pluginsChanged.subscribe((value) => (emitted = value));
+      await restored.whenStable();
+      const cards = restored.nativeElement.querySelectorAll('article') as NodeListOf<HTMLElement>;
+      (cards[0].querySelector('textarea') as HTMLTextAreaElement).value = 'kept';
+      cards[0].querySelector('textarea')!.dispatchEvent(new Event('input'));
+      (cards[1].querySelector('textarea') as HTMLTextAreaElement).dispatchEvent(new Event('input'));
+      await restored.whenStable();
+      expect(emitted.map((plugin) => plugin.options)).toEqual([
+        { ...saved.options, tags: ['a', 'c'] },
+        { width: 2, notes: 'a', tags: ['b'], pairs: [{ find: '', count: 0, whole: false }] },
+      ]);
+      restored.destroy();
+    });
+  });
+
   async function add(type: string): Promise<void> {
     (
       fixture.nativeElement.querySelector(`button[data-plugin-type="${type}"]`) as HTMLButtonElement
