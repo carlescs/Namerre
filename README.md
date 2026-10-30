@@ -422,7 +422,11 @@ dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https
 Open the folder picker and confirm a folder to add its immediate files to the
 renaming collection. Subsequent selections add files without duplicating
 server-relative paths. The collection displays source folders, sizes and
-modification dates. The collection, the renaming rules and the run options are kept in
+modification dates. Its order is the renaming order that steps see as each file's
+position: new files are added at the end, and **Order** sorts the whole collection once
+(name in natural order, folder then name, size or modification date, either direction).
+Fine-tune it by dragging a row's handle or with its up and down arrows; reordering is
+disabled while a filter hides part of the collection. The collection, the renaming rules and the run options are kept in
 the browser's local storage, so a reload picks up where you left off; confirmed TMDB
 matches are not kept and are matched again. The saved collection is dropped once a rename
 starts.

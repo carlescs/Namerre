@@ -1,3 +1,4 @@
+import { type CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
@@ -87,8 +88,8 @@ describe('FileSelectionComponent', () => {
     };
 
     it('shows human-readable sizes with the exact bytes in a title', () => {
-      expect(el().querySelector('th:nth-child(2)')?.textContent?.trim()).toBe('Size');
-      const cell = rows()[0].querySelector('td:nth-child(2)') as HTMLElement;
+      expect(el().querySelector('th:nth-child(3)')?.textContent?.trim()).toBe('Size');
+      const cell = rows()[0].querySelector('td:nth-child(3)') as HTMLElement;
       expect(cell.textContent?.trim()).toBe('290 MB');
       expect(cell.getAttribute('title')).toBe('304,311,922 bytes');
     });
@@ -135,6 +136,103 @@ describe('FileSelectionComponent', () => {
     it('offers no bulk removal without a filter', () => {
       expect(button('Remove')).toBeUndefined();
       expect(button('Clear collection')).toBeDefined();
+    });
+
+    describe('ordering', () => {
+      const select = () => el().querySelector('select') as HTMLSelectElement;
+      const names = (files: RenamerFile[]) => files.map((file) => file.name);
+      const status = () =>
+        Array.from(el().querySelectorAll('[role="status"]')).map((s) => squash(s.textContent));
+      const moveButton = (path: string, direction: 'up' | 'down') =>
+        el().querySelector(`button[aria-label="Move ${path} ${direction}"]`) as HTMLButtonElement;
+      const dropList = () =>
+        fixture.debugElement.query(By.directive(CdkDropList)).injector.get(CdkDropList);
+      const lastEmitted = () => changed.mock.lastCall?.[0] ?? [];
+
+      it('numbers files in collection order and recognises a custom order', () => {
+        expect(
+          Array.from(rows()).map((row) => squash(row.querySelector('td')?.textContent)),
+        ).toEqual(['1', '2', '3', '4', '5']);
+        expect(select().selectedOptions[0].textContent?.trim()).toBe('Custom order');
+      });
+
+      it('sorts the collection naturally once and recognises the sort', async () => {
+        const numbered = [make('ep10.mkv', 'B'), make('ep2.mkv', 'A'), make('Ep1.mkv', 'C')];
+        fixture.componentRef.setInput('files', numbered);
+        await fixture.whenStable();
+        select().value = 'name';
+        select().dispatchEvent(new Event('change'));
+        expect(names(lastEmitted())).toEqual(['Ep1.mkv', 'ep2.mkv', 'ep10.mkv']);
+        select().value = 'folder';
+        select().dispatchEvent(new Event('change'));
+        expect(names(lastEmitted())).toEqual(['ep2.mkv', 'ep10.mkv', 'Ep1.mkv']);
+
+        fixture.componentRef.setInput('files', lastEmitted());
+        await fixture.whenStable();
+        expect(select().selectedOptions[0].textContent?.trim()).toBe('Folder, then name');
+        expect(status()).toContain('Sorted by folder, then name.');
+      });
+
+      it('sorts by size and modification date in both directions', () => {
+        const small = { ...make('small.mkv', 'A', 5), lastModifiedUtc: '2026-01-02T00:00:00Z' };
+        const large = { ...make('large.mkv', 'A', 50), lastModifiedUtc: '2026-01-01T00:00:00Z' };
+        fixture.componentRef.setInput('files', [small, large]);
+        fixture.detectChanges();
+        const sorted = (value: string) => {
+          select().value = value;
+          select().dispatchEvent(new Event('change'));
+          return names(lastEmitted());
+        };
+        expect(sorted('size')).toEqual(['small.mkv', 'large.mkv']);
+        expect(sorted('size-desc')).toEqual(['large.mkv', 'small.mkv']);
+        expect(sorted('modified')).toEqual(['large.mkv', 'small.mkv']);
+        expect(sorted('modified-desc')).toEqual(['small.mkv', 'large.mkv']);
+      });
+
+      it('moves files with the arrow buttons, keeps focus and announces the move', async () => {
+        const files = [...videos, ...thumbs];
+        expect(moveButton(files[0].path, 'up').disabled).toBe(true);
+        expect(moveButton(files[4].path, 'down').disabled).toBe(true);
+        moveButton(files[0].path, 'down').click();
+        expect(changed).toHaveBeenLastCalledWith([files[1], files[0], ...files.slice(2)]);
+        fixture.componentRef.setInput('files', lastEmitted());
+        await fixture.whenStable();
+        expect(document.activeElement).toBe(moveButton(files[0].path, 'down'));
+        expect(status()).toContain('Moved e1.mp4 to position 2 of 5.');
+
+        moveButton(files[0].path, 'up').click();
+        fixture.componentRef.setInput('files', lastEmitted());
+        await fixture.whenStable();
+        expect(changed).toHaveBeenLastCalledWith(files);
+        // At the top the up button is disabled, so focus moves to the down button.
+        expect(document.activeElement).toBe(moveButton(files[0].path, 'down'));
+      });
+
+      it('reorders files dropped with drag and drop', () => {
+        dropList().dropped.emit({ previousIndex: 4, currentIndex: 1 } as CdkDragDrop<
+          RenamerFile[]
+        >);
+        expect(changed).toHaveBeenLastCalledWith([
+          videos[0],
+          thumbs[1],
+          videos[1],
+          videos[2],
+          thumbs[0],
+        ]);
+        expect(el().querySelectorAll('.drag-handle')).toHaveLength(5);
+      });
+
+      it('offers no reordering while a filter hides part of the collection', () => {
+        typeText('e1');
+        expect(dropList().disabled).toBe(true);
+        expect(el().querySelector('button[aria-label^="Move"]')).toBeNull();
+        expect(el().querySelector('.drag-handle')).toBeNull();
+        expect(el().textContent).toContain('Clear the filter to change the order.');
+        dropList().dropped.emit({ previousIndex: 0, currentIndex: 1 } as CdkDragDrop<
+          RenamerFile[]
+        >);
+        expect(changed).not.toHaveBeenCalled();
+      });
     });
 
     it('announces what a folder added and what was already present', async () => {
