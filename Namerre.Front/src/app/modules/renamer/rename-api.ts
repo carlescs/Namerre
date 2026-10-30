@@ -60,6 +60,11 @@ export interface MetadataSelection {
   optionsHash: string;
   confirmationToken: string;
 }
+/** A target path typed by the user that replaces the pipeline's result for one file. */
+export interface TargetOverride {
+  fileId: string;
+  targetPath: string;
+}
 export interface PipelineRequest {
   files: { id: string; path: string }[];
   plugins: PluginInstance[];
@@ -68,6 +73,8 @@ export interface PipelineRequest {
   verifyContent?: boolean;
   /** True removes source folders that the run leaves empty once every file is placed. */
   deleteEmptyFolders?: boolean;
+  /** Manual target paths applied after the plugins; they may change any part of the path. */
+  overrides?: TargetOverride[];
 }
 export interface RenameIssue {
   code: string;

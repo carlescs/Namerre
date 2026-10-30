@@ -335,8 +335,16 @@ rollback and recovery compare those values rather than re-reading the files. Thi
 much faster but will not notice a content change that keeps both size and timestamp,
 and identical-looking copies are more likely to make recovery ambiguous.
 Review the prepared paths, then confirm execution.
+To override a calculated name, select the pencil beside it on the confirmation step and
+edit the full root-relative path in place — folder, name and extension can all change —
+then accept with the check mark or discard with the cross (or Escape). The edited
+pipeline is previewed first; a rejected path (invalid, clashing or already taken) leaves
+the prepared plan as it was, and an accepted one prepares the plan again. Overrides are
+sent as `overrides` (`fileId` and `targetPath`) on the pipeline request, applied after
+the plugins, and snapshotted with the plan; edited names are marked and can be restored
+to the calculated one.
 Changing the collection, plugin options, order, or metadata selections invalidates
-the previous preparation. Accepted jobs continue independently of the browser;
+the previous preparation; plugin and metadata changes also discard name overrides. Accepted jobs continue independently of the browser;
 their progress and outcome are available in persistent history.
 Open pages follow progress live: the server pushes a short change signal (`renameChanged`
 with `kind`, `id` and `status`) over SignalR after every durable plan or run update, and the

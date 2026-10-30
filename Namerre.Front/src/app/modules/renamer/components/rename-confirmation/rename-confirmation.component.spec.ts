@@ -24,7 +24,7 @@ describe('RenameConfirmationComponent', () => {
     fixture.componentInstance.confirmRequested.subscribe(confirm);
     fixture.componentInstance.retryRequested.subscribe(retry);
     await fixture.whenStable();
-    const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    const button = fixture.nativeElement.querySelector('.btn-danger') as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     button.click();
     expect(confirm).not.toHaveBeenCalled();
@@ -47,7 +47,11 @@ describe('RenameConfirmationComponent', () => {
     await fixture.whenStable();
     button.click();
     expect(confirm).toHaveBeenCalledOnce();
-    fixture.nativeElement.querySelectorAll('button')[1].click();
+    (
+      Array.from(fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLElement>).find(
+        (candidate) => candidate.textContent?.includes('Check again'),
+      ) as HTMLButtonElement
+    ).click();
     expect(retry).toHaveBeenCalledOnce();
     fixture.destroy();
   });
@@ -78,6 +82,104 @@ describe('RenameConfirmationComponent', () => {
     expect(root.querySelector('progress')).toBeNull();
     expect(root.querySelector('table')).toBeNull();
     expect(root.querySelector('.btn-danger')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('edits a new name in place and emits it only when accepted', async () => {
+    await TestBed.configureTestingModule({
+      imports: [RenameConfirmationComponent],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(RenameConfirmationComponent);
+    fixture.componentRef.setInput('plan', {
+      id: 'plan',
+      version: 1,
+      status: 'Ready',
+      completedFiles: 2,
+      createdAt: '',
+      pipeline: { files: [], plugins: [], selections: [] },
+      issues: [],
+      files: [
+        { id: 'a', sourcePath: 'in/a.mkv', targetPath: 'in/Movie.mkv', hash: 'h', size: 1 },
+        { id: 'b', sourcePath: 'in/b.mkv', targetPath: 'in/b.mkv', hash: 'h', size: 1 },
+      ],
+    } satisfies PlanView);
+    const edited = vi.fn();
+    fixture.componentInstance.targetEdited.subscribe(edited);
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    const pencil = (path: string) =>
+      root.querySelector(`[aria-label="Edit the new name of ${path}"]`) as HTMLButtonElement;
+    expect(pencil('in/a.mkv').disabled).toBe(true);
+    expect(pencil('in/b.mkv')).not.toBeNull();
+    expect(root.textContent).not.toContain('Edited by hand');
+    fixture.componentRef.setInput('canEdit', true);
+    await fixture.whenStable();
+
+    pencil('in/a.mkv').click();
+    await fixture.whenStable();
+    let editor = root.querySelector('[aria-label="New path for in/a.mkv"]') as HTMLInputElement;
+    expect(editor.value).toBe('in/Movie.mkv');
+    editor.value = 'elsewhere';
+    editor.dispatchEvent(new Event('input'));
+    (root.querySelector('[aria-label="Cancel editing"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    expect(root.querySelector('[aria-label="New path for in/a.mkv"]')).toBeNull();
+    expect(edited).not.toHaveBeenCalled();
+
+    pencil('in/a.mkv').click();
+    await fixture.whenStable();
+    editor = root.querySelector('[aria-label="New path for in/a.mkv"]') as HTMLInputElement;
+    expect(editor.value).toBe('in/Movie.mkv');
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await fixture.whenStable();
+    expect(root.querySelector('[aria-label="New path for in/a.mkv"]')).toBeNull();
+
+    pencil('in/a.mkv').click();
+    await fixture.whenStable();
+    editor = root.querySelector('[aria-label="New path for in/a.mkv"]') as HTMLInputElement;
+    editor.value = '  out/Other Movie.mkv ';
+    editor.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    (root.querySelector('[aria-label="Use this name"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    expect(edited).toHaveBeenCalledExactlyOnceWith({
+      fileId: 'a',
+      targetPath: 'out/Other Movie.mkv',
+    });
+    expect(root.querySelector('[aria-label="New path for in/a.mkv"]')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('marks hand-edited names and offers to restore the calculated one', async () => {
+    await TestBed.configureTestingModule({
+      imports: [RenameConfirmationComponent],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(RenameConfirmationComponent);
+    fixture.componentRef.setInput('canEdit', true);
+    fixture.componentRef.setInput('plan', {
+      id: 'plan',
+      version: 1,
+      status: 'Ready',
+      completedFiles: 1,
+      createdAt: '',
+      pipeline: {
+        files: [],
+        plugins: [],
+        selections: [],
+        overrides: [{ fileId: 'a', targetPath: 'Mine.mkv' }],
+      },
+      issues: [],
+      files: [{ id: 'a', sourcePath: 'a.mkv', targetPath: 'Mine.mkv', hash: 'h', size: 1 }],
+    } satisfies PlanView);
+    const reset = vi.fn();
+    fixture.componentInstance.editReset.subscribe(reset);
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('Edited by hand');
+    (
+      root.querySelector('[aria-label="Restore the calculated name of a.mkv"]') as HTMLButtonElement
+    ).click();
+    expect(reset).toHaveBeenCalledExactlyOnceWith('a');
     fixture.destroy();
   });
 });

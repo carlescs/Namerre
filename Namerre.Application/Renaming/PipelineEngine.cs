@@ -27,6 +27,9 @@ public interface IRenameFileSystem
 
 public sealed class PipelineEngine
 {
+    /// <summary>Instance and type ID of the trace step recording a manual target override.</summary>
+    public const string OverrideStepId = "override";
+
     private readonly IRenameFileSystem fileSystem;
     private readonly Dictionary<(string TypeId, int Version), IRenamePlugin> plugins = [];
 
@@ -87,6 +90,24 @@ public sealed class PipelineEngine
                     steps.Add(new(plugin.InstanceId, plugin.TypeId, input, null, issue));
                 }
             }
+            var targetOverride = request.Overrides?.FirstOrDefault(o => o.FileId == file.Id);
+            if (issues.Count == 0 && targetOverride is not null)
+            {
+                // A manual override replaces the computed name and may change any part of the path.
+                var input = current;
+                try
+                {
+                    fileSystem.Validate(targetOverride.TargetPath);
+                    current = targetOverride.TargetPath;
+                    steps.Add(new(OverrideStepId, OverrideStepId, input, current, null));
+                }
+                catch (Exception exception) when (exception is RenameException or ArgumentException)
+                {
+                    var issue = Issue(exception);
+                    issues.Add(issue);
+                    steps.Add(new(OverrideStepId, OverrideStepId, input, null, issue));
+                }
+            }
             if (issues.Count == 0)
             {
                 try { fileSystem.CheckSameDevice(file.Path, current); }
@@ -136,6 +157,11 @@ public sealed class PipelineEngine
             throw new RenameException("SingleInstancePlugin", $"Add {repeated.First().Name} only once per pipeline.");
         if ((request.Selections?.Count ?? 0) > NamingRules.MaxFiles * NamingRules.MaxPlugins)
             throw new RenameException("BatchLimit", "Too many metadata selections.");
+        var overrides = request.Overrides ?? [];
+        if (overrides.Any(o => o is null || o.TargetPath is null || o.TargetPath.Length > 2048
+                || !request.Files.Any(f => f.Id == o.FileId))
+            || overrides.Select(o => o.FileId).Distinct().Count() != overrides.Count)
+            throw new RenameException("InvalidOverride", "Each name override needs one known file and a target path.");
     }
 
     private string Apply(FileInput file, PluginInstance plugin, string input, IReadOnlyList<MetadataSelection> selections)

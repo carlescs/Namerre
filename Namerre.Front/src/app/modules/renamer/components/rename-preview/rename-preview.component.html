@@ -146,7 +146,9 @@
                     <ol class="mt-2 space-y-2 text-xs">
                       @for (step of file.steps; track step.instanceId) {
                         <li>
-                          <strong>{{ step.typeId }}</strong>
+                          <strong>{{
+                            step.typeId === 'override' ? 'Edited by hand' : step.typeId
+                          }}</strong>
                           <p class="m-0">
                             From <code>{{ step.inputPath }}</code>
                           </p>

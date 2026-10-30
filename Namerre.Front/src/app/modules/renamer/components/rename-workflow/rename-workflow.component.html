@@ -124,9 +124,13 @@
       [preparing]="preparing()"
       [executing]="executing()"
       [canConfirm]="canConfirm()"
-      [canRetry]="!!planId() && !!error()"
+      [canRetry]="!!planId() && !!error() && !checkingOverride()"
+      [canEdit]="canConfirm()"
+      [checkingEdit]="checkingOverride()"
       (confirmRequested)="confirm()"
       (retryRequested)="retryPlan()"
+      (targetEdited)="overrideTarget($event.fileId, $event.targetPath)"
+      (editReset)="overrideTarget($event, null)"
     />
   </div>
   @if (error() && stage() !== 'files') {

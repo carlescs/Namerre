@@ -1,1 +1,8 @@
 @use '../../workflow';
+
+.icon-button {
+  flex-shrink: 0;
+  width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0;
+}

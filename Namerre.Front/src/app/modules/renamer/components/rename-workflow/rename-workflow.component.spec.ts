@@ -400,6 +400,84 @@ describe('RenameWorkflowComponent', () => {
     expect(button('Check files and continue').disabled).toBe(true);
   });
 
+  it('keeps the plan when a hand-edited name is rejected and prepares again with an accepted one', async () => {
+    await showPreview();
+    button('Check files and continue').click();
+    http.expectOne('/api/rename-plans').flush({ id: 'plan-1', status: 'Preparing', location: '' });
+    await waitForPoll();
+    http.expectOne('/api/rename-plans/plan-1').flush(ready);
+    await fixture.whenStable();
+    await editName('taken.txt');
+    const rejected = http.expectOne('/api/rename-previews');
+    expect(rejected.request.body.overrides).toEqual([{ fileId: 'a.txt', targetPath: 'taken.txt' }]);
+    rejected.flush({
+      canPrepare: false,
+      files: [
+        {
+          ...preview.files[0],
+          targetPath: 'taken.txt',
+          issues: [{ code: 'TargetExists', message: 'The destination already exists.' }],
+        },
+      ],
+    } satisfies PreviewResult);
+    await fixture.whenStable();
+    expect(text()).toContain('The new name cannot be used: The destination already exists.');
+    expect(button('Rename 1 file').disabled).toBe(false);
+    http.expectNone('/api/rename-plans');
+
+    await editName('out/Manual.md');
+    const accepted = http.expectOne('/api/rename-previews');
+    const manual = { fileId: 'a.txt', targetPath: 'out/Manual.md' };
+    expect(accepted.request.body.overrides).toEqual([manual]);
+    accepted.flush({
+      ...preview,
+      files: [{ ...preview.files[0], targetPath: 'out/Manual.md' }],
+    } satisfies PreviewResult);
+    await fixture.whenStable();
+    expect(heading().textContent).toBe('Confirm renaming');
+    const prepare = http.expectOne('/api/rename-plans');
+    expect(prepare.request.body.overrides).toEqual([manual]);
+    prepare.flush({ id: 'plan-2', status: 'Preparing', location: '' });
+    await waitForPoll();
+    http.expectOne('/api/rename-plans/plan-2').flush({
+      ...ready,
+      id: 'plan-2',
+      pipeline: { ...ready.pipeline, overrides: [manual] },
+      files: [{ ...ready.files[0], targetPath: 'out/Manual.md' }],
+    } satisfies PlanView);
+    await fixture.whenStable();
+    expect(text()).toContain('Manual.md');
+    expect(text()).toContain('Edited by hand');
+
+    const restore = fixture.nativeElement.querySelector(
+      '[aria-label="Restore the calculated name of a.txt"]',
+    ) as HTMLButtonElement;
+    restore.click();
+    const restored = http.expectOne('/api/rename-previews');
+    expect(restored.request.body.overrides).toEqual([]);
+    restored.flush(preview);
+    await fixture.whenStable();
+    expect(http.expectOne('/api/rename-plans').request.body.overrides).toEqual([]);
+  });
+
+  it('drops hand-edited names when the plugins change', async () => {
+    await showPreview();
+    button('Check files and continue').click();
+    http.expectOne('/api/rename-plans').flush({ id: 'plan-1', status: 'Preparing', location: '' });
+    await waitForPoll();
+    http.expectOne('/api/rename-plans/plan-1').flush(ready);
+    await fixture.whenStable();
+    await editName('Manual.txt');
+    http.expectOne('/api/rename-previews').flush(preview);
+    await fixture.whenStable();
+    http.expectOne('/api/rename-plans');
+    changePlugins([
+      { instanceId: 'new', typeId: 'case', version: 1, enabled: true, options: { mode: 'lower' } },
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 310));
+    expect(http.expectOne('/api/rename-previews').request.body.overrides).toEqual([]);
+  });
+
   it('uses the same execution idempotency key after a failed connection and blocks duplicate clicks', async () => {
     await showPreview();
     button('Check files and continue').click();
@@ -1043,6 +1121,25 @@ describe('RenameWorkflowComponent', () => {
     confirmed.flush(matchedPreview);
     await fixture.whenStable();
     button('Next: review filenames').click();
+    await fixture.whenStable();
+  }
+
+  async function editName(targetPath: string): Promise<void> {
+    (
+      fixture.nativeElement.querySelector(
+        '[aria-label="Edit the new name of a.txt"]',
+      ) as HTMLButtonElement
+    ).click();
+    await fixture.whenStable();
+    const editor = fixture.nativeElement.querySelector(
+      '[aria-label="New path for a.txt"]',
+    ) as HTMLInputElement;
+    editor.value = targetPath;
+    editor.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    (
+      fixture.nativeElement.querySelector('[aria-label="Use this name"]') as HTMLButtonElement
+    ).click();
     await fixture.whenStable();
   }
 
