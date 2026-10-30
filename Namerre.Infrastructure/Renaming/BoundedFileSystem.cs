@@ -100,6 +100,16 @@ public sealed class BoundedFileSystem(string? configuredRoot, string basePath) :
         return ($"{StampPrefix}{info.Length}:{info.LastWriteTimeUtc.Ticks}", info.Length);
     }
 
+    public FileFacts Facts(string path)
+    {
+        var info = new FileInfo(Resolve(path, IsInternal(path)));
+        if (!info.Exists)
+            throw new RenameException("SourceMissing", "A required file is missing.");
+        var created = info.CreationTimeUtc;
+        return new(info.Length, new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero),
+            created > DateTime.UnixEpoch ? new DateTimeOffset(created, TimeSpan.Zero) : null);
+    }
+
     public void CheckSameDevice(string source, string target)
     {
         var sourcePath = Resolve(source, IsInternal(source));

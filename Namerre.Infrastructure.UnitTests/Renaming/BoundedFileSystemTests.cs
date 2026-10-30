@@ -59,6 +59,23 @@ public sealed class BoundedFileSystemTests : IDisposable
     }
 
     [Fact]
+    public void FactsReportSizeAndDatesWithoutLeavingTheRoot()
+    {
+        var full = Path.Combine(root, "Movies", "film.mkv");
+        var modified = new DateTime(2024, 5, 6, 7, 8, 9, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(full, modified);
+
+        var facts = fileSystem.Facts("Movies/film.mkv");
+
+        Assert.Equal(7, facts.Size);
+        Assert.Equal(new DateTimeOffset(modified), facts.ModifiedUtc);
+        Assert.Equal(TimeSpan.Zero, facts.ModifiedUtc.Offset);
+        Assert.True(facts.CreatedUtc is null || facts.CreatedUtc.Value.Offset == TimeSpan.Zero);
+        Assert.Equal("SourceMissing", Assert.Throws<RenameException>(() => fileSystem.Facts("Movies/gone.mkv")).Code);
+        Assert.Equal("InvalidPath", Assert.Throws<RenameException>(() => fileSystem.Facts("../media/Movies/film.mkv")).Code);
+    }
+
+    [Fact]
     public void ResolveMapsRelativePathsUnderTheRoot()
         => Assert.Equal(Path.Combine(root, "Movies", "film.mkv"), fileSystem.Resolve("Movies/film.mkv"));
 

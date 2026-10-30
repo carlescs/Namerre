@@ -178,7 +178,7 @@ describe('RenamerComponent', () => {
   it('removes only the selected path when filenames match across folders', async () => {
     await select(root);
     await select({ ...root, path: 'Movies', parentPath: '' });
-    const remove = rows()[1].querySelector('button');
+    const remove = rows()[1].querySelector<HTMLButtonElement>('button[aria-label^="Remove"]');
     expect(remove?.getAttribute('aria-label')).toBe('Remove Movies/notes.txt from collection');
     expect(remove?.textContent?.trim()).toBe('');
     expect(remove?.querySelector('svg')?.getAttribute('data-icon')).toBe('trash-can');
@@ -194,7 +194,7 @@ describe('RenamerComponent', () => {
 
   it('shows the empty collection state after removing the final item', async () => {
     await select(root);
-    rows()[0].querySelector('button')?.click();
+    rows()[0].querySelector<HTMLButtonElement>('button[aria-label^="Remove"]')?.click();
     await fixture.whenStable();
     expect(rows()).toHaveLength(0);
     expect(main().textContent).toContain('No files added yet.');
@@ -242,7 +242,7 @@ describe('RenamerComponent', () => {
     await select(root);
     await select({ ...root, path: 'Movies', parentPath: '' });
     await filter('movies');
-    rows()[0].querySelector('button')?.click();
+    rows()[0].querySelector<HTMLButtonElement>('button[aria-label^="Remove"]')?.click();
     await fixture.whenStable();
     expect(main().textContent).toContain('Files for renaming (1)');
     expect(rows()).toHaveLength(0);

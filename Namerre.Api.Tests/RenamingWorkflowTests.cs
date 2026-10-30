@@ -907,6 +907,21 @@ public sealed class RenamingWorkflowTests : IDisposable
         }));
     private string Full(string path) => Path.Combine(Root, path.Replace('/', Path.DirectorySeparatorChar));
     private void Touch(string path, DateTime lastWriteUtc) => File.SetLastWriteTimeUtc(Full(path), lastWriteUtc);
+    [Fact]
+    public async Task PreparedPlansKeepTheFileFactsTheirStepsSaw()
+    {
+        Write("alpha.txt", "A");
+        Write("nested/bravo.txt", "BB");
+        using var harness = Harness();
+
+        var plan = await Prepare(harness, UpperRequest(["alpha.txt", "nested/bravo.txt"]));
+
+        Assert.Equal(["0", "1"], plan.Facts!.Keys.Order());
+        Assert.Equal([1L, 2L], [plan.Facts["0"].Size, plan.Facts["1"].Size]);
+        Assert.Equal(File.GetLastWriteTimeUtc(Full("nested/bravo.txt")), plan.Facts["1"].ModifiedUtc.UtcDateTime);
+        Assert.Equal(plan.Facts, (await harness.Service.GetPlan(plan.Id, default)).Facts);
+    }
+
     private void Write(string path, string content)
     {
         var full = Full(path);
@@ -996,6 +1011,7 @@ public sealed class RenamingWorkflowTests : IDisposable
         public bool SamePath(string first, string second) => inner.SamePath(first, second);
         public Task<(string Hash, long Size)> Hash(string path, CancellationToken cancellationToken) => inner.Hash(path, cancellationToken);
         public (string Hash, long Size) Stamp(string path) => inner.Stamp(path);
+        public FileFacts Facts(string path) => inner.Facts(path);
         public void CheckSameDevice(string source, string target) => inner.CheckSameDevice(source, target);
         public IReadOnlyList<string> MissingDirectories(string path) => inner.MissingDirectories(path);
         public void CreateDirectory(string path) => inner.CreateDirectory(path);

@@ -324,9 +324,14 @@ prefix or suffix is added around the name, before the extension. Regex replaceme
 use .NET syntax, including `$1` and `${name}` captures. TMDB matches require explicit
 confirmation and can optionally change the destination folder through templates.
 No files or directories are changed by previews.
+Each step also learns the file's zero-based position in the request and among the files
+of its source folder, the batch and folder sizes, and the file's size, last-modified and
+creation time (creation time is null or approximate on filesystems that don't record it).
 
 Prepare the approved configuration to hash the source files and store an immutable
-plan. Hashing reads the full contents of each file and can take substantial disk I/O
+plan. Preparation reads each file's size and dates once and keeps them in the plan
+(`facts`, keyed by file ID), so steps see the values it recorded rather than re-reading
+the files; execution's source checks still catch files that changed afterwards. Hashing reads the full contents of each file and can take substantial disk I/O
 for large media collections. The web UI therefore defaults to **Quick check** on the
 preview step (`verifyContent: false` on `POST /api/rename-plans`; the API itself still
 defaults to hashing); untick it to hash contents. With Quick check, preparation records
@@ -417,7 +422,11 @@ dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https
 Open the folder picker and confirm a folder to add its immediate files to the
 renaming collection. Subsequent selections add files without duplicating
 server-relative paths. The collection displays source folders, sizes and
-modification dates. The collection, the renaming rules and the run options are kept in
+modification dates. Its order is the renaming order that steps see as each file's
+position: new files are added at the end, and **Order** sorts the whole collection once
+(name in natural order, folder then name, size or modification date, either direction).
+Fine-tune it by dragging a row's handle or with its up and down arrows; reordering is
+disabled while a filter hides part of the collection. The collection, the renaming rules and the run options are kept in
 the browser's local storage, so a reload picks up where you left off; confirmed TMDB
 matches are not kept and are matched again. The saved collection is dropped once a rename
 starts.

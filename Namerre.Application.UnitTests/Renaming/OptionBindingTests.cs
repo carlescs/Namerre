@@ -70,7 +70,8 @@ public sealed class OptionBindingTests
     {
         var plugin = new KindsPlugin();
         var context = new PluginContext(new("a", "src/name.txt"), "p", "src/name.txt", new("src/", "name", ".txt"),
-            JsonDocument.Parse("""{"extra":"x"}""").RootElement, []);
+            JsonDocument.Parse("""{"extra":"x"}""").RootElement, [], new(0, 1, 0, 1),
+            new(0, DateTimeOffset.UnixEpoch, null));
 
         var exception = Assert.Throws<RenameException>(() => plugin.Apply(context));
         Assert.Equal("InvalidConfiguration", exception.Code);

@@ -400,6 +400,7 @@ public sealed class TmdbRenamingTests : IDisposable
         public bool SamePath(string first, string second) => inner.SamePath(first, second);
         public Task<(string Hash, long Size)> Hash(string path, CancellationToken cancellationToken) => inner.Hash(path, cancellationToken);
         public (string Hash, long Size) Stamp(string path) => inner.Stamp(path);
+        public FileFacts Facts(string path) => inner.Facts(path);
         public void CheckSameDevice(string source, string target) => inner.CheckSameDevice(source, target);
         public void Move(string source, string destination) => inner.Move(source, destination);
         public IReadOnlyList<string> MissingDirectories(string path) => inner.MissingDirectories(path);

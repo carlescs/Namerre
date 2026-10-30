@@ -71,6 +71,7 @@ public sealed class RollbackCheckProgressTests : IDisposable
         public string ActualPath(string path) => inner.ActualPath(path);
         public bool SamePath(string first, string second) => inner.SamePath(first, second);
         public (string Hash, long Size) Stamp(string path) => inner.Stamp(path);
+        public FileFacts Facts(string path) => inner.Facts(path);
         public void CheckSameDevice(string source, string target) => inner.CheckSameDevice(source, target);
         public void Move(string source, string destination) => inner.Move(source, destination);
         public IReadOnlyList<string> MissingDirectories(string path) => inner.MissingDirectories(path);

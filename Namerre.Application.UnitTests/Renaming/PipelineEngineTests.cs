@@ -444,6 +444,68 @@ public sealed class PipelineEngineTests
     public void RejectsInvalidMutationNames(string path)
         => Assert.Throws<ArgumentException>(() => NamingRules.ValidateRelativePath(path));
 
+    [Fact]
+    public async Task StepsSeeTheFilePositionInTheRequestAndItsFolder()
+    {
+        string[] paths = ["a/one.txt", "b/two.txt", "a/three.txt", "four.txt"];
+        foreach (var path in paths) fileSystem.Exists(path).Returns(true);
+        var recorder = new RecordingPlugin();
+
+        await new PipelineEngine(fileSystem, [recorder]).Preview(new(
+            paths.Select((path, i) => new FileInput(i.ToString(), path)).ToArray(),
+            [Plugin("p", "record", new { })]), default);
+
+        Assert.Equal(
+            [new(0, 4, 0, 2), new(1, 4, 0, 1), new(2, 4, 1, 2), new(3, 4, 0, 1)],
+            recorder.Contexts.Select(c => c.Position));
+    }
+
+    [Fact]
+    public async Task StepsSeeLiveFactsInPreviewsAndSnapshotsWhenGiven()
+    {
+        var live = new FileFacts(10, DateTimeOffset.UnixEpoch.AddDays(1), null);
+        var snapshot = new FileFacts(20, DateTimeOffset.UnixEpoch.AddDays(2), DateTimeOffset.UnixEpoch);
+        fileSystem.Facts("folder/alpha.beta.MKV").Returns(live);
+        var recorder = new RecordingPlugin();
+        var engine = new PipelineEngine(fileSystem, [recorder]);
+        var request = Request([Plugin("p", "record", new { })]);
+
+        await engine.Preview(request, default);
+        fileSystem.ClearReceivedCalls();
+        await engine.Preview(request, new Dictionary<string, FileFacts> { ["file"] = snapshot }, default);
+
+        Assert.Equal([live, snapshot], recorder.Contexts.Select(c => c.Facts));
+        fileSystem.DidNotReceive().Facts(Arg.Any<string>());
+        Assert.Equal(new Dictionary<string, FileFacts> { ["file"] = live }, engine.ReadFacts(request));
+    }
+
+    [Fact]
+    public async Task UnreadableFactsAreReportedAndLeftOutOfSnapshots()
+    {
+        fileSystem.Facts("folder/alpha.beta.MKV").Returns(_ => throw new IOException("Denied."));
+        var engine = TestPipeline.Create(metadata, fileSystem);
+        var request = Request([Plugin("p", "case", new { mode = "upper" })]);
+
+        var preview = await engine.Preview(request, default);
+
+        Assert.Equal("SourceUnreadable", Assert.Single(Assert.Single(preview.Files).Issues).Code);
+        Assert.Empty(engine.ReadFacts(request));
+        Assert.Empty(engine.ReadFacts(Request([], "missing/file.txt")));
+    }
+
+    private sealed class RecordingPlugin() : RenamePlugin<RecordingPlugin.Options>("record", 1, "Record", "Records contexts", [])
+    {
+        public List<PluginContext> Contexts { get; } = [];
+
+        public sealed class Options;
+
+        protected override PathParts Apply(PluginContext context, Options options)
+        {
+            Contexts.Add(context);
+            return context.Path;
+        }
+    }
+
     private static PipelineRequest Request(IReadOnlyList<PluginInstance> plugins)
         => new([new("file", "folder/alpha.beta.MKV")], plugins);
     private static PipelineRequest Request(IReadOnlyList<PluginInstance> plugins, string path)
