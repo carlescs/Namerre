@@ -16,6 +16,8 @@ public interface IRenameFileSystem
     Task<(string Hash, long Size)> Hash(string path, CancellationToken cancellationToken);
     /// <summary>Cheap size and modification-time fingerprint, prefixed with <c>stat:</c>; reads no file content.</summary>
     (string Hash, long Size) Stamp(string path);
+    /// <summary>Size and dates of an existing file; reads no file content.</summary>
+    FileFacts Facts(string path);
     void CheckSameDevice(string source, string target);
     void Move(string source, string destination);
     IReadOnlyList<string> MissingDirectories(string path);
@@ -52,22 +54,33 @@ public sealed class PipelineEngine
     public IReadOnlyList<PluginDescriptor> Catalog { get; }
 
     public Task<PreviewResult> Preview(PipelineRequest request, CancellationToken cancellationToken)
+        => Preview(request, null, cancellationToken);
+
+    /// <param name="facts">File facts snapshotted into a plan (see <see cref="ReadFacts"/>); files without an
+    /// entry are read from the filesystem.</param>
+    public Task<PreviewResult> Preview(PipelineRequest request, IReadOnlyDictionary<string, FileFacts>? facts,
+        CancellationToken cancellationToken)
     {
         ValidateRequest(request);
+        var positions = Positions(request.Files);
         var results = new List<PreviewFile>();
-        foreach (var file in request.Files)
+        for (var index = 0; index < request.Files.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var file = request.Files[index];
             var current = file.Path;
             var issues = new List<RenameIssue>();
             var steps = new List<StepTrace>();
+            FileFacts? fileFacts = null;
             try
             {
                 fileSystem.Validate(current);
                 if (!fileSystem.Exists(current))
                     throw new RenameException("SourceMissing", "The source file is unavailable.");
+                fileFacts = facts?.GetValueOrDefault(file.Id) ?? fileSystem.Facts(current);
             }
-            catch (Exception exception) when (exception is RenameException or ArgumentException)
+            catch (Exception exception) when (exception is RenameException or ArgumentException or IOException
+                or UnauthorizedAccessException)
             {
                 issues.Add(Issue(exception));
             }
@@ -78,7 +91,7 @@ public sealed class PipelineEngine
                 var input = current;
                 try
                 {
-                    current = Apply(file, plugin, input, request.Selections ?? []);
+                    current = Apply(file, plugin, input, request.Selections ?? [], positions[index], fileFacts!);
                     fileSystem.Validate(current);
                     steps.Add(new(plugin.InstanceId, plugin.TypeId, input, current, null));
                 }
@@ -165,14 +178,53 @@ public sealed class PipelineEngine
             throw new RenameException("InvalidOverride", "Each name override needs one known file and a target path.");
     }
 
-    private string Apply(FileInput file, PluginInstance plugin, string input, IReadOnlyList<MetadataSelection> selections)
+    /// <summary>
+    /// Reads the facts of every readable source file, for a plan to keep; unreadable files are left out and
+    /// reported by the preview that follows.
+    /// </summary>
+    public IReadOnlyDictionary<string, FileFacts> ReadFacts(PipelineRequest request)
+    {
+        var facts = new Dictionary<string, FileFacts>(StringComparer.Ordinal);
+        foreach (var file in request.Files ?? [])
+        {
+            try
+            {
+                fileSystem.Validate(file.Path);
+                if (fileSystem.Exists(file.Path)) facts[file.Id] = fileSystem.Facts(file.Path);
+            }
+            catch (Exception exception) when (exception is RenameException or ArgumentException or IOException
+                or UnauthorizedAccessException)
+            {
+            }
+        }
+        return facts;
+    }
+
+    private static FilePosition[] Positions(IReadOnlyList<FileInput> files)
+    {
+        var folders = files.Select(f => f.Path[..(f.Path.LastIndexOf('/') + 1)]).ToArray();
+        var counts = folders.CountBy(folder => folder, StringComparer.Ordinal)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+        var positions = new FilePosition[files.Count];
+        for (var i = 0; i < folders.Length; i++)
+        {
+            var folderIndex = seen.GetValueOrDefault(folders[i]);
+            seen[folders[i]] = folderIndex + 1;
+            positions[i] = new(i, files.Count, folderIndex, counts[folders[i]]);
+        }
+        return positions;
+    }
+
+    private string Apply(FileInput file, PluginInstance plugin, string input, IReadOnlyList<MetadataSelection> selections,
+        FilePosition position, FileFacts facts)
     {
         var slash = input.LastIndexOf('/');
         var name = input[(slash + 1)..];
         var extension = Path.GetExtension(name);
         var parts = new PathParts(slash < 0 ? "" : input[..(slash + 1)], name[..(name.Length - extension.Length)], extension);
         var result = plugins[(plugin.TypeId, plugin.Version)]
-            .Apply(new(file, plugin.InstanceId, input, parts, plugin.Options, selections));
+            .Apply(new(file, plugin.InstanceId, input, parts, plugin.Options, selections, position, facts));
         if (result.Extension != parts.Extension)
             throw new InvalidOperationException($"Rename plugin {plugin.TypeId} changed the file extension.");
         if (result.Stem.Length == 0 || result.Stem.Contains('/') || result.Stem.Contains('\\'))
@@ -184,6 +236,7 @@ public sealed class PipelineEngine
     {
         RenameException rename => new(rename.Code, rename.Message),
         RegexMatchTimeoutException => new("RegexTimeout", "The regular expression exceeded its 100ms match timeout."),
+        IOException or UnauthorizedAccessException => new("SourceUnreadable", "The source file's details cannot be read."),
         _ => new("InvalidConfiguration", "The plugin configuration or resulting path is invalid.")
     };
 }

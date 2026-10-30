@@ -267,7 +267,13 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     private async Task PrepareJob(string id, CancellationToken cancellationToken)
     {
         var plan = store.Get<PlanView>(id, "Plan");
-        var preview = await pipeline.Preview(plan.Pipeline, cancellationToken);
+        if (plan.Facts is null)
+        {
+            // Read once and kept, so steps see the same sizes and dates however often the plan is evaluated.
+            plan = plan with { Facts = pipeline.ReadFacts(plan.Pipeline) };
+            Save(plan);
+        }
+        var preview = await pipeline.Preview(plan.Pipeline, plan.Facts, cancellationToken);
         if (!preview.CanPrepare)
         {
             plan = plan with { Status = "Failed", Issues = preview.Files.SelectMany(f => f.Issues).ToArray() };

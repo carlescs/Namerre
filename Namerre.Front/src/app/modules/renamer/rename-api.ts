@@ -133,6 +133,13 @@ export interface PlanView {
   files: { id: string; sourcePath: string; targetPath: string; hash: string; size: number }[];
   issues: RenameIssue[];
   createdAt: string;
+  /** Source file facts by file ID, read once when preparation starts; absent on older plans. */
+  facts?: Record<string, FileFacts>;
+}
+export interface FileFacts {
+  size: number;
+  modifiedUtc: string;
+  createdUtc: string | null;
 }
 export interface RunFile {
   id: string;
