@@ -80,7 +80,10 @@ the `IRenameService`/`ITmdbMetadata` contracts and `RenameException(code, messag
 `RenamePlugin<TOptions>` (typed options, camelCase JSON). Its `PluginDescriptor` carries the type ID,
 version, name, description, default options, the option `Form` the frontend renders and
 `SingleInstance` (at most one instance per pipeline, enforced by the engine and the editor; set
-for TMDB). Plugins are registered as singletons in `AddApplication()` (registration order =
+for TMDB). Form fields are `OptionFieldKind`s (`text`, `textarea`, `checkbox`, `select`, `multiSelect`,
+`number` with optional min/max/step, and `list` of non-nested row columns); `OptionBinding` checks
+options against the form before typed binding (malformed values → `InvalidConfiguration` naming the
+field) and rejects forms the editor can't render when the engine is built. Plugins are registered as singletons in `AddApplication()` (registration order =
 catalog order); `PipelineEngine` takes them via DI, keys them by `(TypeId, Version)`, and applies
 enabled plugin instances in the request's order — catalog order never determines execution order.
 Plugins return `PathParts`; the engine rejects changed extensions, empty stems and separators,
