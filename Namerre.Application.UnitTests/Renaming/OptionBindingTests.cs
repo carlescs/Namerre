@@ -105,6 +105,8 @@ public sealed class OptionBindingTests
             JsonSerializer.Serialize(new OptionField("t", "T", VisibleWhen: new("mode", ["a"])), Web));
         OptionField mode = new("mode", "Mode", OptionFieldKind.Select, [new("a", "A"), new("b", "B")]);
         _ = new PipelineEngine(fileSystem, [new FormPlugin([mode, new("t", "T", VisibleWhen: new("mode", ["b"]))])]);
+        _ = new PipelineEngine(fileSystem, [new FormPlugin([mode with { Kind = OptionFieldKind.MultiSelect },
+            new("t", "T", VisibleWhen: new("mode", ["a", "b"]))])]);
 
         foreach (var condition in new OptionCondition[]
                  { new("missing", ["a"]), new("mode", []), new("mode", ["z"]), new("flag", ["a"]), new("t", ["a"]) })

@@ -20,7 +20,8 @@ public sealed class CharactersPlugin() : RenamePlugin<CharactersPlugin.Options>(
             ]),
             new("nonAscii", "Other non-ASCII characters", OptionFieldKind.Select,
                 [new("keep", "Keep"), new("replace", "Replace"), new("remove", "Remove")]),
-            new("replacement", "Replace with", Hint: "Used when other non-ASCII characters are replaced"),
+            new("replacement", "Replace with", Hint: "Takes the place of each other non-ASCII character",
+                VisibleWhen: new("nonAscii", ["replace"])),
             new("form", "Unicode form", OptionFieldKind.Select,
                 [new("nfc", "NFC (composed, usual on Windows and Linux)"), new("nfd", "NFD (decomposed, macOS style)")])
         ])

@@ -487,6 +487,50 @@ describe('PluginEditorComponent', () => {
     });
   });
 
+  it('shows a field while a multi-select condition includes one of its values', async () => {
+    fixture.componentRef.setInput('catalog', [
+      {
+        typeId: 'separators',
+        version: 1,
+        name: 'Separators',
+        description: 'Tidy separators',
+        defaultOptions: { characters: ['underscores'], splitNumbers: false },
+        form: [
+          {
+            fields: [
+              {
+                key: 'characters',
+                label: 'Replace with spaces',
+                kind: 'multiSelect',
+                choices: [
+                  { value: 'dots', label: 'Dots' },
+                  { value: 'underscores', label: 'Underscores' },
+                ],
+              },
+              {
+                key: 'splitNumbers',
+                label: 'Split short numbers',
+                kind: 'checkbox',
+                visibleWhen: { key: 'characters', values: ['dots'] },
+              },
+            ],
+          },
+        ],
+      },
+    ] satisfies PluginDescriptor[]);
+    await fixture.whenStable();
+    await add('separators');
+    const card = fixture.nativeElement.querySelector('article') as HTMLElement;
+    expect(card.textContent).not.toContain('Split short numbers');
+    (card.querySelector('fieldset input') as HTMLInputElement).click();
+    await fixture.whenStable();
+    expect(card.textContent).toContain('Split short numbers');
+    expect(plugins[0].options).toEqual({
+      characters: ['dots', 'underscores'],
+      splitNumbers: false,
+    });
+  });
+
   describe('number, textarea, list and multi-select fields', () => {
     const kindsPlugin: PluginDescriptor = {
       typeId: 'kinds',

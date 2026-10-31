@@ -165,6 +165,8 @@ export class PluginEditorComponent implements OnInit {
     const condition = field.visibleWhen;
     if (!condition) return true;
     const value = card.values()[condition.key];
+    if (Array.isArray(value))
+      return value.some((item) => condition.values.includes(item as string));
     return typeof value === 'string' && condition.values.includes(value);
   }
 

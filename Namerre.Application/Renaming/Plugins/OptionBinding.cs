@@ -19,7 +19,7 @@ internal static class OptionBinding
 
     /// <summary>Rejects forms the editor cannot render; called once per plugin when the engine is built.</summary>
     /// <exception cref="InvalidOperationException">A choice field without choices, a list without columns, a nested
-    /// list or a visibility condition that does not name choices of another select field.</exception>
+    /// list or a visibility condition that does not name choices of another select or multi-select field.</exception>
     public static void ValidateForm(PluginDescriptor descriptor)
     {
         var fields = descriptor.Form.SelectMany(g => g.Fields).ToList();
@@ -56,7 +56,7 @@ internal static class OptionBinding
     {
         if (field.VisibleWhen is not { } condition) return;
         var source = condition.Key == field.Key ? null : fields.FirstOrDefault(f => f.Key == condition.Key);
-        if (source is not { Kind: OptionFieldKind.Select } || condition.Values is not { Count: > 0 }
+        if (source is not { Kind: OptionFieldKind.Select or OptionFieldKind.MultiSelect } || condition.Values is not { Count: > 0 }
             || !condition.Values.All(value => IsChoice(source, value)))
             throw new InvalidOperationException(
                 $"Rename plugin {descriptor.TypeId} field {field.Key} needs a condition on choices of another select field.");
