@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { Theme, themeStorageKey } from './theme';
+import { Theme, themeColors, themeStorageKey } from './theme';
 
 describe('Theme', () => {
   let systemDark: boolean;
@@ -66,6 +66,21 @@ describe('Theme', () => {
     TestBed.tick();
     expect(localStorage.getItem(themeStorageKey)).toBeNull();
     expect(root.classList.contains('dark')).toBe(true);
+  });
+
+  it('matches the installed app title bar to the theme', () => {
+    const meta = document.createElement('meta');
+    meta.name = 'theme-color';
+    document.head.append(meta);
+    try {
+      const theme = create();
+      expect(meta.content).toBe(themeColors.light);
+      theme.select('dark');
+      TestBed.tick();
+      expect(meta.content).toBe(themeColors.dark);
+    } finally {
+      meta.remove();
+    }
   });
 
   it('restores a saved choice and ignores unknown values', () => {

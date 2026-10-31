@@ -1,6 +1,7 @@
 using Namerre;
 using Namerre.Application;
 using Namerre.Authentication;
+using Namerre.Hosting;
 using Namerre.Infrastructure;
 using Namerre.Infrastructure.Configuration;
 using Namerre.Infrastructure.Renaming;
@@ -47,7 +48,7 @@ else
 app.UseHttpsRedirection();
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(StaticFileCaching.Options);
 
 app.Use(async (context, next) =>
 {
@@ -73,7 +74,7 @@ app.MapControllers().RequireAuthorization();
 app.MapHub<RenameHub>(RenameHub.Path, options => options.CloseOnAuthenticationExpiration = true)
     .RequireAuthorization();
 app.MapFallback("/api/{**path}", () => Results.NotFound());
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", StaticFileCaching.Options);
 
 app.Run();
 

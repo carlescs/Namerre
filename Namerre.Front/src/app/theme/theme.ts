@@ -5,6 +5,8 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 
 // Keep in sync with the pre-boot script in src/index.html.
 export const themeStorageKey = 'namerre-theme';
+// The header background (white / slate-900), used for the installed app's title bar.
+export const themeColors = { light: '#ffffff', dark: '#0f172a' } as const;
 
 const preferences: readonly ThemePreference[] = ['system', 'light', 'dark'];
 
@@ -25,6 +27,9 @@ export class Theme {
       const root = this.document.documentElement;
       root.classList.toggle('dark', dark);
       root.style.colorScheme = dark ? 'dark' : 'light';
+      this.document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute('content', dark ? themeColors.dark : themeColors.light);
     });
   }
 

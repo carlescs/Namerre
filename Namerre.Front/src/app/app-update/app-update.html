@@ -1,0 +1,18 @@
+@if (state() !== 'none') {
+  <div class="app-update surface" role="status">
+    <p>
+      @if (state() === 'ready') {
+        A new version of Namerre is available. Reload to use it; running jobs continue on the
+        server.
+      } @else {
+        Namerre could not load part of this version. Reload to recover.
+      }
+    </p>
+    <div class="actions">
+      <button type="button" class="btn-primary" (click)="reload()">Reload</button>
+      @if (state() === 'ready') {
+        <button type="button" (click)="dismiss()">Later</button>
+      }
+    </div>
+  </div>
+}
