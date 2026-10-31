@@ -22,9 +22,16 @@ public sealed class RenamePluginTests
         Assert.Equal(
             [
                 """{"search":"","replacement":"","ignoreCase":false,"scope":"all"}""",
+                """{"replacements":[],"ignoreCase":false,"scope":"all"}""",
                 """{"pattern":"","replacement":"","ignoreCase":false}""",
                 """{"mode":"lower","language":"en"}""",
                 """{"prefix":"","suffix":""}""",
+                """{"characters":["dots","underscores"],"splitNumbers":false,"keepSpaces":false,"keepEnds":false}""",
+                """{"categories":["resolution","codec","source","audio","hdr"],"groups":["brackets","releaseGroup"],"extra":""}""",
+                """{"changes":["diacritics","transliterate"],"nonAscii":"keep","replacement":"_","form":"nfc"}""",
+                """{"text":"","position":0,"from":"start"}""",
+                """{"count":1,"position":0,"from":"start"}""",
+                """{"maxLength":100,"marker":"","wordBoundary":false}""",
                 """{"width":2,"target":"all","skipYears":false}""",
                 """{"start":1,"step":1,"width":2,"perFolder":false,"position":"suffix","separator":" ","template":"{name} {n}"}""",
                 """{"source":"modified","format":"yyyy-MM-dd","timeZone":"","position":"prefix","separator":" ","template":"{date} {name}"}""",
