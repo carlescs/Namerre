@@ -28,7 +28,7 @@ describe('PluginEditorComponent', () => {
     await fixture.whenStable();
   });
 
-  it('restores saved plugins without focusing them and drops unknown types and versions', async () => {
+  it('restores saved plugins without focusing them and flags unknown types and versions', async () => {
     const saved: PluginInstance = {
       instanceId: 'saved-case',
       typeId: 'case',
@@ -47,10 +47,18 @@ describe('PluginEditorComponent', () => {
     restored.componentInstance.pluginsChanged.subscribe((value) => (emitted = value));
     await restored.whenStable();
     const element: HTMLElement = restored.nativeElement;
-    expect(element.querySelectorAll('article')).toHaveLength(1);
+    expect(element.querySelectorAll('article')).toHaveLength(3);
+    expect(element.querySelectorAll('article[data-unknown]')).toHaveLength(2);
     expect((element.querySelector('article select') as HTMLSelectElement).value).toBe('lower');
+    expect(element.textContent).toContain('Unknown step: removed-type v1');
+    expect(element.textContent).toContain('2 steps use a plugin this server does not have.');
     expect(emitted).toEqual([saved]);
     expect(element.contains(document.activeElement)).toBe(false);
+    (element.querySelector('button[aria-label="Remove plugin 2"]') as HTMLButtonElement).click();
+    (element.querySelector('button[aria-label="Remove plugin 2"]') as HTMLButtonElement).click();
+    await restored.whenStable();
+    expect(element.textContent).not.toContain('does not have');
+    expect(emitted).toEqual([saved]);
     restored.destroy();
   });
 
@@ -605,6 +613,24 @@ describe('PluginEditorComponent', () => {
       ]);
       restored.destroy();
     });
+  });
+
+  it('replaces every step when a preset is loaded', async () => {
+    await add('literal');
+    const loaded: PluginInstance = {
+      instanceId: 'preset-case',
+      typeId: 'case',
+      version: 1,
+      enabled: true,
+      options: { mode: 'lower' },
+    };
+    fixture.componentInstance.load([loaded]);
+    await fixture.whenStable();
+    expect(plugins).toEqual([loaded]);
+    expect(fixture.nativeElement.querySelectorAll('article')).toHaveLength(1);
+    expect((fixture.nativeElement.querySelector('article select') as HTMLSelectElement).value).toBe(
+      'lower',
+    );
   });
 
   it('limits a step to matching files through its "Apply to" filter', async () => {

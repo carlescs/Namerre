@@ -60,6 +60,8 @@ interface Card {
   groups: OptionGroup[];
   /** The step's "Apply to" filter; empty applies it to every file. */
   condition: ConditionForm;
+  /** The catalog has no such type and version (e.g. a preset saved before an upgrade). */
+  unknown: boolean;
   /** One control per field; `list` fields hold a `FormArray` of row groups. */
   form: FormGroup<Record<string, OptionControl | OptionRows>>;
   values: WritableSignal<PluginOptions>;
@@ -101,22 +103,33 @@ export class PluginEditorComponent implements OnInit {
   private readonly firstAddButton = viewChild<ElementRef<HTMLButtonElement>>('addButton');
 
   ngOnInit(): void {
+    this.restore(this.initialPlugins(), false);
+  }
+
+  /** Replaces every step, e.g. with a loaded preset, and reports the new recipe. */
+  load(plugins: PluginInstance[]): void {
+    this.restore(plugins, true);
+  }
+
+  private restore(plugins: PluginInstance[], replace: boolean): void {
     const single = new Set<string>();
-    const restored = this.initialPlugins().filter((plugin) => {
+    const restored = plugins.filter((plugin) => {
       const descriptor = this.descriptor(plugin);
-      if (!descriptor?.singleInstance) return !!descriptor;
+      // Steps this server does not know stay visible, flagged, until the user removes them.
+      if (!descriptor?.singleInstance) return true;
       // Drafts saved before a type became single-instance keep only its first step.
       if (single.has(plugin.typeId)) return false;
       single.add(plugin.typeId);
       return true;
     });
-    if (!restored.length) {
-      if (this.initialPlugins().length) this.emit();
-      return;
-    }
     this.cards.set(restored.slice(0, this.maxPlugins()).map((plugin) => this.card(plugin)));
-    if (restored.length !== this.initialPlugins().length) this.emit();
+    if (replace || this.emitted().length !== plugins.length) this.emit();
   }
+
+  /** Steps whose type and version the catalog lacks; they are never sent to the server. */
+  protected readonly unknownSteps = computed(
+    () => this.cards().filter((card) => card.unknown).length,
+  );
 
   protected canAdd(descriptor: PluginDescriptor): boolean {
     return (
@@ -278,7 +291,14 @@ export class PluginEditorComponent implements OnInit {
     if (plugin.typeId === 'tmdb') linkTmdbPreset(form);
     const values = signal<PluginOptions>(form.getRawValue() as PluginOptions);
     const condition = conditionForm(plugin.condition);
-    const card: Card = { plugin, groups: optionGroups, condition, form, values };
+    const card: Card = {
+      plugin,
+      groups: optionGroups,
+      condition,
+      form,
+      values,
+      unknown: !descriptor,
+    };
     form.valueChanges.subscribe(() => {
       values.set(form.getRawValue() as PluginOptions);
       card.plugin = { ...card.plugin, options: form.getRawValue() as PluginOptions };
@@ -307,8 +327,14 @@ export class PluginEditorComponent implements OnInit {
     );
   }
 
+  private emitted(): PluginInstance[] {
+    return this.cards()
+      .filter((card) => !card.unknown)
+      .map((card) => card.plugin);
+  }
+
   private emit(): void {
-    this.pluginsChanged.emit(this.cards().map((card) => card.plugin));
+    this.pluginsChanged.emit(this.emitted());
   }
 
   private focusRow(card: Card, field: OptionField, index: number): void {

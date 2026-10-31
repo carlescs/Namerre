@@ -1,0 +1,68 @@
+<section
+  aria-labelledby="presets-heading"
+  class="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60"
+>
+  <h4 id="presets-heading" class="m-0 mb-1">Presets</h4>
+  <p class="mt-0 text-sm text-slate-500 dark:text-slate-400">
+    Save these steps and run options on the server to reuse them from any browser. Loading a preset
+    replaces the current steps; TMDB matches are never saved.
+  </p>
+  <div class="grid items-end gap-x-4 sm:grid-cols-[1fr_auto]">
+    <label class="min-w-0"
+      >Saved presets
+      <select [formControl]="selected" (change)="cancelDelete()">
+        <option value="">
+          {{ presets().length ? 'Choose a preset' : 'No presets yet' }}
+        </option>
+        @for (preset of presets(); track preset.id) {
+          <option [value]="preset.id">
+            {{ preset.name }} ({{ preset.steps }} {{ preset.steps === 1 ? 'step' : 'steps' }})
+          </option>
+        }
+      </select>
+    </label>
+    <div class="actions mb-3 gap-2">
+      <button type="button" (click)="load()" [disabled]="!selected.value || busy()">Load</button>
+      @if (confirmingDelete()) {
+        <button type="button" class="btn-danger" (click)="remove()" [disabled]="busy()">
+          Confirm delete
+        </button>
+        <button type="button" (click)="cancelDelete()">Keep</button>
+      } @else {
+        <button type="button" (click)="remove()" [disabled]="!selected.value || busy()">
+          Delete
+        </button>
+      }
+    </div>
+    <label class="min-w-0"
+      >Preset name
+      <input
+        type="text"
+        [formControl]="name"
+        [attr.maxlength]="maxNameLength"
+        placeholder="e.g. TV episodes for Jellyfin"
+      />
+    </label>
+    <div class="actions mb-3 gap-2">
+      <button type="button" (click)="saveNew()" [disabled]="name.invalid || busy()">
+        Save as new preset
+      </button>
+      @if (active(); as preset) {
+        <button type="button" (click)="saveChanges()" [disabled]="name.invalid || busy()">
+          Save changes to {{ preset.name }}
+        </button>
+        @if (name.value.trim() !== preset.name) {
+          <button type="button" (click)="rename()" [disabled]="name.invalid || busy()">
+            Rename only
+          </button>
+        }
+      }
+    </div>
+  </div>
+  @if (message()) {
+    <p class="m-0 text-sm" role="status">{{ message() }}</p>
+  }
+  @if (error()) {
+    <p class="error m-0" role="alert">{{ error() }}</p>
+  }
+</section>

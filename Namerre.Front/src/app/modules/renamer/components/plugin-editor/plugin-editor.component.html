@@ -36,17 +36,34 @@
     </p>
   </div>
 }
+@if (unknownSteps(); as count) {
+  <p class="error mt-5" role="alert">
+    {{ count === 1 ? 'One step uses' : count + ' steps use' }} a plugin this server does not have.
+    {{ count === 1 ? 'It is' : 'They are' }} left out of previews and runs; remove
+    {{ count === 1 ? 'it' : 'them' }} or pick another step.
+  </p>
+}
 @for (card of cards(); track card.plugin.instanceId; let i = $index) {
-  <article [attr.aria-labelledby]="'plugin-' + card.plugin.instanceId">
+  <article
+    [attr.aria-labelledby]="'plugin-' + card.plugin.instanceId"
+    [attr.data-unknown]="card.unknown ? '' : null"
+  >
     <header class="flex flex-wrap items-center gap-2">
       <h4 #cardHeading tabindex="-1" class="m-0 mr-auto" [id]="'plugin-' + card.plugin.instanceId">
         {{ i + 1 }}. {{ name(card.plugin.typeId) }}
       </h4>
-      <label class="m-0 flex cursor-pointer items-center gap-2 text-xs">
+      @if (card.unknown) {
+        <span
+          class="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-900 dark:bg-rose-500/15 dark:text-rose-200"
+          >Unknown step: {{ card.plugin.typeId }} v{{ card.plugin.version }}</span
+        >
+      }
+      <label class="m-0 flex cursor-pointer items-center gap-2 text-xs" [hidden]="card.unknown">
         <input
           type="checkbox"
           class="peer sr-only"
           [checked]="card.plugin.enabled"
+          [disabled]="card.unknown"
           (change)="enable(i)"
         />
         <span
@@ -202,54 +219,56 @@
         }
       }
     </div>
-    @let applyTo = conditionSummary(card);
-    <details class="mt-3" [open]="!!applyTo" [formGroup]="card.condition">
-      <summary>
-        Apply to:
-        <span class="text-slate-500 dark:text-slate-400">{{ applyTo || 'every file' }}</span>
-      </summary>
-      @let conditionId = 'c-' + card.plugin.instanceId;
-      <div class="mt-2 grid items-start gap-x-6 sm:grid-cols-2">
-        <label class="min-w-0">
-          File extensions
-          <input
-            type="text"
-            formControlName="extensions"
-            placeholder="Any extension"
-            [attr.aria-describedby]="conditionId + '-extensions'"
-          />
-        </label>
-        <label class="min-w-0">
-          Name pattern
-          <input
-            type="text"
-            formControlName="pattern"
-            placeholder="Any name"
-            [attr.aria-describedby]="conditionId + '-pattern'"
-          />
-        </label>
-        <p
-          [id]="conditionId + '-extensions'"
-          class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400"
-        >
-          Separate with commas, e.g. srt, ass.
-        </p>
-        <p
-          [id]="conditionId + '-pattern'"
-          class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400"
-        >
-          A regular expression tested against the current file name, extension included.
-        </p>
-        <label class="flex items-center">
-          <input type="checkbox" formControlName="ignoreCase" />
-          Pattern ignores case
-        </label>
-        <label class="flex items-center">
-          <input type="checkbox" formControlName="invert" />
-          Apply to the files that do not match instead
-        </label>
-      </div>
-    </details>
+    @if (!card.unknown) {
+      @let applyTo = conditionSummary(card);
+      <details class="mt-3" [open]="!!applyTo" [formGroup]="card.condition">
+        <summary>
+          Apply to:
+          <span class="text-slate-500 dark:text-slate-400">{{ applyTo || 'every file' }}</span>
+        </summary>
+        @let conditionId = 'c-' + card.plugin.instanceId;
+        <div class="mt-2 grid items-start gap-x-6 sm:grid-cols-2">
+          <label class="min-w-0">
+            File extensions
+            <input
+              type="text"
+              formControlName="extensions"
+              placeholder="Any extension"
+              [attr.aria-describedby]="conditionId + '-extensions'"
+            />
+          </label>
+          <label class="min-w-0">
+            Name pattern
+            <input
+              type="text"
+              formControlName="pattern"
+              placeholder="Any name"
+              [attr.aria-describedby]="conditionId + '-pattern'"
+            />
+          </label>
+          <p
+            [id]="conditionId + '-extensions'"
+            class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400"
+          >
+            Separate with commas, e.g. srt, ass.
+          </p>
+          <p
+            [id]="conditionId + '-pattern'"
+            class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400"
+          >
+            A regular expression tested against the current file name, extension included.
+          </p>
+          <label class="flex items-center">
+            <input type="checkbox" formControlName="ignoreCase" />
+            Pattern ignores case
+          </label>
+          <label class="flex items-center">
+            <input type="checkbox" formControlName="invert" />
+            Apply to the files that do not match instead
+          </label>
+        </div>
+      </details>
+    }
     @if (card.plugin.typeId === 'tmdb') {
       <details class="mt-3">
         <summary>Template fields</summary>

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Namerre.Application.Authentication;
 using Namerre.Application.Folders;
 using Namerre.Application.Renaming;
+using Namerre.Application.Renaming.Presets;
 using Namerre.Infrastructure.Authentication;
 using Namerre.Infrastructure.Configuration;
 using Namerre.Infrastructure.Folders;
@@ -41,6 +42,7 @@ public static class DependencyInjection
             provider.GetRequiredService<IHostEnvironment>().ContentRootPath,
             maxQueuedJobs: provider.GetRequiredService<RenameLimits>().MaxQueuedJobs));
         services.AddSingleton<IAdministratorStore, AdministratorStore>();
+        services.AddSingleton<IPresetStore, PresetStore>();
         // TmdbResilience bounds each lookup (15 s overall); HttpClient's own 100 s default remains only as a backstop.
         services.AddHttpClient<TmdbClient>()
             .AddResilienceHandler(TmdbResilience.PipelineName, TmdbResilience.Configure);

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Namerre.Application;
 using Namerre.Application.Folders;
 using Namerre.Application.Renaming;
+using Namerre.Application.Renaming.Presets;
 using Namerre.Infrastructure.Folders;
 using Namerre.Infrastructure.Configuration;
 using Xunit;
@@ -44,6 +45,7 @@ public sealed class ApplicationRegistrationTests
         services.AddSingleton<IRenameService>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddSingleton<ITmdbMetadata>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddSingleton<IRenameFileSystem>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
+        services.AddSingleton<IPresetStore>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         using var provider = services.BuildServiceProvider(
             new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
         using var scope = provider.CreateScope();

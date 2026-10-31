@@ -349,6 +349,20 @@ types are allowed, except TMDB: a recipe holds at most one TMDB step, since each
 confirmed match for every file. Move instances up or down to choose the execution order; the
 catalog order does not determine execution order.
 
+### Presets
+
+**Presets** at the top of the plugin stage save the current steps and run options (content
+check, empty-folder cleanup, collision numbering) on the server under a name, so they work from
+any browser and several can be kept. Loading a preset replaces the current steps; **Save changes
+to …** overwrites the preset last loaded or saved, **Rename only** changes its name and **Delete**
+asks for confirmation. TMDB matches are per file and never saved. Names are unique ignoring case
+(1–100 characters) and a server keeps at most 100 presets; steps are checked like a pipeline
+request when saved (known plugin versions, at most the step limit, options under 8 KB each). A
+preset holding a step whose plugin version this server no longer has still loads: the step is
+flagged in the editor and left out of previews until removed. The browser draft remains as
+before. API: `GET/POST /api/rename-presets`, `GET/PUT/PATCH/DELETE /api/rename-presets/{id}`
+(`PATCH` takes `{ "name": … }`); presets live in the `Presets` table of the SQLite database.
+
 ### Applying a step to some files
 
 Every step has an **Apply to** section. List extensions (`srt, ass`, with or without the dot)

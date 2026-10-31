@@ -310,20 +310,7 @@ public sealed class PipelineEngine
             || request.Files.Select(f => f.Id).Distinct().Count() != request.Files.Count
             || request.Files.Select(f => f.Path).Distinct().Count() != request.Files.Count)
             throw new RenameException("DuplicateFile", "File IDs and source paths must be unique.");
-        if (request.Plugins.Any(p => string.IsNullOrWhiteSpace(p.InstanceId) || p.InstanceId.Length > 100)
-            || request.Plugins.Select(p => p.InstanceId).Distinct().Count() != request.Plugins.Count)
-            throw new RenameException("DuplicateInstance", "Each plugin instance needs a unique ID.");
-        foreach (var p in request.Plugins)
-        {
-            if (!plugins.ContainsKey((p.TypeId, p.Version)) || p.Options.ValueKind != JsonValueKind.Object
-                || p.Options.GetRawText().Length > 8192)
-                throw new RenameException("InvalidPlugin", "Unknown plugin type, version, or invalid options.");
-            p.Condition?.Validate();
-        }
-        var repeated = request.Plugins.Select(p => plugins[(p.TypeId, p.Version)].Descriptor)
-            .Where(d => d.SingleInstance).GroupBy(d => d.TypeId).FirstOrDefault(g => g.Count() > 1);
-        if (repeated is not null)
-            throw new RenameException("SingleInstancePlugin", $"Add {repeated.First().Name} only once per pipeline.");
+        ValidatePlugins(request.Plugins);
         if ((request.Selections?.Count ?? 0) > Limits.MaxFilesPerRun * Limits.MaxStepsPerRun)
             throw new RenameException("BatchLimit", "Too many metadata selections.");
         if (request.OnCollision is not (null or PipelineRequest.CollisionReport or PipelineRequest.CollisionAddNumber))
@@ -334,6 +321,32 @@ public sealed class PipelineEngine
             || overrides.Select(o => o.FileId).Distinct().Count() != overrides.Count)
             throw new RenameException("InvalidOverride", "Each name override needs one known file and a target path.");
     }
+
+    /// <summary>
+    /// Checks a step list on its own (also for presets): at most <see cref="RenameLimits.MaxStepsPerRun"/> instances with
+    /// unique IDs, known plugin versions, object options under 8 KB, valid conditions and single-instance types once.
+    /// </summary>
+    public void ValidatePlugins(IReadOnlyList<PluginInstance> steps)
+    {
+        if (steps.Count > Limits.MaxStepsPerRun)
+            throw new RenameException("BatchLimit", $"Use at most {Limits.MaxStepsPerRun} plugin instances.");
+        if (steps.Any(p => p is null || string.IsNullOrWhiteSpace(p.InstanceId) || p.InstanceId.Length > 100)
+            || steps.Select(p => p.InstanceId).Distinct().Count() != steps.Count)
+            throw new RenameException("DuplicateInstance", "Each plugin instance needs a unique ID.");
+        foreach (var p in steps)
+        {
+            if (!Knows(p) || p.Options.ValueKind != JsonValueKind.Object || p.Options.GetRawText().Length > 8192)
+                throw new RenameException("InvalidPlugin", "Unknown plugin type, version, or invalid options.");
+            p.Condition?.Validate();
+        }
+        var repeated = steps.Select(p => plugins[(p.TypeId, p.Version)].Descriptor)
+            .Where(d => d.SingleInstance).GroupBy(d => d.TypeId).FirstOrDefault(g => g.Count() > 1);
+        if (repeated is not null)
+            throw new RenameException("SingleInstancePlugin", $"Add {repeated.First().Name} only once per pipeline.");
+    }
+
+    /// <summary>Whether this server has the step's plugin type and version.</summary>
+    public bool Knows(PluginInstance step) => step.TypeId is not null && plugins.ContainsKey((step.TypeId, step.Version));
 
     /// <summary>
     /// Reads the facts of every readable source file, for a plan to keep; unreadable files are left out and

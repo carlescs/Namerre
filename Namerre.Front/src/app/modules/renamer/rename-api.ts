@@ -353,6 +353,33 @@ export interface TmdbPickerState {
   selected: TmdbMatch | null;
 }
 
+/** Step list and run options a preset stores; TMDB matches are per file and never included. */
+export interface SavePresetRequest {
+  name: string;
+  plugins: PluginInstance[];
+  verifyContent: boolean;
+  deleteEmptyFolders: boolean;
+  onCollision: 'Report' | 'AddNumber';
+}
+export interface PresetSummary {
+  id: string;
+  name: string;
+  steps: number;
+  updatedAt: string;
+}
+export interface PresetView {
+  id: string;
+  name: string;
+  plugins: PluginInstance[];
+  verifyContent: boolean;
+  deleteEmptyFolders: boolean;
+  onCollision: 'Report' | 'AddNumber' | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Instance ids of steps whose plugin type or version this server no longer has. */
+  unknownSteps: string[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class RenameApi {
   private readonly http = inject(HttpClient);
@@ -425,6 +452,24 @@ export class RenameApi {
   }
   tmdb(request: TmdbRequest) {
     return this.http.post<{ matches: TmdbMatch[] }>('/api/metadata/tmdb/search', request);
+  }
+  presets() {
+    return this.http.get<PresetSummary[]>('/api/rename-presets');
+  }
+  preset(id: string) {
+    return this.http.get<PresetView>(`/api/rename-presets/${encodeURIComponent(id)}`);
+  }
+  createPreset(request: SavePresetRequest) {
+    return this.http.post<PresetView>('/api/rename-presets', request);
+  }
+  updatePreset(id: string, request: SavePresetRequest) {
+    return this.http.put<PresetView>(`/api/rename-presets/${encodeURIComponent(id)}`, request);
+  }
+  renamePreset(id: string, name: string) {
+    return this.http.patch<PresetView>(`/api/rename-presets/${encodeURIComponent(id)}`, { name });
+  }
+  deletePreset(id: string) {
+    return this.http.delete<void>(`/api/rename-presets/${encodeURIComponent(id)}`);
   }
   /** Proposes a verified match from the step input's file name; nothing is accepted automatically. */
   suggestTmdb(request: TmdbSuggestionRequest) {

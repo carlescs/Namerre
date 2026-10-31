@@ -45,6 +45,7 @@ import {
   type PlanView,
   type PluginDescriptor,
   type PluginInstance,
+  type PresetView,
   type PreviewResult,
   RenameApi,
   renameError,
@@ -344,6 +345,13 @@ export class RenameWorkflowComponent {
     this.plugins.set(plugins);
     this.overrides.set([]);
     this.invalidate();
+  }
+
+  /** A loaded preset already replaced the steps through the editor; take over its run options. */
+  protected applyPreset(preset: PresetView): void {
+    this.verifyContent.set(preset.verifyContent);
+    this.deleteEmptyFolders.set(preset.deleteEmptyFolders);
+    this.setNumberCollisions(preset.onCollision === 'AddNumber');
   }
 
   /** Collision handling changes the computed names, so the preview is taken again. */

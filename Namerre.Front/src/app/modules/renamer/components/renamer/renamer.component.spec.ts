@@ -72,6 +72,7 @@ describe('RenamerComponent', () => {
     ).not.toBeNull();
     http.expectOne('/api/rename-plugins').flush([]);
     await fixture.whenStable();
+    http.expectOne('/api/rename-presets').flush([]);
     const back = main().querySelector(
       '[aria-label="Wizard navigation"] button',
     ) as HTMLButtonElement;

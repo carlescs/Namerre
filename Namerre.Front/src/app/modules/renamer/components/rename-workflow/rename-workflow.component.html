@@ -50,8 +50,15 @@
       [loaded]="catalogLoaded()"
       [error]="catalogError()"
       [initialPlugins]="restoredPlugins"
+      [plugins]="plugins()"
+      [runOptions]="{
+        verifyContent: verifyContent(),
+        deleteEmptyFolders: deleteEmptyFolders(),
+        numberCollisions: numberCollisions(),
+      }"
       (retryRequested)="loadCatalog()"
       (pluginsChanged)="changePlugins($event)"
+      (presetLoaded)="applyPreset($event)"
     />
     @if (tmdbPlugins().length) {
       <app-tmdb-matching

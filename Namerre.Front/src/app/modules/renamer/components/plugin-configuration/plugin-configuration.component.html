@@ -3,6 +3,7 @@
   <button type="button" (click)="retryRequested.emit()">Retry plugin catalog</button>
 }
 @if (loaded()) {
+  <app-preset-bar [plugins]="plugins()" [options]="runOptions()" (loaded)="loadPreset($event)" />
   <app-plugin-editor
     [catalog]="catalog()"
     [initialPlugins]="initialPlugins()"

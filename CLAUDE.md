@@ -122,7 +122,10 @@ and no cross-device copy fallback. The data directory and media root must not co
 **Persistence.** `RenameStore` wraps EF Core SQLite (`RenameDbContext`) in `Namerre:DataPath`; it
 runs `Migrate()` on startup and refuses unknown applied migrations. Migrations live in
 `Namerre.Infrastructure/Renaming/Migrations`. The single administrator account is stored in the
-same database (`Administrators` table).
+same database (`Administrators` table), and so are pipeline presets (`Presets` table, `PresetStore` behind the
+Application `IPresetStore`; `PresetService` validates through `PipelineEngine.ValidatePlugins`, served by
+`RenamePresetsController` at `api/rename-presets`). Add migrations with `dotnet ef migrations add <Name>
+-o Renaming/Migrations` from `Namerre.Infrastructure`.
 
 **TMDB.** `TmdbMetadata` calls TMDB server-side through `CachedTmdbClient` (singleton holding a
 private 256-entry, 10-minute `MemoryCache`), which takes a fresh typed `TmdbClient` per lookup. The client's

@@ -146,6 +146,8 @@ describe('RenameWorkflowComponent', () => {
       .expectOne('/api/rename-plugins')
       .flush([{ ...casePlugin, defaultOptions: { mode: 'upper' } }]);
     await fixture.whenStable();
+    http.expectOne('/api/rename-presets').flush([]);
+    await fixture.whenStable();
   });
 
   afterEach(() => {
@@ -317,6 +319,47 @@ describe('RenameWorkflowComponent', () => {
       numberCollisions: false,
     });
     for (const request of http.match('/api/rename-previews')) request.flush(tmdbPreview);
+  });
+
+  it('replaces the steps and run options with a loaded preset', async () => {
+    const preset = {
+      id: 'p1',
+      name: 'Shows',
+      plugins: [
+        {
+          instanceId: 'preset-step',
+          typeId: 'case',
+          version: 1,
+          enabled: true,
+          options: { mode: 'lower' },
+        },
+      ],
+      verifyContent: true,
+      deleteEmptyFolders: false,
+      onCollision: 'AddNumber' as const,
+      createdAt: '2026-10-31T00:00:00Z',
+      updatedAt: '2026-10-31T00:00:00Z',
+      unknownSteps: [],
+    };
+    const select = fixture.nativeElement.querySelector(
+      '[aria-labelledby="presets-heading"] select',
+    ) as HTMLSelectElement;
+    const option = document.createElement('option');
+    option.value = 'p1';
+    select.append(option);
+    select.value = 'p1';
+    select.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    button('Load').click();
+    http.expectOne('/api/rename-presets/p1').flush(preset);
+    await fixture.whenStable();
+    button('Next: review filenames').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const request = http.expectOne('/api/rename-previews').request.body;
+    expect(request.plugins).toEqual(preset.plugins);
+    expect(request.verifyContent).toBe(true);
+    expect(request.deleteEmptyFolders).toBe(false);
+    expect(request.onCollision).toBe('AddNumber');
   });
 
   it('reports collisions by default and numbers them when asked', async () => {
@@ -1158,6 +1201,7 @@ describe('RenameWorkflowComponent', () => {
     button('Retry plugin catalog').click();
     http.expectOne('/api/rename-plugins').flush([]);
     await fixture.whenStable();
+    http.expectOne('/api/rename-presets').flush([]);
     expect(text()).not.toContain('Catalog unavailable.');
     expect(button('Next: review filenames').disabled).toBe(false);
   });

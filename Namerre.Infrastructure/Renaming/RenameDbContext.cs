@@ -10,6 +10,7 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
     public DbSet<RenameOperation> Operations => Set<RenameOperation>();
     public DbSet<RenameSetting> Settings => Set<RenameSetting>();
     public DbSet<AdministratorAccount> Administrators => Set<AdministratorAccount>();
+    public DbSet<RenamePresetRow> Presets => Set<RenamePresetRow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -49,6 +50,17 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
             entity.Property(e => e.Username).HasMaxLength(128).IsRequired();
             entity.Property(e => e.PasswordHash).HasMaxLength(256).IsRequired();
         });
+        modelBuilder.Entity<RenamePresetRow>(entity =>
+        {
+            entity.ToTable("Presets");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(100);
+            // NOCASE keeps names unique ignoring (ASCII) case, matching the service's check.
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired().UseCollation("NOCASE");
+            entity.HasIndex(e => e.Name).IsUnique();
+            entity.Property(e => e.Json).IsRequired();
+            entity.Property(e => e.Revision).IsConcurrencyToken();
+        });
     }
 }
 
@@ -57,6 +69,17 @@ public sealed class AdministratorAccount
     public int Id { get; set; }
     public string Username { get; set; } = "";
     public string PasswordHash { get; set; } = "";
+}
+
+/// <summary>A pipeline preset; <see cref="Json"/> holds its steps and run options.</summary>
+public sealed class RenamePresetRow
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Json { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public long Revision { get; set; }
 }
 
 public sealed class RenameDocument
