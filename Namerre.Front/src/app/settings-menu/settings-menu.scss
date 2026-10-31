@@ -1,0 +1,45 @@
+:host {
+  position: relative;
+  display: inline-flex;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  padding: 0;
+  color: var(--app-muted);
+
+  &[aria-expanded='true'] {
+    color: var(--app-accent);
+  }
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  gap: 0.75rem;
+  min-width: 13rem;
+  padding: 0.75rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.75rem;
+  background: var(--app-surface);
+  box-shadow: 0 12px 32px -12px rgb(15 23 42 / 30%);
+}
+
+section {
+  display: grid;
+  gap: 0.375rem;
+  justify-items: start;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--app-muted);
+}

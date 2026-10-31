@@ -7,9 +7,9 @@ import { Login } from './auth/login/login';
 import { Setup } from './auth/setup/setup';
 import { UserMenu } from './auth/user-menu/user-menu';
 import { Logo } from './brand/logo';
+import { SettingsMenu } from './settings-menu/settings-menu';
 import { ThemePicker } from './theme/theme-picker';
 import { WorkflowMode } from './workflow-mode/workflow-mode';
-import { WorkflowModePicker } from './workflow-mode/workflow-mode-picker';
 import { WorkflowModeWarning } from './workflow-mode/workflow-mode-warning';
 import { WorkflowOnboarding } from './workflow-mode/workflow-onboarding';
 
@@ -21,10 +21,10 @@ import { WorkflowOnboarding } from './workflow-mode/workflow-onboarding';
     AppUpdate,
     Login,
     Setup,
+    SettingsMenu,
     ThemePicker,
     UserMenu,
     Logo,
-    WorkflowModePicker,
     WorkflowModeWarning,
     WorkflowOnboarding,
   ],

@@ -64,11 +64,11 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('app-workflow-onboarding')).toBeNull();
-    expect(fixture.nativeElement.querySelector('app-workflow-mode-picker')).toBeNull();
+    expect(fixture.nativeElement.querySelector('app-settings-menu')).toBeNull();
     username.set('admin');
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('app-workflow-onboarding')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('app-workflow-mode-picker')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('header app-settings-menu')).not.toBeNull();
   });
 
   it('shows only the login screen to an anonymous visitor', async () => {
@@ -131,13 +131,14 @@ describe('App', () => {
     }
   });
 
-  it('offers the theme picker before and after signing in', async () => {
+  it('offers the theme picker before signing in and the options menu after', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('app-theme-picker')).not.toBeNull();
     username.set('admin');
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('header app-theme-picker')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('header app-theme-picker')).toBeNull();
+    expect(fixture.nativeElement.querySelector('header app-settings-menu')).not.toBeNull();
   });
 
   it('opens change password from the username menu in the header', async () => {

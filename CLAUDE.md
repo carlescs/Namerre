@@ -177,7 +177,7 @@ resource-style renaming endpoints (`/api/rename-plugins`, `/api/rename-previews`
 `/api/rename-plans`, …). The workflow is a staged wizard (`rename-workflow` component) across file
 selection, plugin configuration, TMDB matching, preview, confirmation and run history. It has two
 modes, chosen per browser through the `WorkflowMode` service (`src/app/workflow-mode`, `localStorage`
-like `Theme`; header switch, first-run onboarding, and a warning before a switch to Simple discards
+like `Theme`; switch in the header options menu (`settings-menu`), first-run onboarding, and a warning before a switch to Simple discards
 steps): **Advanced** is that full wizard; **Simple** runs files → preset (`preset-picker`) → [matching]
 → review (preview and confirmation on one screen) with fixed `simpleRunOptions`. Simple's built-in presets
 are data in `modules/renamer/simple-presets.json` (`simple-presets.ts` builds and recognises them);
