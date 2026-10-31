@@ -37,6 +37,44 @@ public sealed class ApplicationRegistrationTests
     }
 
     [Fact]
+    public void IntegrationSettingsBindAndTheNotifierIsRegistered()
+    {
+        using var factory = new AuthWebApplicationFactory().WithWebHostBuilder(builder =>
+            builder.ConfigureAppConfiguration((_, configuration) =>
+                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Namerre:Integrations:Plex:Url"] = "http://plex:32400",
+                    ["Namerre:Integrations:Plex:Token"] = "plex-token",
+                    ["Namerre:Integrations:Webhook:Url"] = "https://hooks.example/run",
+                    ["Namerre:Integrations:Webhook:IncludePaths"] = "true"
+                })));
+
+        var integrations = factory.Services.GetRequiredService<IOptions<NamerreOptions>>().Value.Integrations;
+
+        Assert.Equal("http://plex:32400", integrations.Plex.Url);
+        Assert.Equal("plex-token", integrations.Plex.Token);
+        Assert.True(integrations.Webhook.IncludePaths);
+        Assert.Null(integrations.Jellyfin.Url);
+        Assert.NotNull(factory.Services.GetRequiredService<ILibraryNotifier>());
+    }
+
+    [Fact]
+    public void InvalidIntegrationSettingsFailStartup()
+    {
+        using var factory = new AuthWebApplicationFactory().WithWebHostBuilder(builder =>
+            builder.ConfigureAppConfiguration((_, configuration) =>
+                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Namerre:Integrations:Jellyfin:Url"] = "http://jelly:8096"
+                })));
+
+        var exception = Assert.ThrowsAny<Exception>(() => factory.Services);
+        var failure = exception as OptionsValidationException ?? exception.InnerException as OptionsValidationException;
+        Assert.NotNull(failure);
+        Assert.Contains("Namerre:Integrations:Jellyfin:ApiKey", failure.Message);
+    }
+
+    [Fact]
     public void AddApplicationRegistersAScopedSender()
     {
         var services = new ServiceCollection();

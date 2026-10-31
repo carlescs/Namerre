@@ -98,6 +98,12 @@ Application settings live in one `Namerre` section in `Namerre.Api\appsettings.j
       "MaxFilesPerRun": 200,
       "MaxStepsPerRun": 32,
       "MaxQueuedJobs": 32
+    },
+    "Integrations": {
+      "Jellyfin": { "Url": "", "ApiKey": "" },
+      "Emby": { "Url": "", "ApiKey": "" },
+      "Plex": { "Url": "", "Token": "" },
+      "Webhook": { "Url": "", "IncludePaths": false }
     }
   }
 }
@@ -135,6 +141,50 @@ names, so send telemetry only to a collector you trust. Invalid settings fail st
 
 ```powershell
 $env:Namerre__Telemetry__OtlpEndpoint = 'http://otel-collector:4317'
+```
+
+## Library and webhook notifications (optional)
+
+After a run finishes, Namerre can ask a media server to rescan its libraries and/or call a
+webhook. Each target is disabled unless its `Url` is set; with nothing configured, no request
+is ever made. A notification is sent when a rename or rollback run completes
+(`Completed`) and when a recovery finishes (`Recovered`).
+
+| Setting | Request |
+| --- | --- |
+| `Jellyfin:Url`, `Jellyfin:ApiKey` | `POST {Url}/Library/Refresh` with header `X-Emby-Token`. |
+| `Emby:Url`, `Emby:ApiKey` | `POST {Url}/emby/Library/Refresh` with header `X-Emby-Token`. |
+| `Plex:Url`, `Plex:Token` | `GET {Url}/library/sections/all/refresh` with header `X-Plex-Token`. |
+| `Webhook:Url`, `Webhook:IncludePaths` (default `false`) | `POST {Url}` with a JSON body, see below. |
+
+URLs must be absolute `http`/`https` URLs (a trailing slash is ignored). The key or token is
+required whenever its URL is set, and a key without a URL is rejected; invalid settings fail
+startup. Keys and tokens are sent only as request headers from the backend and are never
+logged, stored in plans or runs, or exposed to the frontend.
+
+Notifications are best effort: they are queued and sent in the background with a 10 second
+timeout, a failing or unreachable endpoint is logged as a warning, and none of this can delay
+or fail a rename job. Notifications still queued when Namerre stops are dropped.
+
+Webhook body:
+
+```json
+{
+  "event": "run.finished",
+  "runId": "3f2c...",
+  "kind": "Rename",
+  "status": "Completed",
+  "files": { "total": 3, "completed": 3, "failed": 0 }
+}
+```
+
+`kind` is `Rename` or `Rollback`; `status` is `Completed` or `Recovered`. Media file paths
+can be sensitive, so they are left out by default. With `Webhook:IncludePaths` set to `true`,
+`files.items` also lists `{ "sourcePath": "...", "targetPath": "..." }` for every file.
+
+```powershell
+$env:Namerre__Integrations__Jellyfin__Url = 'http://jellyfin:8096'
+$env:Namerre__Integrations__Jellyfin__ApiKey = '<api-key>'
 ```
 
 ## Authentication (required)
@@ -689,6 +739,13 @@ Configure `Namerre:Tmdb:ReadAccessToken` through server secrets or the
 pipeline options, run snapshots, Docker build arguments, or committed files.
 The token is sent from the backend to TMDB in an authorization header.
 Local text/regex/case transformations do not require TMDB.
+
+The same rule applies to the optional integration credentials
+(`Namerre:Integrations:Jellyfin:ApiKey`, `Namerre:Integrations:Emby:ApiKey`,
+`Namerre:Integrations:Plex:Token`): set them through server secrets or environment variables
+(for example `Namerre__Integrations__Plex__Token`), never in Angular configuration, run
+snapshots, Docker build arguments, or committed files. A webhook URL may embed a secret as
+well, so treat it the same way.
 
 Search for a movie or TV show, correct the query when necessary, and confirm the
 intended match. Episodes require a confirmed show, season, and episode. Metadata

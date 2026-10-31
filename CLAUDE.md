@@ -149,7 +149,11 @@ match carries `EpisodeEnd` (titles joined by `EpisodeTitles.Join`); `{episode}` 
 values fail startup; signed-in `GET api/auth/session` reports them to the frontend's `WorkloadLimits`), `Authentication` (incl. optional `Oidc` single sign-on, e.g. Keycloak — see
 `Namerre.Api/Authentication/OidcLogin.cs`; the OIDC scheme is hidden by `OidcAwareSchemeProvider` unless
 `Authority` is set), `Tmdb`, `ReverseProxy`, `Telemetry` (optional OTLP
-export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless `OtlpEndpoint` is set).
+export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless `OtlpEndpoint` is set). `Integrations`
+(optional Jellyfin/Emby/Plex library refresh and webhook after a `Completed`/`Recovered` run: `RenameService.Complete`
+calls `ILibraryNotifier.RunFinished`, implemented by `Infrastructure/Integrations/LibraryNotifier`, a bounded channel
+drained by a hosted service; best effort, tokens only in request headers and never logged;
+`NamerreOptionsValidator` fails startup on bad URLs or missing/orphaned keys).
 
 **Hosting.** `Program.cs` requires HTTPS for `/api` (400 otherwise), sets `no-store` on API
 responses, requires authorization on all controllers, returns 404 for unmatched `/api/*`, and

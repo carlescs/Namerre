@@ -9,6 +9,7 @@ using Namerre.Application.Renaming.Presets;
 using Namerre.Infrastructure.Authentication;
 using Namerre.Infrastructure.Configuration;
 using Namerre.Infrastructure.Folders;
+using Namerre.Infrastructure.Integrations;
 using Namerre.Infrastructure.Renaming;
 
 namespace Namerre.Infrastructure;
@@ -32,6 +33,7 @@ public static class DependencyInjection
             + $"MaxQueuedJobs {RenameLimits.CeilingQueuedJobs}."));
         services.AddSingleton(provider =>
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.Limits.ToLimits());
+        services.AddSingleton<IValidateOptions<NamerreOptions>, NamerreOptionsValidator>();
         services.AddSingleton(provider => new BoundedFileSystem(
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.RootPath,
             provider.GetRequiredService<IHostEnvironment>().ContentRootPath));
@@ -48,6 +50,12 @@ public static class DependencyInjection
             .AddResilienceHandler(TmdbResilience.PipelineName, TmdbResilience.Configure);
         services.AddSingleton<ITmdbClient>(provider => new CachedTmdbClient(() => provider.GetRequiredService<TmdbClient>()));
         services.AddSingleton<ITmdbMetadata, TmdbMetadata>();
+        // The factory's default loggers write request URLs, and a webhook URL may embed a secret.
+        services.AddHttpClient(LibraryNotifier.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10))
+            .RemoveAllLoggers();
+        services.AddSingleton<LibraryNotifier>();
+        services.AddSingleton<ILibraryNotifier>(provider => provider.GetRequiredService<LibraryNotifier>());
+        services.AddHostedService(provider => provider.GetRequiredService<LibraryNotifier>());
         services.AddSingleton<RenameService>();
         services.AddSingleton<IRenameService>(provider => provider.GetRequiredService<RenameService>());
         services.AddHostedService<RenameWorker>();
