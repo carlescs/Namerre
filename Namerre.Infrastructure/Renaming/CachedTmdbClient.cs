@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
+using Namerre.Infrastructure.Diagnostics;
 
 namespace Namerre.Infrastructure.Renaming;
 
@@ -16,8 +17,19 @@ public sealed class CachedTmdbClient(Func<ITmdbClient> clients) : ITmdbClient, I
 
     public async Task<JsonElement> Get(string path, CancellationToken cancellationToken)
     {
-        if (cache.TryGetValue(path, out JsonElement cached)) return cached;
-        var result = await clients().Get(path, cancellationToken);
+        if (cache.TryGetValue(path, out JsonElement cached))
+        {
+            Record("cache_hit");
+            return cached;
+        }
+        JsonElement result;
+        try { result = await clients().Get(path, cancellationToken); }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            Record(NamerreTelemetry.ErrorType(exception));
+            throw;
+        }
+        Record("ok");
         // When full, the entry is skipped and the cache compacts expired and least recently used entries.
         cache.Set(path, result, new MemoryCacheEntryOptions
         {
@@ -28,4 +40,7 @@ public sealed class CachedTmdbClient(Func<ITmdbClient> clients) : ITmdbClient, I
     }
 
     public void Dispose() => cache.Dispose();
+
+    private static void Record(string result)
+        => NamerreTelemetry.TmdbLookups.Add(1, new KeyValuePair<string, object?>("namerre.tmdb.result", result));
 }

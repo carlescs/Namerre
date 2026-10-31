@@ -132,12 +132,41 @@ OpenTelemetry Collector (or any OTLP-compatible backend). It is disabled unless
 | `Headers` | empty | Optional exporter headers as `key1=value1,key2=value2` (for example collector authentication). Treat as a secret. |
 | `ServiceName` | `namerre` | Reported as `service.name`. |
 
-Exported signals: ASP.NET Core and outgoing `HttpClient` (TMDB) traces and metrics,
-Entity Framework Core database command traces (the SQLite store; commands are
-parameterized and parameter values are not recorded), .NET runtime metrics, and
-application logs. Query strings are redacted by the
-instrumentation, but request paths and log messages may contain media file and folder
-names, so send telemetry only to a collector you trust. Invalid settings fail startup.
+Exported signals: ASP.NET Core, SignalR and outgoing `HttpClient` (TMDB) traces and
+metrics, Entity Framework Core database command traces (the SQLite store; commands are
+parameterized and parameter values are not recorded, and only commands inside a request or
+job span are traced, so idle queue polling exports nothing), .NET runtime, authentication and
+Polly (TMDB resilience) metrics, Namerre's own spans and metrics below, and application logs
+(with their formatted message). Query strings are redacted by the instrumentation, and library
+refresh and webhook requests are never traced by URL, but request paths and log messages may
+contain media file and folder names, so send telemetry only to a collector you trust. Invalid
+settings fail startup.
+
+Namerre spans (source `Namerre`): `rename.preview`; one root span per durable job —
+`rename.prepare`, `rename.execute`, `rename.recover` — linked to the request that queued it and
+tagged with `namerre.job.id`, `namerre.job.kind` and the final `namerre.job.status`, with
+child spans for its phases (`rename.facts`, `rename.fingerprint`, `rename.preflight`,
+`rename.stage`, `rename.place`, `rename.cleanup`, `rename.recovery.evidence`); `watch.scan`
+per watch folder scan; `library.notify` per finished run with one child per target.
+
+| Metric (meter `Namerre`) | Type | Tags |
+| --- | --- | --- |
+| `namerre.rename.job.duration` (s) | histogram | `namerre.job.kind` (`Prepare`, `Rename`, `Rollback`, `Recover`), `namerre.job.status` |
+| `namerre.rename.job.files` | counter | `namerre.job.kind`, `namerre.file.status` |
+| `namerre.rename.preview.duration` (s) | histogram | `namerre.preview.result` (`ready`, `blocked` or an error code) |
+| `namerre.rename.rejections` | counter | `namerre.rejection.reason` (`PreviewBusy`, `QueueFull`, `RecoveryPending`) |
+| `namerre.rename.hashed` (bytes) | counter | — |
+| `namerre.rename.queue.jobs` | gauge | — (jobs waiting in the durable queue) |
+| `namerre.rename.runs.recovery` | gauge | — (runs awaiting or undergoing recovery; mutations are blocked while it is above 0) |
+| `namerre.tmdb.lookups` | counter | `namerre.tmdb.result` (`cache_hit`, `ok` or the error code, e.g. `TmdbRateLimited`) |
+| `namerre.watch.files` | counter | `namerre.watch.folder`, `namerre.watch.outcome` (`prepared`, `unchanged`, `completed`, `failed`, `ignored`) |
+| `namerre.library.notifications` | counter | `namerre.library.target`, `namerre.library.outcome` (`delivered`, `http_error`, `failed`, `dropped`) |
+| `namerre.auth.sign_ins` | counter | `namerre.auth.method` (`password`, `oidc`), `namerre.auth.outcome` (`success`, `failure`, `denied`) |
+
+Metric tags never contain file paths or record IDs. Logs record queued plans and runs, each
+job's outcome and duration, runs that need recovery, deletions, sign-ins (failed attempts with
+the remote address but never the attempted username), watch folder batches and library
+notification results.
 
 ```powershell
 $env:Namerre__Telemetry__OtlpEndpoint = 'http://otel-collector:4317'

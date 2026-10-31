@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Reflection;
 using Namerre.Infrastructure.Configuration;
+using Namerre.Infrastructure.Diagnostics;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -44,23 +46,44 @@ public static class TelemetrySetup
                 .AddService(serviceName, serviceVersion: serviceVersion)
                 .AddAttributes([new("deployment.environment.name", builder.Environment.EnvironmentName)]))
             .WithTracing(tracing => tracing
+                // Rename jobs and their phases, previews, watch folder scans and library notifications.
+                .AddSource(NamerreTelemetry.Name)
+                .AddSource("Microsoft.AspNetCore.SignalR.Server")
                 .AddAspNetCoreInstrumentation()
-                .AddHttpClientInstrumentation()
-                // One span per EF Core database command (the SQLite rename store).
-                .AddEntityFrameworkCoreInstrumentation()
+                .AddHttpClientInstrumentation(options => options.FilterHttpRequestMessage = IsTraced)
+                // One span per EF Core database command (the SQLite rename store), inside a request or job span.
+                .AddEntityFrameworkCoreInstrumentation(options => options.Filter = (_, _) => HasParent())
                 .AddOtlpExporter(options => Configure(options, "/v1/traces")))
             .WithMetrics(metrics => metrics
+                .AddMeter(NamerreTelemetry.Name)
+                .AddInstrumentation(provider => provider.GetRequiredService<RenameStateMetrics>())
                 .AddAspNetCoreInstrumentation()
+                .AddMeter("Microsoft.AspNetCore.Authentication", "Microsoft.AspNetCore.Authorization")
                 .AddHttpClientInstrumentation()
                 .AddRuntimeInstrumentation()
                 // Retries, rejections and circuit state from the TMDB resilience pipeline.
                 .AddMeter("Polly")
                 .AddOtlpExporter(options => Configure(options, "/v1/metrics")))
             .WithLogging(logging => logging
-                .AddOtlpExporter(options => Configure(options, "/v1/logs")));
+                .AddOtlpExporter(options => Configure(options, "/v1/logs")),
+                options => options.IncludeFormattedMessage = true);
 
         return builder;
     }
+
+    /// <summary>False for requests whose URL may embed a secret (library webhooks); they get their own span instead.</summary>
+    internal static bool IsTraced(HttpRequestMessage request)
+        => !request.Options.TryGetValue(NamerreTelemetry.Untraced, out var untraced) || !untraced;
+
+    /// <summary>
+    /// True when the database command runs inside another span. The job worker and watch folders poll the store
+    /// every few hundred milliseconds; without this, each idle poll would export a trace of its own.
+    /// </summary>
+    internal static bool HasParent()
+        => Activity.Current is { } current
+           && (current.Source.Name != EntityFrameworkSource || current.Parent is not null || current.HasRemoteParent);
+
+    private const string EntityFrameworkSource = "OpenTelemetry.Instrumentation.EntityFrameworkCore";
 
     private static Uri ParseEndpoint(string value)
         => Uri.TryCreate(value, UriKind.Absolute, out var endpoint) &&

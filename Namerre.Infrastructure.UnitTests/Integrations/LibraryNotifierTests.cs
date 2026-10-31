@@ -80,6 +80,8 @@ public sealed class LibraryNotifierTests
         var (request, body) = Assert.Single(sent);
         Assert.Equal(HttpMethod.Post, request.Method);
         Assert.Equal("https://hooks.example/run", request.RequestUri!.ToString());
+        // The URL may embed a secret, so HTTP instrumentation must not record it.
+        Assert.True(request.Options.TryGetValue(Diagnostics.NamerreTelemetry.Untraced, out var untraced) && untraced);
         Assert.Equal("application/json", request.Content!.Headers.ContentType!.MediaType);
         using var json = JsonDocument.Parse(body!);
         var root = json.RootElement;
