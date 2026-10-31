@@ -421,7 +421,7 @@ the same server, so the server must be running and reachable.
 
 The renamer has two modes. The first time someone signs in, Namerre asks which one to use;
 the choice is kept in that browser only (`localStorage`) and can be changed at any time with
-the **Simple / Advanced** switch in the header's **Options** menu (gear icon), next to the theme
+the **Simple / Advanced** switch in the header's **Options** menu (sliders icon), next to the theme
 selector. **Decide later**
 uses Simple for that visit and asks again next time. Run history is available in both modes.
 

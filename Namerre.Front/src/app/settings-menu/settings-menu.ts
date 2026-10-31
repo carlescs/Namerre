@@ -8,7 +8,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
-import { faGear } from '@fortawesome/free-solid-svg-icons';
+import { faSliders } from '@fortawesome/free-solid-svg-icons';
 import { ThemePicker } from '../theme/theme-picker';
 import { WorkflowModePicker } from '../workflow-mode/workflow-mode-picker';
 
@@ -27,7 +27,7 @@ export class SettingsMenu {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
   protected readonly open = signal(false);
-  protected readonly gearIcon = faGear;
+  protected readonly optionsIcon = faSliders;
   private readonly trigger = viewChild.required<ElementRef<HTMLButtonElement>>('trigger');
   private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
 
