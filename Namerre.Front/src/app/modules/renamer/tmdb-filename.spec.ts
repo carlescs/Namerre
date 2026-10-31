@@ -1,5 +1,4 @@
-import type { TmdbMatch } from './rename-api';
-import { preferredTmdbMatch, tmdbFilename } from './tmdb-filename';
+import { tmdbFilename } from './tmdb-filename';
 
 describe('TMDB filename inference', () => {
   it('cleans movie release names and extracts the release year', () => {
@@ -36,24 +35,6 @@ describe('TMDB filename inference', () => {
     expect(tmdbFilename('A.Show.Pilot.mkv', 'tv')).toEqual({ query: 'A Show Pilot' });
   });
 
-  it('prefers a matching title and year over TMDB result order', () => {
-    const match: TmdbMatch = {
-      id: 1,
-      mediaType: 'movie',
-      title: 'The Movie',
-      year: '1990',
-      season: null,
-      episode: null,
-      episodeTitle: null,
-      confirmationToken: null,
-    };
-    const correct = { ...match, id: 2, year: '2024' };
-    expect(preferredTmdbMatch([match, correct], { query: 'The Movie', year: '2024' })).toBe(
-      correct,
-    );
-    expect(preferredTmdbMatch([], { query: 'Missing' })).toBeUndefined();
-  });
-
   it('only parses episode numbers for TV searches', () => {
     expect(tmdbFilename('Shows/A.Show.S01E02.mkv', 'movie')).toEqual({ query: 'A Show S01E02' });
   });
@@ -88,21 +69,35 @@ describe('TMDB filename inference', () => {
     });
   });
 
-  it('ranks title matches above year matches and ignores punctuation and case', () => {
-    const base: TmdbMatch = {
-      id: 1,
-      mediaType: 'movie',
-      title: 'Other',
-      year: '2024',
-      season: null,
-      episode: null,
-      episodeTitle: null,
-      confirmationToken: null,
-    };
-    const titled = { ...base, id: 2, title: 'MISSION: Impossible!', year: '1996' };
-    expect(preferredTmdbMatch([base, titled], { query: 'Mission Impossible', year: '2024' })).toBe(
-      titled,
-    );
-    expect(preferredTmdbMatch([base, titled], { query: 'Unrelated' })).toBe(base);
+  it('reads multi-episode ranges in common styles', () => {
+    for (const name of [
+      'Show.S01E04-E05.mkv',
+      'Show.S01E04E05.mkv',
+      'Show S01E04-05 1080p.mkv',
+      'Show.1x04-1x05.mkv',
+      'Show.1x04-05.mkv',
+    ]) {
+      expect(tmdbFilename(name, 'tv')).toEqual({
+        query: 'Show',
+        season: 1,
+        episode: 4,
+        episodeEnd: 5,
+      });
+    }
+  });
+
+  it('does not mistake resolutions, years or backward numbers for ranges', () => {
+    for (const name of [
+      'Show.S01E04-1080p.mkv',
+      'Show.S01E04-720p.mkv',
+      'Show.S01E04-2019.mkv',
+      'Show.S01E05-E04.mkv',
+    ]) {
+      expect(tmdbFilename(name, 'tv')).toEqual({
+        query: 'Show',
+        season: 1,
+        episode: name.includes('E05-') ? 5 : 4,
+      });
+    }
   });
 });

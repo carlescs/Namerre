@@ -1,7 +1,9 @@
 using CMediator;
 using Microsoft.Extensions.DependencyInjection;
 using Namerre.Application.Renaming;
+using Namerre.Application.Renaming.Metadata;
 using Namerre.Application.Renaming.Plugins;
+using Namerre.Application.Renaming.Presets;
 
 namespace Namerre.Application;
 
@@ -29,6 +31,8 @@ public static class DependencyInjection
         services.AddSingleton<IRenamePlugin, DatePlugin>();
         services.AddSingleton<IRenamePlugin, TmdbPlugin>();
         services.AddSingleton<PipelineEngine>();
+        services.AddSingleton<TmdbSuggester>();
+        services.AddSingleton<PresetService>();
 
         return services;
     }

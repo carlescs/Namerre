@@ -225,6 +225,40 @@ public sealed class RenamingWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task CompletedRenameAndRollbackRunsNotifyLibrariesOnce()
+    {
+        Write("alpha.txt", "A");
+        var libraries = new RecordingLibraryNotifier();
+        using var harness = Harness(libraries: libraries);
+        var plan = await Prepare(harness, UpperRequest(["alpha.txt"]));
+        Assert.Empty(libraries.Runs);
+
+        var rename = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        var finished = Assert.Single(libraries.Runs);
+        Assert.Equal((rename.Id, "Rename", "Completed"), (finished.Id, finished.Kind, finished.Status));
+
+        var rollback = await harness.Service.Rollback(rename.Id, new(["0"], Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        Assert.Equal(["Rename", "Rollback"], libraries.Runs.Select(r => r.Kind));
+        Assert.Equal(rollback.Id, libraries.Runs[^1].Id);
+    }
+
+    [Fact]
+    public async Task LibraryNotificationFailureNeverFailsTheJob()
+    {
+        Write("alpha.txt", "A");
+        var libraries = new RecordingLibraryNotifier { Throw = true };
+        using var harness = Harness(libraries: libraries);
+        var plan = await Prepare(harness, UpperRequest(["alpha.txt"]));
+        var rename = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+
+        Assert.Single(libraries.Runs);
+        Assert.Equal("Completed", (await harness.Service.GetRun(rename.Id, default)).Status);
+    }
+
+    [Fact]
     public async Task RunDetailsLinkOriginalAndRollbackRuns()
     {
         Write("alpha.txt", "A");
@@ -1124,8 +1158,9 @@ public sealed class RenamingWorkflowTests : IDisposable
         => new(paths.Select((path, i) => new FileInput(i.ToString(), path)).ToArray(), plugins);
     private static PipelineRequest UpperRequest(string[] paths) => Request(paths, [Plugin("upper", "case", new { mode = "upper" })]);
     private TestHarness Harness(int moveFailure = 0, bool failAfter = false, Action<string>? boundary = null,
-        IRenameNotifier? notifier = null, int maxQueuedJobs = RenameLimits.DefaultQueuedJobs)
-        => new(Root, Data, workspace, moveFailure, failAfter, boundary, notifier, maxQueuedJobs);
+        IRenameNotifier? notifier = null, int maxQueuedJobs = RenameLimits.DefaultQueuedJobs,
+        ILibraryNotifier? libraries = null)
+        => new(Root, Data, workspace, moveFailure, failAfter, boundary, notifier, maxQueuedJobs, libraries);
     private static async Task<PlanView> Prepare(TestHarness harness, PipelineRequest request)
     {
         var accepted = await harness.Service.Prepare(request, default);
@@ -1161,7 +1196,7 @@ public sealed class RenamingWorkflowTests : IDisposable
         public RenameService Service { get; }
         public FaultFileSystem? Fault { get; }
         public TestHarness(string root, string data, string workspace, int moveFailure, bool failAfter, Action<string>? boundary,
-            IRenameNotifier? notifier, int maxQueuedJobs)
+            IRenameNotifier? notifier, int maxQueuedJobs, ILibraryNotifier? libraries = null)
         {
             var filesystem = new BoundedFileSystem(root, workspace);
             Store = new RenameStore(filesystem, data, workspace, boundary, maxQueuedJobs);
@@ -1169,7 +1204,7 @@ public sealed class RenamingWorkflowTests : IDisposable
             Fault = moveFailure > 0 ? new FaultFileSystem(filesystem, moveFailure, failAfter) : null;
             IRenameFileSystem mutation = Fault is null ? filesystem : Fault;
             Service = new RenameService(Store, mutation, TestPipeline.Create(metadata, mutation), NullLogger<RenameService>.Instance,
-                notifier);
+                notifier, libraries);
         }
         public void Dispose() => Store.Dispose();
     }
@@ -1177,6 +1212,16 @@ public sealed class RenamingWorkflowTests : IDisposable
     {
         public List<RenameChange> Changes { get; } = [];
         public void Changed(RenameChange change) => Changes.Add(change);
+    }
+    private sealed class RecordingLibraryNotifier : ILibraryNotifier
+    {
+        public bool Throw { get; init; }
+        public List<RunView> Runs { get; } = [];
+        public void RunFinished(RunView run)
+        {
+            Runs.Add(run);
+            if (Throw) throw new InvalidOperationException("Queue unavailable.");
+        }
     }
     private sealed class ThrowingNotifier : IRenameNotifier
     {

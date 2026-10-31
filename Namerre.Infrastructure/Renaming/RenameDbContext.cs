@@ -10,6 +10,8 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
     public DbSet<RenameOperation> Operations => Set<RenameOperation>();
     public DbSet<RenameSetting> Settings => Set<RenameSetting>();
     public DbSet<AdministratorAccount> Administrators => Set<AdministratorAccount>();
+    public DbSet<RenamePresetRow> Presets => Set<RenamePresetRow>();
+    public DbSet<WatchedFileRow> WatchedFiles => Set<WatchedFileRow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -49,6 +51,28 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
             entity.Property(e => e.Username).HasMaxLength(128).IsRequired();
             entity.Property(e => e.PasswordHash).HasMaxLength(256).IsRequired();
         });
+        modelBuilder.Entity<RenamePresetRow>(entity =>
+        {
+            entity.ToTable("Presets");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(100);
+            // NOCASE keeps names unique ignoring (ASCII) case, matching the service's check.
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired().UseCollation("NOCASE");
+            entity.HasIndex(e => e.Name).IsUnique();
+            entity.Property(e => e.Json).IsRequired();
+            entity.Property(e => e.Revision).IsConcurrencyToken();
+        });
+        modelBuilder.Entity<WatchedFileRow>(entity =>
+        {
+            entity.HasKey(e => new { e.Folder, e.Path });
+            entity.Property(e => e.Folder).HasMaxLength(50);
+            entity.Property(e => e.Path).HasMaxLength(2048);
+            entity.Property(e => e.Status).HasMaxLength(20);
+            entity.Property(e => e.Error).HasMaxLength(500);
+            entity.Property(e => e.PlanId).HasMaxLength(100);
+            entity.Property(e => e.RunId).HasMaxLength(100);
+            entity.HasIndex(e => new { e.Folder, e.Status });
+        });
     }
 }
 
@@ -57,6 +81,37 @@ public sealed class AdministratorAccount
     public int Id { get; set; }
     public string Username { get; set; } = "";
     public string PasswordHash { get; set; } = "";
+}
+
+/// <summary>A pipeline preset; <see cref="Json"/> holds its steps and run options.</summary>
+public sealed class RenamePresetRow
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Json { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public long Revision { get; set; }
+}
+
+/// <summary>
+/// What a watch folder did with one file, keyed by its root-relative path and fingerprinted by size and modification
+/// time, so a changed file is taken again. <see cref="Status"/> is <c>Queued</c> (in a plan or run), <c>Done</c>,
+/// <c>Failed</c> (retried at <see cref="NextAttemptAt"/>) or <c>Ignored</c>.
+/// </summary>
+public sealed class WatchedFileRow
+{
+    public string Folder { get; set; } = "";
+    public string Path { get; set; } = "";
+    public long Size { get; set; }
+    public long ModifiedTicks { get; set; }
+    public string Status { get; set; } = "";
+    public int Attempts { get; set; }
+    public DateTimeOffset? NextAttemptAt { get; set; }
+    public string? Error { get; set; }
+    public string? PlanId { get; set; }
+    public string? RunId { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 
 public sealed class RenameDocument

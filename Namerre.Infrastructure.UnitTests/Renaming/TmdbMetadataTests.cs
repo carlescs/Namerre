@@ -346,6 +346,53 @@ public sealed class TmdbMetadataTests : IDisposable
     }
 
     [Fact]
+    public async Task MultiEpisodeConfirmationsLookUpEachEpisodeAndJoinTheirTitles()
+    {
+        respond = request => Task.FromResult(request.RequestUri!.AbsolutePath switch
+        {
+            var path when path.EndsWith("/episode/4") => Json("""{"name":"The End (1)","air_date":"2010-05-01"}"""),
+            var path when path.EndsWith("/episode/5") => Json("""{"name":"The End (2)","air_date":"2010-05-08"}"""),
+            _ => Json("""{"name":"Show","first_air_date":"2008-01-20"}""")
+        });
+        var metadata = Metadata();
+
+        var match = Assert.Single((await metadata.Search(
+            Confirm() with { MediaType = "tv", Season = 6, Episode = 4, EpisodeEnd = 5 }, default)).Matches);
+
+        Assert.Equal((4, 5, "The End", "2010-05-01"), (match.Episode, match.EpisodeEnd, match.EpisodeTitle, match.AirDate));
+        Assert.Equal(["/3/tv/5", "/3/tv/5/season/6/episode/4", "/3/tv/5/season/6/episode/5"],
+            requests.Select(r => r.RequestUri!.AbsolutePath));
+        // The range is part of the stored confirmation, so a client cannot widen or narrow it later.
+        Assert.Equal(5, metadata.Resolve(new("file", "step", "movie.mkv", Hash, match.ConfirmationToken!)).EpisodeEnd);
+    }
+
+    [Fact]
+    public async Task ARangeOfOneEpisodeConfirmsASingleEpisode()
+    {
+        respond = request => Task.FromResult(Json("""{"name":"Pilot","first_air_date":"2008-01-20"}"""));
+
+        var match = Assert.Single((await Metadata().Search(
+            Confirm() with { MediaType = "tv", Season = 1, Episode = 2, EpisodeEnd = 2 }, default)).Matches);
+
+        Assert.Null(match.EpisodeEnd);
+        Assert.Equal(2, requests.Count);
+    }
+
+    [Theory]
+    [InlineData("tv", 3, 2)]
+    [InlineData("tv", 1, 11)]
+    [InlineData("tv", null, 2)]
+    [InlineData("movie", 1, 2)]
+    public async Task InvalidEpisodeRangesAreRejectedBeforeCallingTmdb(string mediaType, int? episode, int end)
+    {
+        var exception = await Assert.ThrowsAsync<RenameException>(() => Metadata().Search(
+            Confirm() with { MediaType = mediaType, Season = 1, Episode = episode, EpisodeEnd = end }, default));
+
+        Assert.Equal("InvalidEpisodeRange", exception.Code);
+        Assert.Empty(requests);
+    }
+
+    [Fact]
     public void UnknownConfirmationTokensAreStale()
     {
         var exception = Assert.Throws<RenameException>(() => Metadata().Resolve(

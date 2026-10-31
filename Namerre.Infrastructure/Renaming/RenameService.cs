@@ -11,7 +11,8 @@ using Namerre.Application.Renaming.Runs;
 namespace Namerre.Infrastructure.Renaming;
 
 public sealed class RenameService(RenameStore store, IRenameFileSystem fileSystem, PipelineEngine pipeline,
-    ILogger<RenameService> logger, IRenameNotifier? notifier = null) : IRenameService
+    ILogger<RenameService> logger, IRenameNotifier? notifier = null,
+    ILibraryNotifier? libraryNotifier = null) : IRenameService
 {
     /// <summary>Most runs one bulk deletion accepts; also caps the "select all pages" candidate list.</summary>
     public const int MaxRunsPerDeletion = 1000;
@@ -29,7 +30,11 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         finally { previews.Release(); }
     }
 
-    public async Task<JobAccepted> Prepare(PipelineRequest request, CancellationToken cancellationToken)
+    public Task<JobAccepted> Prepare(PipelineRequest request, CancellationToken cancellationToken)
+        => Prepare(request, null, cancellationToken);
+
+    /// <param name="origin">Recorded on the plan and its run, e.g. <c>watch:Downloads</c>; null for a person.</param>
+    public async Task<JobAccepted> Prepare(PipelineRequest request, string? origin, CancellationToken cancellationToken)
     {
         pipeline.ValidateRequest(request);
         await gate.WaitAsync(cancellationToken);
@@ -39,7 +44,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             var id = NewId();
             var snapshot = System.Text.Json.JsonSerializer.Deserialize<PipelineRequest>(
                 System.Text.Json.JsonSerializer.Serialize(request, RenameStore.Json), RenameStore.Json)!;
-            var plan = new PlanView(id, 1, "Preparing", 0, snapshot, [], [], DateTimeOffset.UtcNow);
+            var plan = new PlanView(id, 1, "Preparing", 0, snapshot, [], [], DateTimeOffset.UtcNow, Origin: origin);
             store.Enqueue(id, "Plan", plan.Status, plan, "Prepare");
             Notify("Plan", id, plan.Status);
             return Accepted(id, plan.Status, true);
@@ -69,7 +74,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             var run = CreateRun(plan.Id, null, "Rename", plan.Files.Select(f =>
                 new RunFile(f.Id, f.SourcePath, f.TargetPath, Staging(f.SourcePath), f.Hash, "Pending",
                     CompanionOf: f.CompanionOf)).ToArray(),
-                plan.Pipeline.DeleteEmptyFolders);
+                plan.Pipeline.DeleteEmptyFolders) with { Origin = plan.Origin };
             store.Enqueue(run.Id, "Run", run.Status, run, "Execute", operation);
             Notify("Run", run.Id, run.Status);
             return Accepted(run.Id, run.Status);
@@ -646,6 +651,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     {
         store.CompleteRun(run, parentFileStatus);
         Notify("Run", run.Id, run.Status);
+        NotifyLibraries(run);
         // Completing a rollback or recovery also rewrites the parent's file statuses. The run is already final,
         // so failing to read the parent back must not surface as a job failure.
         if (run.ParentRunId is null) return;
@@ -659,6 +665,13 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         if (notifier is null) return;
         try { notifier.Changed(new(kind, id, status)); }
         catch (Exception exception) { logger.LogWarning(exception, "Rename change notification failed: {Kind} {Id}", kind, id); }
+    }
+    // Runs after the durable write; the notifier only queues the work, so this never blocks the job.
+    private void NotifyLibraries(RunView run)
+    {
+        if (libraryNotifier is null || run.Status is not ("Completed" or "Recovered")) return;
+        try { libraryNotifier.RunFinished(run); }
+        catch (Exception exception) { logger.LogWarning(exception, "Library notification failed: Run {Id}", run.Id); }
     }
     private static long NextSequence(RunView run) => run.Journal.Count == 0 ? 1 : run.Journal.Max(j => j.Sequence) + 1;
     private static string NewId() => Guid.NewGuid().ToString("N");

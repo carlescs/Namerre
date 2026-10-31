@@ -28,8 +28,10 @@ import {
   renameError,
   type SelectionPreview,
   type SelectionRequest,
+  watchFolderOrigin,
 } from '../../rename-api';
 import { RenameEvents, refreshOn } from '../../rename-events';
+import { WatchFoldersComponent } from '../watch-folders/watch-folders.component';
 import {
   fileCount,
   historyEntries,
@@ -43,9 +45,15 @@ import {
   statusClasses,
   statusLabel,
 } from './run-display';
-
 @Component({
-  imports: [RouterLink, DatePipe, FaIconComponent, LowerCasePipe, NgTemplateOutlet],
+  imports: [
+    RouterLink,
+    DatePipe,
+    FaIconComponent,
+    LowerCasePipe,
+    NgTemplateOutlet,
+    WatchFoldersComponent,
+  ],
   selector: 'app-run-history',
   styleUrl: './run-history.component.scss',
   templateUrl: './run-history.component.html',
@@ -120,6 +128,7 @@ export class RunHistoryComponent {
   protected readonly isSettledRun = isSettledRun;
   protected readonly fileCount = fileCount;
   protected readonly kindLabel = kindLabel;
+  protected readonly watchFolderOrigin = watchFolderOrigin;
   protected readonly optionEntries = optionEntries;
   protected readonly pluginName = pluginName;
   protected readonly runTitle = runTitle;

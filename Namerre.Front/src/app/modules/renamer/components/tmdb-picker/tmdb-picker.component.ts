@@ -25,6 +25,9 @@ import {
 } from '../../rename-api';
 import { tmdbFilename } from '../../tmdb-filename';
 
+/** Most episodes one file can be matched to (`TmdbSearchRequest.MaxEpisodesPerFile` on the server). */
+const MAX_EPISODES_PER_FILE = 10;
+
 @Component({
   imports: [ReactiveFormsModule],
   selector: 'app-tmdb-picker',
@@ -61,6 +64,10 @@ export class TmdbPickerComponent implements OnInit, AfterViewInit {
         Validators.max(9999),
         Validators.pattern(/^\d+$/),
       ],
+    }),
+    /** Last episode of a file that holds several; empty for one episode. */
+    episodeEnd: new FormControl<number | null>(null, {
+      validators: [Validators.min(1), Validators.max(9999), Validators.pattern(/^\d+$/)],
     }),
   });
   protected readonly matches = signal<TmdbMatch[]>([]);
@@ -116,7 +123,11 @@ export class TmdbPickerComponent implements OnInit, AfterViewInit {
     this.form.patchValue({
       query: inferred.query,
       ...(inferred.season !== undefined
-        ? { season: inferred.season, episode: inferred.episode }
+        ? {
+            season: inferred.season,
+            episode: inferred.episode,
+            episodeEnd: inferred.episodeEnd ?? null,
+          }
         : {}),
       language: context.plugin.options.language ?? 'en-US',
       ...context.state,
@@ -234,7 +245,18 @@ export class TmdbPickerComponent implements OnInit, AfterViewInit {
     const controls = this.form.controls;
     return (
       this.validSearch() &&
-      (controls.mediaType.value !== 'tv' || (controls.season.valid && controls.episode.valid))
+      (controls.mediaType.value !== 'tv' ||
+        (controls.season.valid && controls.episode.valid && this.validRange()))
+    );
+  }
+
+  /** An empty last episode means one episode; otherwise 2–10 consecutive episodes. */
+  protected validRange(): boolean {
+    const { episode, episodeEnd } = this.form.controls;
+    const end = episodeEnd.value;
+    return (
+      end === null ||
+      (episodeEnd.valid && end >= episode.value && end - episode.value < MAX_EPISODES_PER_FILE)
     );
   }
 
@@ -257,7 +279,13 @@ export class TmdbPickerComponent implements OnInit, AfterViewInit {
       query: value.query,
       language: value.language,
       ...(includeEpisode && value.mediaType === 'tv'
-        ? { season: value.season, episode: value.episode }
+        ? {
+            season: value.season,
+            episode: value.episode,
+            ...(value.episodeEnd !== null && value.episodeEnd !== value.episode
+              ? { episodeEnd: value.episodeEnd }
+              : {}),
+          }
         : {}),
     };
   }

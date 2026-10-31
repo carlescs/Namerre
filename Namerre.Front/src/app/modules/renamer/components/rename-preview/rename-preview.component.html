@@ -166,12 +166,19 @@
                                 ? 'Named after its video'
                                 : step.typeId
                           }}</strong>
-                          <p class="m-0">
-                            From <code>{{ step.inputPath }}</code>
-                          </p>
-                          <p class="m-0">
-                            To <code>{{ step.outputPath ?? 'Blocked — no result' }}</code>
-                          </p>
+                          @if (step.skipped) {
+                            <p class="m-0 text-slate-500 dark:text-slate-400">
+                              Skipped: its "Apply to" filter does not match
+                              <code>{{ step.inputPath }}</code>
+                            </p>
+                          } @else {
+                            <p class="m-0">
+                              From <code>{{ step.inputPath }}</code>
+                            </p>
+                            <p class="m-0">
+                              To <code>{{ step.outputPath ?? 'Blocked — no result' }}</code>
+                            </p>
+                          }
                           @if (step.error) {
                             @if (isMatchingIssue(step.error.code)) {
                               <p class="m-0">Waiting for TMDB matching.</p>

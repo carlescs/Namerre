@@ -104,7 +104,11 @@ preview (no mutation) → prepare (hash every source file, persist an immutable 
 execute (queued job) → optional rollback of selected files / explicit recovery. Run state changes
 must satisfy `Domain/Renaming/RunTransitions.Allows`; naming rules are in `Domain/Renaming/NamingRules.cs`.
 `RenameWorker` (hosted service) polls `RenameService.ProcessNext`, so jobs run independently of
-the browser. Runs are journaled (with staging paths), not atomic; interrupted mutations are never
+the browser. `WatchFolderWorker` runs `Infrastructure/WatchFolders/WatchFolderService.Scan` every few seconds:
+configured `Namerre:WatchFolders` (validated by `WatchFolderOptions.Problem`) are listed through `IFolderBrowser`,
+stable files previewed with their preset and prepared through `RenameService.Prepare(request, origin, …)`
+(`origin` = `watch:<name>` on `PlanView`/`RunView`), then executed; per-file state with back-off lives in the
+`WatchedFiles` table and pausing in `Settings`. TMDB steps need the folder's `TmdbAutoConfirm` threshold. Runs are journaled (with staging paths), not atomic; interrupted mutations are never
 blindly resumed.
 
 **Live updates.** After each durable plan/run write, `RenameService` calls `IRenameNotifier`
@@ -122,7 +126,10 @@ and no cross-device copy fallback. The data directory and media root must not co
 **Persistence.** `RenameStore` wraps EF Core SQLite (`RenameDbContext`) in `Namerre:DataPath`; it
 runs `Migrate()` on startup and refuses unknown applied migrations. Migrations live in
 `Namerre.Infrastructure/Renaming/Migrations`. The single administrator account is stored in the
-same database (`Administrators` table).
+same database (`Administrators` table), and so are pipeline presets (`Presets` table, `PresetStore` behind the
+Application `IPresetStore`; `PresetService` validates through `PipelineEngine.ValidatePlugins`, served by
+`RenamePresetsController` at `api/rename-presets`). Add migrations with `dotnet ef migrations add <Name>
+-o Renaming/Migrations` from `Namerre.Infrastructure`.
 
 **TMDB.** `TmdbMetadata` calls TMDB server-side through `CachedTmdbClient` (singleton holding a
 private 256-entry, 10-minute `MemoryCache`), which takes a fresh typed `TmdbClient` per lookup. The client's
@@ -134,6 +141,11 @@ frontend's `tmdb-presets.ts` uses to fill templates, is ignored by rendering and
 write literal braces as `{{`/`}}`; `TmdbPlugin.Render` and `tmdb-template-preview.ts` must agree. The frontend
 reimplements this in `Namerre.Front/src/app/modules/renamer/options-hash.ts` (pure-JS SHA-256 so it
 works on plain-HTTP origins); keep both sides in sync. Confirmed metadata is snapshotted into the plan.
+Automatic suggestions run server-side in `Application/Renaming/Metadata/TmdbSuggester` (parse with `TmdbFileName`,
+score with `MatchConfidence`, verify the best candidate); the frontend's `tmdb-filename.ts` mirrors the parser
+to prefill the picker and `HIGH_CONFIDENCE` mirrors `MatchConfidence.High` — keep them in sync. A multi-episode
+match carries `EpisodeEnd` (titles joined by `EpisodeTitles.Join`); `{episode}` renders the range in the step's
+`episodeRange` style on both sides.
 
 **Configuration.** Everything app-specific is under the `Namerre` section, bound to
 `NamerreOptions` (`Infrastructure/Configuration`) and consumed via `IOptions<NamerreOptions>`:
@@ -141,7 +153,11 @@ works on plain-HTTP origins); keep both sides in sync. Confirmed metadata is sna
 values fail startup; signed-in `GET api/auth/session` reports them to the frontend's `WorkloadLimits`), `Authentication` (incl. optional `Oidc` single sign-on, e.g. Keycloak — see
 `Namerre.Api/Authentication/OidcLogin.cs`; the OIDC scheme is hidden by `OidcAwareSchemeProvider` unless
 `Authority` is set), `Tmdb`, `ReverseProxy`, `Telemetry` (optional OTLP
-export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless `OtlpEndpoint` is set).
+export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless `OtlpEndpoint` is set). `Integrations`
+(optional Jellyfin/Emby/Plex library refresh and webhook after a `Completed`/`Recovered` run: `RenameService.Complete`
+calls `ILibraryNotifier.RunFinished`, implemented by `Infrastructure/Integrations/LibraryNotifier`, a bounded channel
+drained by a hosted service; best effort, tokens only in request headers and never logged;
+`NamerreOptionsValidator` fails startup on bad URLs or missing/orphaned keys).
 
 **Hosting.** `Program.cs` requires HTTPS for `/api` (400 otherwise), sets `no-store` on API
 responses, requires authorization on all controllers, returns 404 for unmatched `/api/*`, and

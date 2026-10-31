@@ -17,6 +17,19 @@ export interface PluginOptions {
   seasonFolder?: boolean;
   seasonFolderTemplate?: string;
   language?: string;
+  /** How `{episode}` writes a multi-episode match: `repeat` (01-E02), `concatenate` (01E02), `hyphen` (01-02). */
+  episodeRange?: string;
+}
+/**
+ * Limits a step to files whose current extension is listed and whose current name matches
+ * `pattern` (empty parts do not restrict); `invert` applies it to the other files instead.
+ */
+export interface StepCondition {
+  extensions?: string[];
+  pattern?: string;
+  /** Pattern matching ignores case unless this is false. */
+  ignoreCase?: boolean;
+  invert?: boolean;
 }
 export interface PluginInstance {
   instanceId: string;
@@ -24,6 +37,8 @@ export interface PluginInstance {
   version: number;
   enabled: boolean;
   options: PluginOptions;
+  /** Absent or empty applies the step to every file. */
+  condition?: StepCondition | null;
 }
 export interface OptionChoice {
   value: string;
@@ -111,6 +126,8 @@ export interface StepTrace {
   inputPath: string;
   outputPath: string | null;
   error: RenameIssue | null;
+  /** The step's condition did not match, so the path passed through unchanged. */
+  skipped?: boolean;
 }
 export interface PreviewFile {
   id: string;
@@ -151,6 +168,8 @@ export interface PlanView {
   createdAt: string;
   /** Source file facts by file ID, read once when preparation starts; absent on older plans. */
   facts?: Record<string, FileFacts>;
+  /** What started the plan: absent for a person, `watch:<name>` for a watch folder. */
+  origin?: string | null;
 }
 export interface FileFacts {
   size: number;
@@ -190,6 +209,8 @@ export interface RunView {
   deleteEmptyFolders?: boolean;
   /** Rollback runs created from this run; only present on single-run reads. */
   rollbackRuns?: RunReference[];
+  /** What started the run: absent for a person, `watch:<name>` for a watch folder. */
+  origin?: string | null;
 }
 export interface RunReference {
   id: string;
@@ -247,6 +268,8 @@ export interface TmdbRequest {
   id?: number;
   season?: number;
   episode?: number;
+  /** Last episode of a multi-episode file; consecutive with `episode`, at most 10 episodes. */
+  episodeEnd?: number;
   fileId?: string;
   instanceId?: string;
   inputPath?: string;
@@ -266,6 +289,8 @@ export interface TmdbMatch {
   originalTitle?: string | null;
   airDate?: string | null;
   showYear?: string | null;
+  /** Last episode of a confirmed multi-episode match; `episodeTitle` then joins the titles. */
+  episodeEnd?: number | null;
 }
 export interface MatchSuggestion {
   fileId: string;
@@ -274,6 +299,37 @@ export interface MatchSuggestion {
   optionsHash: string;
   match: TmdbMatch | null;
   error: string;
+  /** 0–1; proposals at or above `HIGH_CONFIDENCE` can be accepted together. */
+  confidence?: number;
+}
+/** Mirrors `MatchConfidence.High` on the server. */
+export const HIGH_CONFIDENCE = 0.85;
+export interface TmdbSuggestionRequest {
+  mediaType: string;
+  language: string;
+  fileId: string;
+  instanceId: string;
+  /** The TMDB step's input as the preview traced it; the server reads the title from it. */
+  inputPath: string;
+  optionsHash: string;
+}
+/** What a file name says about its movie or episode, as the server read it. */
+export interface ParsedFileName {
+  query: string;
+  year: string | null;
+  season: number | null;
+  episode: number | null;
+  episodeEnd: number | null;
+}
+export interface TmdbSuggestion {
+  parsed: ParsedFileName;
+  /** The search results the proposal was chosen from. */
+  candidates: TmdbMatch[];
+  /** Verified and bound to the request, but only used once accepted. */
+  match: TmdbMatch | null;
+  confidence: number;
+  /** Why there is no match. */
+  problem: string | null;
 }
 export interface TmdbMatchRow {
   fileId: string;
@@ -295,8 +351,66 @@ export interface TmdbPickerState {
   language: string;
   season: number;
   episode: number;
+  /** Last episode of a multi-episode file, or null for one episode. */
+  episodeEnd?: number | null;
   matches: TmdbMatch[];
   selected: TmdbMatch | null;
+}
+
+/** Step list and run options a preset stores; TMDB matches are per file and never included. */
+export interface SavePresetRequest {
+  name: string;
+  plugins: PluginInstance[];
+  verifyContent: boolean;
+  deleteEmptyFolders: boolean;
+  onCollision: 'Report' | 'AddNumber';
+}
+export interface PresetSummary {
+  id: string;
+  name: string;
+  steps: number;
+  updatedAt: string;
+}
+export interface PresetView {
+  id: string;
+  name: string;
+  plugins: PluginInstance[];
+  verifyContent: boolean;
+  deleteEmptyFolders: boolean;
+  onCollision: 'Report' | 'AddNumber' | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Instance ids of steps whose plugin type or version this server no longer has. */
+  unknownSteps: string[];
+}
+
+export interface WatchedFileProblem {
+  path: string;
+  /** `Failed` is retried at `nextAttemptAt`; `Ignored` waits until the file changes. */
+  status: 'Failed' | 'Ignored';
+  attempts: number;
+  error: string | null;
+  nextAttemptAt: string | null;
+  updatedAt: string;
+}
+export interface WatchFolderStatus {
+  name: string;
+  path: string;
+  preset: string;
+  paused: boolean;
+  lastScanAt: string | null;
+  inFlight: number;
+  completed: number;
+  /** Why the folder cannot run, e.g. a missing preset. */
+  error: string | null;
+  problems: WatchedFileProblem[];
+  /** TMDB suggestions at or above this confidence are accepted without a person. */
+  tmdbAutoConfirm: number | null;
+}
+
+/** The watch folder name of a run or plan started by one, or null. */
+export function watchFolderOrigin(origin: string | null | undefined): string | null {
+  return origin?.startsWith('watch:') ? origin.slice('watch:'.length) : null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -371,6 +485,43 @@ export class RenameApi {
   }
   tmdb(request: TmdbRequest) {
     return this.http.post<{ matches: TmdbMatch[] }>('/api/metadata/tmdb/search', request);
+  }
+  presets() {
+    return this.http.get<PresetSummary[]>('/api/rename-presets');
+  }
+  preset(id: string) {
+    return this.http.get<PresetView>(`/api/rename-presets/${encodeURIComponent(id)}`);
+  }
+  createPreset(request: SavePresetRequest) {
+    return this.http.post<PresetView>('/api/rename-presets', request);
+  }
+  updatePreset(id: string, request: SavePresetRequest) {
+    return this.http.put<PresetView>(`/api/rename-presets/${encodeURIComponent(id)}`, request);
+  }
+  renamePreset(id: string, name: string) {
+    return this.http.patch<PresetView>(`/api/rename-presets/${encodeURIComponent(id)}`, { name });
+  }
+  deletePreset(id: string) {
+    return this.http.delete<void>(`/api/rename-presets/${encodeURIComponent(id)}`);
+  }
+  watchFolders() {
+    return this.http.get<WatchFolderStatus[]>('/api/watch-folders');
+  }
+  setWatchFolderPaused(name: string, paused: boolean) {
+    return this.http.post<WatchFolderStatus>(
+      `/api/watch-folders/${encodeURIComponent(name)}/${paused ? 'pause' : 'resume'}`,
+      {},
+    );
+  }
+  retryWatchedFile(name: string, path: string) {
+    return this.http.post<WatchFolderStatus>(
+      `/api/watch-folders/${encodeURIComponent(name)}/retry`,
+      { path },
+    );
+  }
+  /** Proposes a verified match from the step input's file name; nothing is accepted automatically. */
+  suggestTmdb(request: TmdbSuggestionRequest) {
+    return this.http.post<TmdbSuggestion>('/api/metadata/tmdb/suggestions', request);
   }
 }
 

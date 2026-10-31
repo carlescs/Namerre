@@ -35,16 +35,33 @@ import {
   type PluginOptionCell,
   type PluginOptionRow,
   type PluginOptions,
+  type StepCondition,
 } from '../../rename-api';
 import { linkTmdbPreset } from '../../tmdb-presets';
-import { sampleEpisode, sampleMovie, tmdbTemplatePreview } from '../../tmdb-template-preview';
+import {
+  sampleDoubleEpisode,
+  sampleEpisode,
+  sampleMovie,
+  tmdbTemplatePreview,
+} from '../../tmdb-template-preview';
 
 type OptionControl = FormControl<PluginOptionCell>;
 type OptionRows = FormArray<FormGroup<Record<string, OptionControl>>>;
 
+type ConditionForm = FormGroup<{
+  extensions: FormControl<string>;
+  pattern: FormControl<string>;
+  ignoreCase: FormControl<boolean>;
+  invert: FormControl<boolean>;
+}>;
+
 interface Card {
   plugin: PluginInstance;
   groups: OptionGroup[];
+  /** The step's "Apply to" filter; empty applies it to every file. */
+  condition: ConditionForm;
+  /** The catalog has no such type and version (e.g. a preset saved before an upgrade). */
+  unknown: boolean;
   /** One control per field; `list` fields hold a `FormArray` of row groups. */
   form: FormGroup<Record<string, OptionControl | OptionRows>>;
   values: WritableSignal<PluginOptions>;
@@ -78,6 +95,7 @@ export class PluginEditorComponent implements OnInit {
   protected readonly samples = [
     { label: 'Movie', match: sampleMovie },
     { label: 'Episode', match: sampleEpisode },
+    { label: 'Double episode', match: sampleDoubleEpisode },
   ];
   protected readonly preview = tmdbTemplatePreview;
   private readonly injector = inject(Injector);
@@ -85,22 +103,33 @@ export class PluginEditorComponent implements OnInit {
   private readonly firstAddButton = viewChild<ElementRef<HTMLButtonElement>>('addButton');
 
   ngOnInit(): void {
+    this.restore(this.initialPlugins(), false);
+  }
+
+  /** Replaces every step, e.g. with a loaded preset, and reports the new recipe. */
+  load(plugins: PluginInstance[]): void {
+    this.restore(plugins, true);
+  }
+
+  private restore(plugins: PluginInstance[], replace: boolean): void {
     const single = new Set<string>();
-    const restored = this.initialPlugins().filter((plugin) => {
+    const restored = plugins.filter((plugin) => {
       const descriptor = this.descriptor(plugin);
-      if (!descriptor?.singleInstance) return !!descriptor;
+      // Steps this server does not know stay visible, flagged, until the user removes them.
+      if (!descriptor?.singleInstance) return true;
       // Drafts saved before a type became single-instance keep only its first step.
       if (single.has(plugin.typeId)) return false;
       single.add(plugin.typeId);
       return true;
     });
-    if (!restored.length) {
-      if (this.initialPlugins().length) this.emit();
-      return;
-    }
     this.cards.set(restored.slice(0, this.maxPlugins()).map((plugin) => this.card(plugin)));
-    if (restored.length !== this.initialPlugins().length) this.emit();
+    if (replace || this.emitted().length !== plugins.length) this.emit();
   }
+
+  /** Steps whose type and version the catalog lacks; they are never sent to the server. */
+  protected readonly unknownSteps = computed(
+    () => this.cards().filter((card) => card.unknown).length,
+  );
 
   protected canAdd(descriptor: PluginDescriptor): boolean {
     return (
@@ -149,6 +178,17 @@ export class PluginEditorComponent implements OnInit {
     this.cards.update((cards) => cards.filter((_, i) => i !== index));
     this.emit();
     this.focusCard(Math.min(index, this.cards().length - 1));
+  }
+
+  /** Short description of a step's "Apply to" filter, or an empty string when it applies to every file. */
+  protected conditionSummary(card: Card): string {
+    const condition = conditionOf(card.condition);
+    if (!condition) return '';
+    const parts = [
+      condition.extensions?.length ? condition.extensions.map((e) => `.${e}`).join(', ') : '',
+      condition.pattern ? `names matching ${condition.pattern}` : '',
+    ].filter(Boolean);
+    return `${condition.invert ? 'all files except ' : 'only '}${parts.join(' and ')}`;
   }
 
   protected name(typeId: string): string {
@@ -250,10 +290,24 @@ export class PluginEditorComponent implements OnInit {
     const form = new FormGroup(controls);
     if (plugin.typeId === 'tmdb') linkTmdbPreset(form);
     const values = signal<PluginOptions>(form.getRawValue() as PluginOptions);
-    const card: Card = { plugin, groups: optionGroups, form, values };
+    const condition = conditionForm(plugin.condition);
+    const card: Card = {
+      plugin,
+      groups: optionGroups,
+      condition,
+      form,
+      values,
+      unknown: !descriptor,
+    };
     form.valueChanges.subscribe(() => {
       values.set(form.getRawValue() as PluginOptions);
       card.plugin = { ...card.plugin, options: form.getRawValue() as PluginOptions };
+      this.emit();
+    });
+    condition.valueChanges.subscribe(() => {
+      const { condition: _, ...rest } = card.plugin;
+      const value = conditionOf(condition);
+      card.plugin = value ? { ...rest, condition: value } : rest;
       this.emit();
     });
     return card;
@@ -273,8 +327,14 @@ export class PluginEditorComponent implements OnInit {
     );
   }
 
+  private emitted(): PluginInstance[] {
+    return this.cards()
+      .filter((card) => !card.unknown)
+      .map((card) => card.plugin);
+  }
+
   private emit(): void {
-    this.pluginsChanged.emit(this.cards().map((card) => card.plugin));
+    this.pluginsChanged.emit(this.emitted());
   }
 
   private focusRow(card: Card, field: OptionField, index: number): void {
@@ -297,6 +357,31 @@ export class PluginEditorComponent implements OnInit {
       { injector: this.injector },
     );
   }
+}
+
+function conditionForm(condition: StepCondition | null | undefined): ConditionForm {
+  return new FormGroup({
+    extensions: new FormControl((condition?.extensions ?? []).join(', '), { nonNullable: true }),
+    pattern: new FormControl(condition?.pattern ?? '', { nonNullable: true }),
+    ignoreCase: new FormControl(condition?.ignoreCase !== false, { nonNullable: true }),
+    invert: new FormControl(condition?.invert === true, { nonNullable: true }),
+  });
+}
+
+/** The condition the server receives; undefined while neither extensions nor a pattern restrict. */
+export function conditionOf(form: ConditionForm): StepCondition | undefined {
+  const value = form.getRawValue();
+  const extensions = value.extensions
+    .split(/[\s,;]+/)
+    .map((extension) => extension.replace(/^\./, ''))
+    .filter(Boolean);
+  if (!extensions.length && !value.pattern) return undefined;
+  return {
+    ...(extensions.length ? { extensions } : {}),
+    ...(value.pattern ? { pattern: value.pattern } : {}),
+    ignoreCase: value.ignoreCase,
+    invert: value.invert,
+  };
 }
 
 function optionControl(field: OptionField, value: unknown, fallback: unknown): OptionControl {

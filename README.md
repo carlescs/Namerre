@@ -98,6 +98,12 @@ Application settings live in one `Namerre` section in `Namerre.Api\appsettings.j
       "MaxFilesPerRun": 200,
       "MaxStepsPerRun": 32,
       "MaxQueuedJobs": 32
+    },
+    "Integrations": {
+      "Jellyfin": { "Url": "", "ApiKey": "" },
+      "Emby": { "Url": "", "ApiKey": "" },
+      "Plex": { "Url": "", "Token": "" },
+      "Webhook": { "Url": "", "IncludePaths": false }
     }
   }
 }
@@ -135,6 +141,50 @@ names, so send telemetry only to a collector you trust. Invalid settings fail st
 
 ```powershell
 $env:Namerre__Telemetry__OtlpEndpoint = 'http://otel-collector:4317'
+```
+
+## Library and webhook notifications (optional)
+
+After a run finishes, Namerre can ask a media server to rescan its libraries and/or call a
+webhook. Each target is disabled unless its `Url` is set; with nothing configured, no request
+is ever made. A notification is sent when a rename or rollback run completes
+(`Completed`) and when a recovery finishes (`Recovered`).
+
+| Setting | Request |
+| --- | --- |
+| `Jellyfin:Url`, `Jellyfin:ApiKey` | `POST {Url}/Library/Refresh` with header `X-Emby-Token`. |
+| `Emby:Url`, `Emby:ApiKey` | `POST {Url}/emby/Library/Refresh` with header `X-Emby-Token`. |
+| `Plex:Url`, `Plex:Token` | `GET {Url}/library/sections/all/refresh` with header `X-Plex-Token`. |
+| `Webhook:Url`, `Webhook:IncludePaths` (default `false`) | `POST {Url}` with a JSON body, see below. |
+
+URLs must be absolute `http`/`https` URLs (a trailing slash is ignored). The key or token is
+required whenever its URL is set, and a key without a URL is rejected; invalid settings fail
+startup. Keys and tokens are sent only as request headers from the backend and are never
+logged, stored in plans or runs, or exposed to the frontend.
+
+Notifications are best effort: they are queued and sent in the background with a 10 second
+timeout, a failing or unreachable endpoint is logged as a warning, and none of this can delay
+or fail a rename job. Notifications still queued when Namerre stops are dropped.
+
+Webhook body:
+
+```json
+{
+  "event": "run.finished",
+  "runId": "3f2c...",
+  "kind": "Rename",
+  "status": "Completed",
+  "files": { "total": 3, "completed": 3, "failed": 0 }
+}
+```
+
+`kind` is `Rename` or `Rollback`; `status` is `Completed` or `Recovered`. Media file paths
+can be sensitive, so they are left out by default. With `Webhook:IncludePaths` set to `true`,
+`files.items` also lists `{ "sourcePath": "...", "targetPath": "..." }` for every file.
+
+```powershell
+$env:Namerre__Integrations__Jellyfin__Url = 'http://jellyfin:8096'
+$env:Namerre__Integrations__Jellyfin__ApiKey = '<api-key>'
 ```
 
 ## Authentication (required)
@@ -349,6 +399,33 @@ types are allowed, except TMDB: a recipe holds at most one TMDB step, since each
 confirmed match for every file. Move instances up or down to choose the execution order; the
 catalog order does not determine execution order.
 
+### Presets
+
+**Presets** at the top of the plugin stage save the current steps and run options (content
+check, empty-folder cleanup, collision numbering) on the server under a name, so they work from
+any browser and several can be kept. Loading a preset replaces the current steps; **Save changes
+to …** overwrites the preset last loaded or saved, **Rename only** changes its name and **Delete**
+asks for confirmation. TMDB matches are per file and never saved. Names are unique ignoring case
+(1–100 characters) and a server keeps at most 100 presets; steps are checked like a pipeline
+request when saved (known plugin versions, at most the step limit, options under 8 KB each). A
+preset holding a step whose plugin version this server no longer has still loads: the step is
+flagged in the editor and left out of previews until removed. The browser draft remains as
+before. API: `GET/POST /api/rename-presets`, `GET/PUT/PATCH/DELETE /api/rename-presets/{id}`
+(`PATCH` takes `{ "name": … }`); presets live in the `Presets` table of the SQLite database.
+
+### Applying a step to some files
+
+Every step has an **Apply to** section. List extensions (`srt, ass`, with or without the dot)
+and/or a .NET regular expression tested against the current file name, extension included; a
+file must match both to get the step, and **Apply to the files that do not match instead**
+inverts the filter. Patterns ignore case unless that box is cleared and share the 100 ms regex
+timeout. The filter looks at the step's input, so earlier steps can change which files a later
+step applies to. A step that does not apply passes the name through unchanged and shows as
+skipped in the preview trace; a TMDB step skipped this way needs no match, so the matching stage
+lists only the files it applies to. The API field is `condition` on each plugin instance
+(`{ "extensions": ["srt"], "pattern": "\\.en\\.", "ignoreCase": true, "invert": false }`);
+instances without one apply to every file, as before, and plans keep it in their snapshot.
+
 ### Related files
 
 With **Include related files** ticked (the default), files that belong to a video follow it
@@ -534,6 +611,62 @@ or in recorded temporary staging paths. Inspect the run and use explicit recover
 Interrupted mutations are not blindly resumed after a restart. Do not delete staging
 files or history to clear an error; that can destroy recovery evidence.
 
+## Watch folders (optional)
+
+Watch folders rename new files automatically with a saved [preset](#presets). Configure them under
+`Namerre:WatchFolders` (they are off while the list is empty):
+
+```json
+"WatchFolders": [
+  {
+    "Name": "Downloads",
+    "Path": "downloads/tv",
+    "Preset": "TV for Jellyfin",
+    "Recursive": false,
+    "IntervalSeconds": 60,
+    "StableSeconds": 60,
+    "IncludeCompanions": true,
+    "TmdbMediaType": "tv",
+    "TmdbAutoConfirm": 0.9,
+    "MaxAttempts": 5
+  }
+]
+```
+
+Every `IntervalSeconds` (10–86400) the server lists the folder (with subfolders when `Recursive`),
+skipping hidden and system entries, links and Namerre's staging files, which is more reliable than
+filesystem events on network shares. A file is taken once its size and modification time have not
+changed for `StableSeconds` (0–86400, measured between scans, so a file is always seen at least
+twice). Stable files — up to the per-run file limit — are previewed with the preset's steps and run
+options, and the ones that can be renamed become a normal plan and run, prepared and executed
+by the same durable job queue, journal and history; such runs say **Started by watch folder …** in
+the history and can be undone like any other (`origin` is `watch:<name>` on the plan and run). A
+folder runs one batch at a time. Renamed files are recorded under their new name, so a file renamed
+inside the watched folder is not taken again; a file whose name the preset leaves unchanged is
+recorded as done without a run. With `IncludeCompanions` (the default), related files follow their
+video, and a video and its related files only go together.
+
+A file that cannot be renamed (an occupied destination, a failing step, a TMDB match below the
+threshold) is retried after the interval, then after twice that, and so on up to a day; after
+`MaxAttempts` (1–20) failures it is ignored until its size or modification time changes. TMDB being
+busy or rate-limited, a full job queue or pending recovery only postpones the batch to the next
+scan without counting against the files. The history page lists the configured folders with their
+state, the files that were not renamed and why, a **Retry now** button per file, and
+**Pause**/**Resume** (kept in the database across restarts). The API is `GET /api/watch-folders`,
+`POST /api/watch-folders/{name}/pause`, `…/resume` and `…/retry` with `{ "path": … }`.
+
+**TMDB.** Matches normally need a person's explicit confirmation, so a preset with an enabled TMDB
+step is refused unless the folder sets `TmdbMediaType` (`movie` or `tv`) and `TmdbAutoConfirm`, a
+confidence from 0.5 to 1 above which the [automatic suggestion](#tmdb-metadata) is accepted on the
+person's behalf (0.85 is the interactive "high confidence" mark; higher is stricter). A suggestion
+below it fails the file with its confidence, so it can be renamed by hand. The accepted match is
+confirmed and snapshotted into the plan exactly like a manual one.
+
+Folder names are 1–50 letters, digits, spaces, `-` or `_` and unique; paths are root-relative with
+forward slashes and may not overlap (the same folder twice, or a folder inside a recursive one).
+Invalid entries fail startup. A missing preset, or one with steps this server no longer knows, is
+reported on the folder until fixed.
+
 ## Server folder browsing
 
 Set `Namerre:RootPath` in the server configuration, or use the environment
@@ -663,6 +796,13 @@ pipeline options, run snapshots, Docker build arguments, or committed files.
 The token is sent from the backend to TMDB in an authorization header.
 Local text/regex/case transformations do not require TMDB.
 
+The same rule applies to the optional integration credentials
+(`Namerre:Integrations:Jellyfin:ApiKey`, `Namerre:Integrations:Emby:ApiKey`,
+`Namerre:Integrations:Plex:Token`): set them through server secrets or environment variables
+(for example `Namerre__Integrations__Plex__Token`), never in Angular configuration, run
+snapshots, Docker build arguments, or committed files. A webhook URL may embed a secret as
+well, so treat it the same way.
+
 Search for a movie or TV show, correct the query when necessary, and confirm the
 intended match. Episodes require a confirmed show, season, and episode. Metadata
 defaults to English; names default to `Movie Title (Year)` or
@@ -688,6 +828,19 @@ metadata language for confirmation, so editing them never invalidates confirmed 
 Confirmed metadata is snapshotted for the run so a
 later TMDB change or outage does not alter an approved execution or rollback.
 
+**Multi-episode files** (double-length premieres and finales) take a **Last episode** in the
+picker: the file is confirmed for every episode from the first to the last (consecutive, one
+season, at most 10), and each one is looked up, so a range past the season's end is refused. The
+range is part of the confirmation, so it cannot change without confirming again. `{episode}`
+then writes the range in the step's **Multi-episode numbers** style — `S01E01-E02` (default),
+`S01E01E02` or `S01E01-02`, with any number format applied to both ends — and `{episodeTitle}`
+joins the titles: identical titles stay one, titles that differ only by a part suffix
+(`The End (1)` / `The End (2)`, `Exodus, Part 1` / `Exodus, Part 2`, `Part One`, `Pt. II`) give the
+common name (`The End`), and others are joined with ` + ` (`Title A + Title B`). `{airDate}` is the
+first episode's. The picker and automatic suggestions read ranges such as `S01E01-E02`,
+`S01E01E02`, `S01E01-02` and `1x01-1x02` from file names. Single-episode matches and existing
+drafts are unchanged; the API field is `episodeEnd` on the confirmation request and the match.
+
 **Naming preset** fills in the filename, folder and season folder templates (and turns on
 folder changes, plus season folders for TV) with a media server's recommended layout; it
 leaves the base folder and language alone. Editing any filled-in option afterwards switches
@@ -704,6 +857,21 @@ base folder, the presets give:
 | Kodi | `Movies/The Matrix (1999)/The Matrix (1999).mkv` | `TV/Game of Thrones (2011)/Season 01/Game of Thrones S01E02 - The Kingsroad.mkv` |
 
 The TMDB matching stage appears automatically when an enabled TMDB plugin is added.
+**Find movie matches** and **Find episode matches** propose a match for every file that still needs
+one: the server reads the title, year, season and episode (or episode range) from the step's input
+name (`Show.Name.S02E05.1080p`, `Show 2x05`, `Movie.Name.2019.1080p.BluRay`, a bare `S01E05.mkv`
+inside a show folder), searches TMDB, scores the results and verifies the best one. Lookups use the
+same TMDB concurrency limit, timeouts and cache as manual searches, one file at a time, and a busy
+or rate-limited TMDB (HTTP 429) is retried after 1, 2 and 4 seconds before the row reports it. The
+confidence (0–100%) is three quarters title similarity — exact after ignoring case, accents and
+punctuation, against the title or original title, else partial — and one quarter year (same year,
+one year apart, or unknown); an equally good rival without a year to tell them apart (remakes,
+same-named shows) lowers it. A proposal is never applied by itself: **Accept high-confidence
+matches** confirms every proposal at 85% or more in one go, and the rest are marked **Check
+proposal** to accept or correct one by one. The API is `POST /api/metadata/tmdb/suggestions` with
+the step binding (`fileId`, `instanceId`, `inputPath`, `optionsHash`), `mediaType` and `language`;
+it returns the parsed name, the candidates, the verified `match` (with its confirmation token) and
+its `confidence`, or a `problem`.
 Existing matches survive unrelated plugin edits and collection additions; changed
 step inputs or TMDB options require confirmation again. Reopening a picker restores
 its search and episode fields. A previous show choice can be reused for another file,

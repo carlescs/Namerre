@@ -343,6 +343,17 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         transaction.Commit();
     }
 
+    /// <summary>Runs <paramref name="action"/> on a fresh context under the store's lock, after initialization.</summary>
+    internal T Use<T>(Func<RenameDbContext, T> action)
+    {
+        Initialize();
+        lock (gate)
+        {
+            using var db = Open();
+            return action(db);
+        }
+    }
+
     internal RenameDbContext Open()
     {
         CheckBinding();

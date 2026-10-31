@@ -50,8 +50,15 @@
       [loaded]="catalogLoaded()"
       [error]="catalogError()"
       [initialPlugins]="restoredPlugins"
+      [plugins]="plugins()"
+      [runOptions]="{
+        verifyContent: verifyContent(),
+        deleteEmptyFolders: deleteEmptyFolders(),
+        numberCollisions: numberCollisions(),
+      }"
       (retryRequested)="loadCatalog()"
       (pluginsChanged)="changePlugins($event)"
+      (presetLoaded)="applyPreset($event)"
     />
     @if (tmdbPlugins().length) {
       <app-tmdb-matching
@@ -63,7 +70,7 @@
         [loadingPreview]="loadingPreview()"
         [hasPreview]="!!preview()"
         [disabled]="!validCollection() || preparing() || executing()"
-        [canAcceptAll]="!!pendingMatches().length"
+        [acceptableMatches]="pendingMatches().length"
         (searchRequested)="suggestMatches($event)"
         (allAccepted)="acceptAllMatches()"
         (suggestionAccepted)="acceptSuggestion($event)"

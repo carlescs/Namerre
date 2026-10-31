@@ -101,6 +101,10 @@ public sealed class RenamingController(ISender sender) : ControllerBase
     [HttpPost("api/metadata/tmdb/search")]
     public async Task<IActionResult> SearchTmdb(TmdbSearchRequest request, CancellationToken cancellationToken)
         => Ok(await sender.Send(new SearchTmdbQuery(request), cancellationToken));
+
+    [HttpPost("api/metadata/tmdb/suggestions")]
+    public async Task<IActionResult> SuggestTmdb(TmdbSuggestionRequest request, CancellationToken cancellationToken)
+        => Ok(await sender.Send(new SuggestTmdbMatchQuery(request), cancellationToken));
 }
 
 public sealed class RenameExceptionFilter(ILogger<RenameExceptionFilter> logger) : IExceptionFilter

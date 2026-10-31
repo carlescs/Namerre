@@ -5,10 +5,14 @@ using Microsoft.Extensions.Options;
 using Namerre.Application.Authentication;
 using Namerre.Application.Folders;
 using Namerre.Application.Renaming;
+using Namerre.Application.Renaming.Presets;
 using Namerre.Infrastructure.Authentication;
 using Namerre.Infrastructure.Configuration;
 using Namerre.Infrastructure.Folders;
+using Namerre.Infrastructure.Integrations;
 using Namerre.Infrastructure.Renaming;
+using Namerre.Infrastructure.WatchFolders;
+using Namerre.Application.WatchFolders;
 
 namespace Namerre.Infrastructure;
 
@@ -31,6 +35,8 @@ public static class DependencyInjection
             + $"MaxQueuedJobs {RenameLimits.CeilingQueuedJobs}."));
         services.AddSingleton(provider =>
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.Limits.ToLimits());
+        services.AddSingleton<IValidateOptions<NamerreOptions>, NamerreOptionsValidator>();
+        services.AddSingleton<IValidateOptions<NamerreOptions>, WatchFolderOptionsValidator>();
         services.AddSingleton(provider => new BoundedFileSystem(
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.RootPath,
             provider.GetRequiredService<IHostEnvironment>().ContentRootPath));
@@ -41,14 +47,24 @@ public static class DependencyInjection
             provider.GetRequiredService<IHostEnvironment>().ContentRootPath,
             maxQueuedJobs: provider.GetRequiredService<RenameLimits>().MaxQueuedJobs));
         services.AddSingleton<IAdministratorStore, AdministratorStore>();
+        services.AddSingleton<IPresetStore, PresetStore>();
         // TmdbResilience bounds each lookup (15 s overall); HttpClient's own 100 s default remains only as a backstop.
         services.AddHttpClient<TmdbClient>()
             .AddResilienceHandler(TmdbResilience.PipelineName, TmdbResilience.Configure);
         services.AddSingleton<ITmdbClient>(provider => new CachedTmdbClient(() => provider.GetRequiredService<TmdbClient>()));
         services.AddSingleton<ITmdbMetadata, TmdbMetadata>();
+        // The factory's default loggers write request URLs, and a webhook URL may embed a secret.
+        services.AddHttpClient(LibraryNotifier.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(10))
+            .RemoveAllLoggers();
+        services.AddSingleton<LibraryNotifier>();
+        services.AddSingleton<ILibraryNotifier>(provider => provider.GetRequiredService<LibraryNotifier>());
+        services.AddHostedService(provider => provider.GetRequiredService<LibraryNotifier>());
         services.AddSingleton<RenameService>();
         services.AddSingleton<IRenameService>(provider => provider.GetRequiredService<RenameService>());
         services.AddHostedService<RenameWorker>();
+        services.AddSingleton<WatchFolderService>();
+        services.AddSingleton<IWatchFolders>(provider => provider.GetRequiredService<WatchFolderService>());
+        services.AddHostedService<WatchFolderWorker>();
         services.AddSingleton<IFolderBrowser>(provider => new ServerFolderBrowser(
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.RootPath,
             provider.GetRequiredService<IHostEnvironment>().ContentRootPath,

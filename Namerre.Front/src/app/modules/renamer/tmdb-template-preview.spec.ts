@@ -104,4 +104,23 @@ describe('TMDB template preview', () => {
     expect(named('.namerre-stage')).toEqual({ path: '[_.namerre-stage].mkv' });
     expect(named('Console')).toEqual({ path: '[Console].mkv' });
   });
+
+  it('writes multi-episode ranges in the chosen style like the server', () => {
+    const match = { ...sampleEpisode, episode: 1, episodeEnd: 2, episodeTitle: 'A + B' };
+    expect(tmdbTemplatePreview({ nameTemplate: '' }, match).path).toBe(
+      'Sample Show - S02E01-E02 - A + B.mkv',
+    );
+    expect(tmdbTemplatePreview({ episodeRange: 'concatenate' }, match).path).toBe(
+      'Sample Show - S02E01E02 - A + B.mkv',
+    );
+    expect(
+      tmdbTemplatePreview({ nameTemplate: '{episode:000}', episodeRange: 'hyphen' }, match).path,
+    ).toBe('001-002.mkv');
+    expect(tmdbTemplatePreview({ episodeRange: 'hyphen' }, sampleEpisode).path).toBe(
+      'Sample Show - S02E05 - The Example Episode.mkv',
+    );
+    expect(tmdbTemplatePreview({ episodeRange: 'other' }, match).error).toBe(
+      'Choose how multi-episode numbers are written.',
+    );
+  });
 });

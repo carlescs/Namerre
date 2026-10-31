@@ -172,6 +172,63 @@ describe('TmdbPickerComponent', () => {
     verify.flush({ matches: [{ ...show, confirmationToken: 'new-file-token' }] });
   });
 
+  it('verifies a multi-episode file from its name and shows the joined episodes', async () => {
+    fixture.destroy();
+    fixture = TestBed.createComponent(TmdbPickerComponent);
+    fixture.componentRef.setInput('context', {
+      fileId: 'file-3',
+      plugin,
+      inputPath: 'TV/A Show S02E04-E05.mkv',
+      state: {
+        query: 'A Show',
+        mediaType: 'tv',
+        language: 'en-US',
+        season: 2,
+        episode: 4,
+        episodeEnd: 5,
+        matches: [show],
+        selected: show,
+      },
+    });
+    await fixture.whenStable();
+    expect(control('episodeEnd').value).toBe('5');
+    button('Verify match').click();
+    const verify = http.expectOne('/api/metadata/tmdb/search');
+    expect(verify.request.body).toMatchObject({ id: 42, season: 2, episode: 4, episodeEnd: 5 });
+    verify.flush({
+      matches: [
+        {
+          ...show,
+          season: 2,
+          episode: 4,
+          episodeEnd: 5,
+          episodeTitle: 'The End',
+          confirmationToken: 'double',
+        },
+      ],
+    });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('episodes 4–5');
+    expect(fixture.nativeElement.textContent).toContain('The End');
+  });
+
+  it('refuses ranges that run backwards or past ten episodes', async () => {
+    field('mediaType', 'tv', 'change');
+    await fixture.whenStable();
+    field('episode', '3');
+    field('episodeEnd', '2');
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Use a number from the episode up to 9 more.',
+    );
+    field('episodeEnd', '13');
+    await fixture.whenStable();
+    expect(control('episodeEnd').getAttribute('aria-invalid')).toBe('true');
+    field('episodeEnd', '12');
+    await fixture.whenStable();
+    expect(control('episodeEnd').getAttribute('aria-invalid')).toBe('false');
+  });
+
   it('remembers search state on dismissal but never treats it as a confirmation', async () => {
     const remembered = vi.fn<(state: TmdbPickerState) => void>();
     const confirmed = vi.fn();
@@ -190,6 +247,7 @@ describe('TmdbPickerComponent', () => {
       language: 'en-US',
       season: 3,
       episode: 7,
+      episodeEnd: null,
       matches: [],
       selected: null,
     });

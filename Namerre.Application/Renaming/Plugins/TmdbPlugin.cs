@@ -25,6 +25,10 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
                     Hint: "Fields: {title}, {originalTitle}, {year}, {showYear}, {airDate}, {tmdbId}, {season}, {seasonNumber}, {episode}, {episodeTitle}. "
                         + "Pad numbers with zeros, e.g. {episode:000}. Write {{ and }} for literal braces. "
                         + "Defaults: {title} ({year}) for movies, {title} - S{season}E{episode} - {episodeTitle} for episodes."),
+                new("episodeRange", "Multi-episode numbers", OptionFieldKind.Select,
+                [
+                    new(RangeRepeat, "S01E01-E02"), new(RangeConcatenate, "S01E01E02"), new(RangeHyphen, "S01E01-02")
+                ], Hint: "How {episode} writes a file that holds several episodes. {episodeTitle} then joins their titles."),
                 new("language", "Metadata language",
                     Hint: "Sets the language of titles. Pick one or type your own.",
                     Suggestions: ["en-US", "en-GB", "es-ES", "ca-ES", "fr-FR", "de-DE", "it-IT", "pt-PT", "pt-BR",
@@ -49,6 +53,11 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
     /// <summary>The <c>preset</c> value of hand-written templates.</summary>
     public const string CustomPreset = "custom";
 
+    /// <summary><c>episodeRange</c> values: <c>01-E02</c>, <c>01E02</c> and <c>01-02</c> for episodes 1 to 2.</summary>
+    public const string RangeRepeat = "repeat";
+    public const string RangeConcatenate = "concatenate";
+    public const string RangeHyphen = "hyphen";
+
     /// <remarks>
     /// <see cref="Preset"/> only records which layout the editor filled the templates from; rendering ignores it
     /// and so does <see cref="OptionsHash"/>, so choosing a preset never invalidates confirmed matches.
@@ -63,11 +72,12 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
         public bool SeasonFolder { get; init; }
         public string SeasonFolderTemplate { get; init; } = "Season {season}";
         public string Language { get; init; } = "en-US";
+        public string EpisodeRange { get; init; } = RangeRepeat;
     }
 
     /// <summary>
     /// Binds a confirmed match to the metadata settings, not the templates used to render it: SHA-256 of
-    /// <c>language</c> only. The frontend mirrors this in <c>options-hash.ts</c>.
+    /// <c>language</c> only (the episode range style is rendering, too). The frontend mirrors this in <c>options-hash.ts</c>.
     /// </summary>
     public static string OptionsHash(JsonElement options)
     {
@@ -86,16 +96,17 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
         var match = metadata.Resolve(selection);
         var defaultTemplate = match.MediaType == "tv"
             ? "{title} - S{season}E{episode} - {episodeTitle}" : "{title} ({year})";
-        var stem = Render(string.IsNullOrWhiteSpace(options.NameTemplate) ? defaultTemplate : options.NameTemplate, match);
+        var stem = Render(string.IsNullOrWhiteSpace(options.NameTemplate) ? defaultTemplate : options.NameTemplate, match,
+            options.EpisodeRange);
         var folder = context.Path.Folder;
         if (options.ChangeFolder)
         {
             if (options.BaseFolder.Length > 0) fileSystem.Validate(options.BaseFolder);
             folder = (options.BaseFolder.Length > 0 ? options.BaseFolder + "/" : "")
-                + Render(options.FolderTemplate, match) + "/";
+                + Render(options.FolderTemplate, match, options.EpisodeRange) + "/";
             // Season folders nest inside the show folder and only apply to episode matches.
             if (options.SeasonFolder && match.Season is not null)
-                folder += Render(options.SeasonFolderTemplate, match) + "/";
+                folder += Render(options.SeasonFolderTemplate, match, options.EpisodeRange) + "/";
         }
         return context.Path with
         {
@@ -106,9 +117,10 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
 
     /// <summary>
     /// Renders <c>{field}</c> and <c>{field:000}</c> tokens; <c>{{</c> and <c>}}</c> stand for literal braces
-    /// (Plex reads ids such as <c>{tmdb-603}</c>). The frontend mirrors this in <c>tmdb-template-preview.ts</c>.
+    /// (Plex reads ids such as <c>{tmdb-603}</c>). <c>{episode}</c> of a multi-episode match writes the range in
+    /// <paramref name="episodeRange"/> style. The frontend mirrors this in <c>tmdb-template-preview.ts</c>.
     /// </summary>
-    private static string Render(string template, TmdbMatch match)
+    private static string Render(string template, TmdbMatch match, string episodeRange)
     {
         if (template.Length > 1000) throw new RenameException("InvalidTemplate", "Template is too long.");
         var result = new StringBuilder();
@@ -128,7 +140,7 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
                 var open = template.IndexOf('{', i + 1);
                 if (end < 0 || (open >= 0 && open < end) || end == i + 1)
                     throw new RenameException("InvalidTemplate", "Close each field with }, or write {{ for a literal brace.");
-                result.Append(Field(template[(i + 1)..end], match));
+                result.Append(Field(template[(i + 1)..end], match, episodeRange));
                 i = end;
             }
             else result.Append(c);
@@ -139,7 +151,7 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
         return rendered;
     }
 
-    private static string Field(string token, TmdbMatch match)
+    private static string Field(string token, TmdbMatch match, string episodeRange)
     {
         var colon = token.IndexOf(':');
         var field = colon < 0 ? token : token[..colon];
@@ -148,7 +160,7 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
         {
             "season" => Number(match.Season ?? throw Unavailable("Season"), format, "00"),
             "seasonNumber" => Number(match.Season ?? throw Unavailable("Season"), format, "0"),
-            "episode" => Number(match.Episode ?? throw Unavailable("Episode"), format, "00"),
+            "episode" => Episodes(match, format, episodeRange),
             "tmdbId" => Number(match.Id, format, "0"),
             _ when format is not null => throw new RenameException("InvalidTemplate", "Only numeric fields take a format."),
             "title" => MetadataText(match.Title),
@@ -158,6 +170,20 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
             "airDate" => MetadataText(match.AirDate ?? throw Unavailable("Air date")),
             "episodeTitle" => MetadataText(match.EpisodeTitle ?? throw Unavailable("Episode title")),
             _ => throw new RenameException("InvalidTemplate", "Unknown template field.")
+        };
+    }
+
+    private static string Episodes(TmdbMatch match, string? format, string episodeRange)
+    {
+        var first = Number(match.Episode ?? throw Unavailable("Episode"), format, "00");
+        if (match.EpisodeEnd is not { } end || end == match.Episode) return first;
+        var last = Number(end, format, "00");
+        return episodeRange switch
+        {
+            RangeConcatenate => first + "E" + last,
+            RangeHyphen => first + "-" + last,
+            RangeRepeat => first + "-E" + last,
+            _ => throw new RenameException("InvalidConfiguration", "Choose how multi-episode numbers are written.")
         };
     }
 

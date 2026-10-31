@@ -13,6 +13,9 @@ public sealed class NamerreOptions
     public ReverseProxyOptions ReverseProxy { get; set; } = new();
     public TelemetryOptions Telemetry { get; set; } = new();
     public LimitsOptions Limits { get; set; } = new();
+    public IntegrationsOptions Integrations { get; set; } = new();
+    /// <summary>Folders whose new files are renamed automatically with a saved preset.</summary>
+    public List<WatchFolderOptions> WatchFolders { get; set; } = [];
 }
 
 /// <summary>Workload limits; values outside 1 to the ceilings of <see cref="RenameLimits"/> fail startup.</summary>
@@ -73,4 +76,34 @@ public sealed class TelemetryOptions
     /// <summary>Optional OTLP headers in <c>key1=value1,key2=value2</c> form.</summary>
     public string? Headers { get; set; }
     public string? ServiceName { get; set; } = "namerre";
+}
+
+/// <summary>Optional notifications after a run finishes. Each target is disabled while its <c>Url</c> is empty.</summary>
+public sealed class IntegrationsOptions
+{
+    public MediaServerOptions Jellyfin { get; set; } = new();
+    public MediaServerOptions Emby { get; set; } = new();
+    public PlexOptions Plex { get; set; } = new();
+    public WebhookOptions Webhook { get; set; } = new();
+}
+
+public sealed class MediaServerOptions
+{
+    public string? Url { get; set; }
+    /// <summary>API key sent as <c>X-Emby-Token</c>. Treat as a secret.</summary>
+    public string? ApiKey { get; set; }
+}
+
+public sealed class PlexOptions
+{
+    public string? Url { get; set; }
+    /// <summary>Plex token sent as <c>X-Plex-Token</c>. Treat as a secret.</summary>
+    public string? Token { get; set; }
+}
+
+public sealed class WebhookOptions
+{
+    public string? Url { get; set; }
+    /// <summary>Include each file's source and target path in the payload. Paths may be sensitive.</summary>
+    public bool IncludePaths { get; set; }
 }

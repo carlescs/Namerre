@@ -36,7 +36,7 @@ describe('TmdbMatchingComponent', () => {
       },
     };
     fixture.componentRef.setInput('rows', [row]);
-    fixture.componentRef.setInput('canAcceptAll', true);
+    fixture.componentRef.setInput('acceptableMatches', 1);
     const search = vi.fn();
     const accepted = vi.fn();
     const all = vi.fn();
@@ -59,7 +59,7 @@ describe('TmdbMatchingComponent', () => {
     };
     button('Find episode').click();
     button('Accept', 'Accept match').click();
-    button('Accept all').click();
+    button('Accept high-confidence').click();
     button('Change').click();
     expect(search).toHaveBeenCalledWith('tv');
     expect(accepted).toHaveBeenCalledWith(row.suggestion);
@@ -68,7 +68,7 @@ describe('TmdbMatchingComponent', () => {
     fixture.componentRef.setInput('suggesting', true);
     await fixture.whenStable();
     expect(button('Find episode').disabled).toBe(true);
-    expect(button('Accept all').disabled).toBe(true);
+    expect(button('Accept high-confidence').disabled).toBe(true);
     expect(button('Change').disabled).toBe(true);
     fixture.destroy();
   });
@@ -149,11 +149,52 @@ describe('TmdbMatchingComponent', () => {
         )!;
       expect(find('Find episode matches').classList.contains('btn-primary')).toBe(true);
       expect(find('Find movie matches').classList.contains('btn-primary')).toBe(false);
-      expect(find('Accept all matches').classList.contains('btn-primary')).toBe(false);
-      fixture.componentRef.setInput('canAcceptAll', true);
+      expect(find('Accept high-confidence matches').classList.contains('btn-primary')).toBe(false);
+      fixture.componentRef.setInput('acceptableMatches', 2);
       await fixture.whenStable();
-      expect(find('Accept all matches').classList.contains('btn-primary')).toBe(true);
+      expect(find('Accept high-confidence matches (2)').classList.contains('btn-primary')).toBe(
+        true,
+      );
       expect(find('Remove from collection')).toBeDefined();
+      fixture.destroy();
+    });
+
+    it('marks low-confidence proposals for review and shows each confidence', async () => {
+      await TestBed.configureTestingModule({
+        imports: [TmdbMatchingComponent],
+      }).compileComponents();
+      const fixture = TestBed.createComponent(TmdbMatchingComponent);
+      const proposal = (fileId: string, confidence: number): TmdbMatchRow =>
+        row(fileId, {
+          suggestion: {
+            fileId,
+            instanceId: 'tmdb',
+            inputPath: fileId,
+            optionsHash: 'h',
+            error: '',
+            confidence,
+            match: {
+              id: 1,
+              mediaType: 'movie',
+              title: 'Movie',
+              year: '2000',
+              season: null,
+              episode: null,
+              episodeTitle: null,
+              confirmationToken: 't',
+            },
+          },
+        });
+      fixture.componentRef.setInput('rows', [proposal('a.mkv', 0.92), proposal('b.mkv', 0.6)]);
+      await fixture.whenStable();
+      const [high, low] = Array.from(
+        fixture.nativeElement.querySelectorAll('article'),
+      ) as HTMLElement[];
+      expect(high.textContent).toContain('Proposed');
+      expect(high.textContent).toContain('92% confidence from the file name.');
+      expect(low.textContent).toContain('Check proposal');
+      expect(low.textContent).toContain('60% confidence from the file name — check it');
+      expect(low.querySelector('[aria-label^="Accept match"]')).not.toBeNull();
       fixture.destroy();
     });
 
