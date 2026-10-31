@@ -461,8 +461,8 @@ The collection can contain files from multiple folders. Start with an empty plug
 stack and add as many independently configured instances as needed: text replacement,
 regular-expression replacement, case change, extension case, prefix and suffix, number padding, counter, date, or TMDB resolution. Repeated plugin
 types are allowed, except TMDB: a recipe holds at most one TMDB step, since each one needs its own
-confirmed match for every file. Move instances up or down to choose the execution order; the
-catalog order does not determine execution order.
+confirmed match for every file. Drag a step by its handle or move it up or down with its arrows
+to choose the execution order; the catalog order does not determine execution order.
 
 ### Presets
 

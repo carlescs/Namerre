@@ -1,6 +1,7 @@
 <h3 class="mb-1">Your renaming steps ({{ cards().length }}/{{ maxPlugins() }})</h3>
 <p class="mt-0 text-slate-500 dark:text-slate-400">
-  Rules run top to bottom; each works on the previous result. File extensions are kept.
+  Rules run top to bottom; each works on the previous result. File extensions are kept. Drag a
+  step's handle or use its arrows to change the order.
 </p>
 <div
   class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-4"
@@ -43,294 +44,329 @@
     {{ count === 1 ? 'it' : 'them' }} or pick another step.
   </p>
 }
-@for (card of cards(); track card.plugin.instanceId; let i = $index) {
-  <article
-    [attr.aria-labelledby]="'plugin-' + card.plugin.instanceId"
-    [attr.data-unknown]="card.unknown ? '' : null"
-  >
-    <header class="flex flex-wrap items-center gap-2">
-      <h4 #cardHeading tabindex="-1" class="m-0 mr-auto" [id]="'plugin-' + card.plugin.instanceId">
-        {{ i + 1 }}. {{ name(card.plugin.typeId) }}
-      </h4>
-      @if (card.unknown) {
-        <span
-          class="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-900 dark:bg-rose-500/15 dark:text-rose-200"
-          >Unknown step: {{ card.plugin.typeId }} v{{ card.plugin.version }}</span
+<div
+  cdkDropList
+  cdkDropListLockAxis="y"
+  [cdkDropListData]="cards()"
+  [cdkDropListDisabled]="cards().length < 2"
+  (cdkDropListDropped)="drop($event)"
+>
+  @for (card of cards(); track card.plugin.instanceId; let i = $index) {
+    <article
+      cdkDrag
+      [cdkDragData]="card"
+      [attr.aria-labelledby]="'plugin-' + card.plugin.instanceId"
+      [attr.data-unknown]="card.unknown ? '' : null"
+    >
+      <header class="flex flex-wrap items-center gap-2">
+        @if (cards().length > 1) {
+          <span
+            cdkDragHandle
+            class="drag-handle text-slate-400 dark:text-slate-500"
+            title="Drag to reorder"
+            aria-hidden="true"
+            ><fa-icon [icon]="gripIcon"
+          /></span>
+        }
+        <h4
+          #cardHeading
+          tabindex="-1"
+          class="m-0 mr-auto"
+          [id]="'plugin-' + card.plugin.instanceId"
         >
-      }
-      <label class="m-0 flex cursor-pointer items-center gap-2 text-xs" [hidden]="card.unknown">
-        <input
-          type="checkbox"
-          class="peer sr-only"
-          [checked]="card.plugin.enabled"
-          [disabled]="card.unknown"
-          (change)="enable(i)"
-        />
-        <span
-          aria-hidden="true"
-          class="relative h-5 w-9 rounded-full bg-slate-300 transition-colors after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:transition-transform peer-checked:bg-indigo-600 peer-checked:after:translate-x-4 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-indigo-600 dark:bg-slate-700"
-        ></span>
-        Enabled
-      </label>
-      <button
-        type="button"
-        class="!min-h-8 !px-2.5 !py-1"
-        title="Move up"
-        (click)="move(i, -1)"
-        [disabled]="i === 0"
-        [attr.aria-label]="'Move plugin ' + (i + 1) + ' up'"
-      >
-        <fa-icon [icon]="upIcon" aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        class="!min-h-8 !px-2.5 !py-1"
-        title="Move down"
-        (click)="move(i, 1)"
-        [disabled]="i === cards().length - 1"
-        [attr.aria-label]="'Move plugin ' + (i + 1) + ' down'"
-      >
-        <fa-icon [icon]="downIcon" aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        class="!min-h-8 !px-2.5 !py-1 text-slate-500 hover:text-rose-700 dark:text-slate-400 dark:hover:text-rose-400"
-        title="Remove"
-        (click)="remove(i)"
-        [attr.aria-label]="'Remove plugin ' + (i + 1)"
-      >
-        <fa-icon [icon]="trashIcon" aria-hidden="true" />
-      </button>
-    </header>
-    <div class="plugin-options mt-3" [formGroup]="card.form">
-      @for (group of card.groups; track $index) {
-        @if (visible(card, group)) {
-          @if (group.heading) {
-            <h5
-              class="m-0 mt-5 border-b border-slate-200 pb-1 text-xs font-semibold tracking-wide text-slate-500 uppercase first:mt-0 dark:border-slate-800 dark:text-slate-400"
-            >
-              {{ group.heading }}
-            </h5>
-          }
-          <div
-            class="grid items-start gap-x-6 sm:grid-cols-2"
-            [class]="
-              group.requires?.length
-                ? 'border-s-2 border-indigo-100 ps-4 dark:border-indigo-500/30'
-                : ''
-            "
-            [style.margin-inline-start.rem]="indent(group)"
+          {{ i + 1 }}. {{ name(card.plugin.typeId) }}
+        </h4>
+        @if (card.unknown) {
+          <span
+            class="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-900 dark:bg-rose-500/15 dark:text-rose-200"
+            >Unknown step: {{ card.plugin.typeId }} v{{ card.plugin.version }}</span
           >
-            @for (field of group.fields; track field.key) {
-              @if (shown(card, field)) {
-                @let fieldId = 'f-' + card.plugin.instanceId + '-' + field.key;
-                <div class="min-w-0" [class]="wide(field) ? 'sm:col-span-2' : ''">
-                  @if (field.kind === 'list') {
-                    @let listRows = rows(card, field.key);
-                    <fieldset
-                      class="m-0 mb-3 min-w-0 border-0 p-0"
-                      [attr.aria-describedby]="field.hint ? fieldId : null"
-                    >
-                      <legend class="mb-2 p-0">{{ field.label }}</legend>
-                      @for (row of listRows.controls; track row; let r = $index) {
-                        <div
-                          role="group"
-                          class="mb-2 rounded-lg border border-slate-200 p-3 pb-0 dark:border-slate-800"
-                          [id]="fieldId + '-' + r"
-                          [attr.aria-label]="field.label + ' row ' + (r + 1)"
+        }
+        <label class="m-0 flex cursor-pointer items-center gap-2 text-xs" [hidden]="card.unknown">
+          <input
+            type="checkbox"
+            class="peer sr-only"
+            [checked]="card.plugin.enabled"
+            [disabled]="card.unknown"
+            (change)="enable(i)"
+          />
+          <span
+            aria-hidden="true"
+            class="relative h-5 w-9 rounded-full bg-slate-300 transition-colors after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:transition-transform peer-checked:bg-indigo-600 peer-checked:after:translate-x-4 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-indigo-600 dark:bg-slate-700"
+          ></span>
+          Enabled
+        </label>
+        <button
+          type="button"
+          class="!min-h-8 !px-2.5 !py-1"
+          title="Move up"
+          (click)="move(i, -1)"
+          [disabled]="i === 0"
+          [attr.aria-label]="'Move plugin ' + (i + 1) + ' up'"
+        >
+          <fa-icon [icon]="upIcon" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          class="!min-h-8 !px-2.5 !py-1"
+          title="Move down"
+          (click)="move(i, 1)"
+          [disabled]="i === cards().length - 1"
+          [attr.aria-label]="'Move plugin ' + (i + 1) + ' down'"
+        >
+          <fa-icon [icon]="downIcon" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          class="!min-h-8 !px-2.5 !py-1 text-slate-500 hover:text-rose-700 dark:text-slate-400 dark:hover:text-rose-400"
+          title="Remove"
+          (click)="remove(i)"
+          [attr.aria-label]="'Remove plugin ' + (i + 1)"
+        >
+          <fa-icon [icon]="trashIcon" aria-hidden="true" />
+        </button>
+      </header>
+      <div class="plugin-options mt-3" [formGroup]="card.form">
+        @for (group of card.groups; track $index) {
+          @if (visible(card, group)) {
+            @if (group.heading) {
+              <h5
+                class="m-0 mt-5 border-b border-slate-200 pb-1 text-xs font-semibold tracking-wide text-slate-500 uppercase first:mt-0 dark:border-slate-800 dark:text-slate-400"
+              >
+                {{ group.heading }}
+              </h5>
+            }
+            <div
+              class="grid items-start gap-x-6 sm:grid-cols-2"
+              [class]="
+                group.requires?.length
+                  ? 'border-s-2 border-indigo-100 ps-4 dark:border-indigo-500/30'
+                  : ''
+              "
+              [style.margin-inline-start.rem]="indent(group)"
+            >
+              @for (field of group.fields; track field.key) {
+                @if (shown(card, field)) {
+                  @let fieldId = 'f-' + card.plugin.instanceId + '-' + field.key;
+                  <div class="min-w-0" [class]="wide(field) ? 'sm:col-span-2' : ''">
+                    @if (field.kind === 'list') {
+                      @let listRows = rows(card, field.key);
+                      <fieldset
+                        class="m-0 mb-3 min-w-0 border-0 p-0"
+                        [attr.aria-describedby]="field.hint ? fieldId : null"
+                      >
+                        <legend class="mb-2 p-0">{{ field.label }}</legend>
+                        @for (row of listRows.controls; track row; let r = $index) {
+                          <div
+                            role="group"
+                            class="mb-2 rounded-lg border border-slate-200 p-3 pb-0 dark:border-slate-800"
+                            [id]="fieldId + '-' + r"
+                            [attr.aria-label]="field.label + ' row ' + (r + 1)"
+                          >
+                            <div class="grid items-start gap-x-4 sm:grid-cols-2">
+                              @for (column of field.fields; track column.key) {
+                                <div class="min-w-0" [class]="wide(column) ? 'sm:col-span-2' : ''">
+                                  <ng-container
+                                    [ngTemplateOutlet]="optionField"
+                                    [ngTemplateOutletContext]="{
+                                      field: column,
+                                      control: row.controls[column.key],
+                                      id: fieldId + '-' + r + '-' + column.key,
+                                    }"
+                                  />
+                                </div>
+                              }
+                            </div>
+                            <div class="mb-3 flex justify-end gap-2">
+                              <button
+                                type="button"
+                                class="!min-h-8 !px-2.5 !py-1"
+                                title="Move up"
+                                (click)="moveRow(card, field, r, -1)"
+                                [disabled]="r === 0"
+                                [attr.aria-label]="
+                                  'Move ' + field.label + ' row ' + (r + 1) + ' up'
+                                "
+                              >
+                                <fa-icon [icon]="upIcon" aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                class="!min-h-8 !px-2.5 !py-1"
+                                title="Move down"
+                                (click)="moveRow(card, field, r, 1)"
+                                [disabled]="r === listRows.length - 1"
+                                [attr.aria-label]="
+                                  'Move ' + field.label + ' row ' + (r + 1) + ' down'
+                                "
+                              >
+                                <fa-icon [icon]="downIcon" aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                class="!min-h-8 !px-2.5 !py-1 text-slate-500 hover:text-rose-700 dark:text-slate-400 dark:hover:text-rose-400"
+                                title="Remove"
+                                (click)="removeRow(card, field, r)"
+                                [attr.aria-label]="'Remove ' + field.label + ' row ' + (r + 1)"
+                              >
+                                <fa-icon [icon]="trashIcon" aria-hidden="true" />
+                              </button>
+                            </div>
+                          </div>
+                        } @empty {
+                          <p class="mt-0 mb-2 text-xs text-slate-500 dark:text-slate-400">
+                            No rows yet.
+                          </p>
+                        }
+                        <button
+                          type="button"
+                          class="!min-h-8 !px-2.5 !py-1"
+                          (click)="addRow(card, field)"
+                          [attr.aria-label]="'Add ' + field.label + ' row'"
                         >
-                          <div class="grid items-start gap-x-4 sm:grid-cols-2">
-                            @for (column of field.fields; track column.key) {
-                              <div class="min-w-0" [class]="wide(column) ? 'sm:col-span-2' : ''">
-                                <ng-container
-                                  [ngTemplateOutlet]="optionField"
-                                  [ngTemplateOutletContext]="{
-                                    field: column,
-                                    control: row.controls[column.key],
-                                    id: fieldId + '-' + r + '-' + column.key,
-                                  }"
-                                />
-                              </div>
-                            }
-                          </div>
-                          <div class="mb-3 flex justify-end gap-2">
-                            <button
-                              type="button"
-                              class="!min-h-8 !px-2.5 !py-1"
-                              title="Move up"
-                              (click)="moveRow(card, field, r, -1)"
-                              [disabled]="r === 0"
-                              [attr.aria-label]="'Move ' + field.label + ' row ' + (r + 1) + ' up'"
-                            >
-                              <fa-icon [icon]="upIcon" aria-hidden="true" />
-                            </button>
-                            <button
-                              type="button"
-                              class="!min-h-8 !px-2.5 !py-1"
-                              title="Move down"
-                              (click)="moveRow(card, field, r, 1)"
-                              [disabled]="r === listRows.length - 1"
-                              [attr.aria-label]="
-                                'Move ' + field.label + ' row ' + (r + 1) + ' down'
-                              "
-                            >
-                              <fa-icon [icon]="downIcon" aria-hidden="true" />
-                            </button>
-                            <button
-                              type="button"
-                              class="!min-h-8 !px-2.5 !py-1 text-slate-500 hover:text-rose-700 dark:text-slate-400 dark:hover:text-rose-400"
-                              title="Remove"
-                              (click)="removeRow(card, field, r)"
-                              [attr.aria-label]="'Remove ' + field.label + ' row ' + (r + 1)"
-                            >
-                              <fa-icon [icon]="trashIcon" aria-hidden="true" />
-                            </button>
-                          </div>
-                        </div>
-                      } @empty {
-                        <p class="mt-0 mb-2 text-xs text-slate-500 dark:text-slate-400">
-                          No rows yet.
+                          Add row
+                        </button>
+                      </fieldset>
+                      @if (field.hint) {
+                        <p
+                          [id]="fieldId"
+                          class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400"
+                        >
+                          {{ field.hint }}
                         </p>
                       }
-                      <button
-                        type="button"
-                        class="!min-h-8 !px-2.5 !py-1"
-                        (click)="addRow(card, field)"
-                        [attr.aria-label]="'Add ' + field.label + ' row'"
-                      >
-                        Add row
-                      </button>
-                    </fieldset>
-                    @if (field.hint) {
-                      <p
-                        [id]="fieldId"
-                        class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400"
-                      >
-                        {{ field.hint }}
-                      </p>
+                    } @else {
+                      <ng-container
+                        [ngTemplateOutlet]="optionField"
+                        [ngTemplateOutletContext]="{
+                          field,
+                          control: control(card, field.key),
+                          id: fieldId,
+                        }"
+                      />
                     }
-                  } @else {
-                    <ng-container
-                      [ngTemplateOutlet]="optionField"
-                      [ngTemplateOutletContext]="{
-                        field,
-                        control: control(card, field.key),
-                        id: fieldId,
-                      }"
-                    />
-                  }
-                </div>
+                  </div>
+                }
               }
-            }
-          </div>
-        }
-      }
-    </div>
-    @if (!card.unknown) {
-      @let applyTo = conditionSummary(card);
-      <details class="mt-3" [open]="!!applyTo" [formGroup]="card.condition">
-        <summary>
-          Apply to:
-          <span class="text-slate-500 dark:text-slate-400">{{ applyTo || 'every file' }}</span>
-        </summary>
-        @let conditionId = 'c-' + card.plugin.instanceId;
-        <div class="mt-2 grid items-start gap-x-6 sm:grid-cols-2">
-          <label class="min-w-0">
-            File extensions
-            <input
-              type="text"
-              formControlName="extensions"
-              placeholder="Any extension"
-              [attr.aria-describedby]="conditionId + '-extensions'"
-            />
-          </label>
-          <label class="min-w-0">
-            Name pattern
-            <input
-              type="text"
-              formControlName="pattern"
-              placeholder="Any name"
-              [attr.aria-describedby]="conditionId + '-pattern'"
-            />
-          </label>
-          <p
-            [id]="conditionId + '-extensions'"
-            class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400"
-          >
-            Separate with commas, e.g. srt, ass.
-          </p>
-          <p
-            [id]="conditionId + '-pattern'"
-            class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400"
-          >
-            A regular expression tested against the current file name, extension included.
-          </p>
-          <label class="flex items-center">
-            <input type="checkbox" formControlName="ignoreCase" />
-            Pattern ignores case
-          </label>
-          <label class="flex items-center">
-            <input type="checkbox" formControlName="invert" />
-            Apply to the files that do not match instead
-          </label>
-        </div>
-      </details>
-    }
-    @if (card.plugin.typeId === 'tmdb') {
-      <details class="mt-3">
-        <summary>Template fields</summary>
-        <p class="mb-0">
-          Use these in templates, wrapped in braces: <code>{{ '{title}' }}</code
-          >, <code>{{ '{year}' }}</code
-          >, <code>{{ '{season}' }}</code
-          >, <code>{{ '{seasonNumber}' }}</code
-          >, <code>{{ '{episode}' }}</code
-          >, <code>{{ '{episodeTitle}' }}</code
-          >. Season and episode need a TV match; a multi-episode match writes
-          <code>{{ '{episode}' }}</code> as a range and joins the episode titles.
-        </p>
-      </details>
-      <section
-        class="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-4"
-        [attr.aria-labelledby]="'preview-' + card.plugin.instanceId"
-      >
-        <h5
-          class="m-0 font-semibold text-slate-900 dark:text-slate-100"
-          [id]="'preview-' + card.plugin.instanceId"
-        >
-          Template preview
-        </h5>
-        <p class="mt-1 text-slate-500 dark:text-slate-400">
-          Rendered with sample metadata, not a real TMDB match. Match each file in the TMDB matching
-          step.
-        </p>
-        <dl class="m-0 grid gap-2" aria-live="polite">
-          @for (sample of samples; track sample.label) {
-            @let result = preview(card.plugin.options, sample.match);
-            <div>
-              <dt class="text-slate-500 dark:text-slate-400">
-                {{ sample.label }}: {{ sample.match.title }} ({{ sample.match.year }})
-                @if (sample.match.season !== null) {
-                  S{{ sample.match.season }}E{{ sample.match.episode
-                  }}{{ sample.match.episodeEnd ? '–' + sample.match.episodeEnd : '' }} &ldquo;{{
-                    sample.match.episodeTitle
-                  }}&rdquo;
-                }
-              </dt>
-              <dd class="m-0">
-                @if (result.path !== undefined) {
-                  <code>{{ result.path }}</code>
-                } @else {
-                  <span class="text-red-700 dark:text-rose-400">{{ result.error }}</span>
-                }
-              </dd>
             </div>
           }
-        </dl>
-      </section>
-    }
-  </article>
-}
+        }
+      </div>
+      @if (!card.unknown) {
+        @let applyTo = conditionSummary(card);
+        <details class="mt-3" [open]="!!applyTo" [formGroup]="card.condition">
+          <summary>
+            Apply to:
+            <span class="text-slate-500 dark:text-slate-400">{{ applyTo || 'every file' }}</span>
+          </summary>
+          @let conditionId = 'c-' + card.plugin.instanceId;
+          <div class="mt-2 grid items-start gap-x-6 sm:grid-cols-2">
+            <label class="min-w-0">
+              File extensions
+              <input
+                type="text"
+                formControlName="extensions"
+                placeholder="Any extension"
+                [attr.aria-describedby]="conditionId + '-extensions'"
+              />
+            </label>
+            <label class="min-w-0">
+              Name pattern
+              <input
+                type="text"
+                formControlName="pattern"
+                placeholder="Any name"
+                [attr.aria-describedby]="conditionId + '-pattern'"
+              />
+            </label>
+            <p
+              [id]="conditionId + '-extensions'"
+              class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400"
+            >
+              Separate with commas, e.g. srt, ass.
+            </p>
+            <p
+              [id]="conditionId + '-pattern'"
+              class="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400"
+            >
+              A regular expression tested against the current file name, extension included.
+            </p>
+            <label class="flex items-center">
+              <input type="checkbox" formControlName="ignoreCase" />
+              Pattern ignores case
+            </label>
+            <label class="flex items-center">
+              <input type="checkbox" formControlName="invert" />
+              Apply to the files that do not match instead
+            </label>
+          </div>
+        </details>
+      }
+      @if (card.plugin.typeId === 'tmdb') {
+        <details class="mt-3">
+          <summary>Template fields</summary>
+          <p class="mb-0">
+            Use these in templates, wrapped in braces: <code>{{ '{title}' }}</code
+            >, <code>{{ '{year}' }}</code
+            >, <code>{{ '{season}' }}</code
+            >, <code>{{ '{seasonNumber}' }}</code
+            >, <code>{{ '{episode}' }}</code
+            >, <code>{{ '{episodeTitle}' }}</code
+            >. Season and episode need a TV match; a multi-episode match writes
+            <code>{{ '{episode}' }}</code> as a range and joins the episode titles.
+          </p>
+        </details>
+        <section
+          class="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-4"
+          [attr.aria-labelledby]="'preview-' + card.plugin.instanceId"
+        >
+          <h5
+            class="m-0 font-semibold text-slate-900 dark:text-slate-100"
+            [id]="'preview-' + card.plugin.instanceId"
+          >
+            Template preview
+          </h5>
+          <p class="mt-1 text-slate-500 dark:text-slate-400">
+            Rendered with sample metadata, not a real TMDB match. Match each file in the TMDB
+            matching step.
+          </p>
+          <dl class="m-0 grid gap-2" aria-live="polite">
+            @for (sample of samples; track sample.label) {
+              @let result = preview(card.plugin.options, sample.match);
+              <div>
+                <dt class="text-slate-500 dark:text-slate-400">
+                  {{ sample.label }}: {{ sample.match.title }} ({{ sample.match.year }})
+                  @if (sample.match.season !== null) {
+                    S{{ sample.match.season }}E{{ sample.match.episode
+                    }}{{ sample.match.episodeEnd ? '–' + sample.match.episodeEnd : '' }} &ldquo;{{
+                      sample.match.episodeTitle
+                    }}&rdquo;
+                  }
+                </dt>
+                <dd class="m-0">
+                  @if (result.path !== undefined) {
+                    <code>{{ result.path }}</code>
+                  } @else {
+                    <span class="text-red-700 dark:text-rose-400">{{ result.error }}</span>
+                  }
+                </dd>
+              </div>
+            }
+          </dl>
+        </section>
+      }
+      <div
+        *cdkDragPreview
+        class="drag-preview border-indigo-200 bg-white text-slate-900 dark:border-indigo-500/40 dark:bg-slate-900 dark:text-slate-100"
+      >
+        <span class="font-medium">{{ i + 1 }}. {{ name(card.plugin.typeId) }}</span>
+        @if (!card.plugin.enabled) {
+          <span class="text-xs text-slate-500 dark:text-slate-400">Disabled</span>
+        }
+      </div>
+    </article>
+  }
+</div>
 <ng-template #optionField let-field="field" let-control="control" let-id="id">
   @if (field.kind === 'checkbox') {
     <label class="flex items-center">
