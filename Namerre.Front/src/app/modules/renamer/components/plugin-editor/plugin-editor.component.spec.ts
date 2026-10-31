@@ -1,4 +1,6 @@
+import { type CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { defaultLimits, WorkloadLimits } from '../../../../workload-limits';
 import { casePlugin, literalPlugin, regexPlugin, tmdbPlugin } from '../../plugin-catalog.testing';
 import type { PluginDescriptor, PluginInstance } from '../../rename-api';
@@ -340,6 +342,28 @@ describe('PluginEditorComponent', () => {
     await fixture.whenStable();
     expect(plugins.map((plugin) => plugin.typeId)).toEqual(['case', 'literal']);
     expect(document.activeElement?.textContent).toContain('Literal replacement');
+  });
+
+  it('reorders plugins dropped with drag and drop', async () => {
+    const dropList = () =>
+      fixture.debugElement.query(By.directive(CdkDropList)).injector.get(CdkDropList);
+    await add('literal');
+    expect(dropList().disabled).toBe(true);
+    expect(fixture.nativeElement.querySelector('.drag-handle')).toBeNull();
+    await add('case');
+    await add('tmdb');
+    expect(dropList().disabled).toBe(false);
+    expect(fixture.nativeElement.querySelectorAll('article .drag-handle')).toHaveLength(3);
+    const ids = plugins.map((plugin) => plugin.instanceId);
+    dropList().dropped.emit({ previousIndex: 2, currentIndex: 0 } as CdkDragDrop<unknown>);
+    await fixture.whenStable();
+    expect(plugins.map((plugin) => plugin.typeId)).toEqual(['tmdb', 'literal', 'case']);
+    expect(plugins.map((plugin) => plugin.instanceId)).toEqual([ids[2], ids[0], ids[1]]);
+    expect(
+      Array.from(fixture.nativeElement.querySelectorAll('article h4') as NodeListOf<Element>).map(
+        (heading) => heading.textContent?.trim(),
+      ),
+    ).toEqual(['1. TMDB', '2. Literal replacement', '3. Case change']);
   });
 
   it('returns focus to the add button after removing the last plugin', async () => {

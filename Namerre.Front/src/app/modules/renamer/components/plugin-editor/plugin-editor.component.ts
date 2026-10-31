@@ -1,3 +1,11 @@
+import {
+  CdkDrag,
+  type CdkDragDrop,
+  CdkDragHandle,
+  CdkDragPreview,
+  CdkDropList,
+  moveItemInArray,
+} from '@angular/cdk/drag-drop';
 import { NgTemplateOutlet } from '@angular/common';
 import {
   afterNextRender,
@@ -24,7 +32,12 @@ import {
   Validators,
 } from '@angular/forms';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
-import { faArrowDown, faArrowUp, faTrashCan } from '@fortawesome/free-solid-svg-icons';
+import {
+  faArrowDown,
+  faArrowUp,
+  faGripVertical,
+  faTrashCan,
+} from '@fortawesome/free-solid-svg-icons';
 import { WorkloadLimits } from '../../../../workload-limits';
 import {
   type OptionField,
@@ -76,7 +89,15 @@ const wideKinds: ReadonlySet<OptionField['kind']> = new Set([
 ]);
 
 @Component({
-  imports: [FaIconComponent, NgTemplateOutlet, ReactiveFormsModule],
+  imports: [
+    CdkDrag,
+    CdkDragHandle,
+    CdkDragPreview,
+    CdkDropList,
+    FaIconComponent,
+    NgTemplateOutlet,
+    ReactiveFormsModule,
+  ],
   selector: 'app-plugin-editor',
   styleUrl: './plugin-editor.component.scss',
   templateUrl: './plugin-editor.component.html',
@@ -91,6 +112,7 @@ export class PluginEditorComponent implements OnInit {
   protected readonly upIcon = faArrowUp;
   protected readonly downIcon = faArrowDown;
   protected readonly trashIcon = faTrashCan;
+  protected readonly gripIcon = faGripVertical;
   protected readonly cards = signal<Card[]>([]);
   protected readonly samples = [
     { label: 'Movie', match: sampleMovie },
@@ -165,13 +187,25 @@ export class PluginEditorComponent implements OnInit {
   }
 
   protected move(index: number, direction: number): void {
-    const cards = [...this.cards()];
     const destination = index + direction;
-    if (destination < 0 || destination >= cards.length) return;
-    [cards[index], cards[destination]] = [cards[destination], cards[index]];
+    if (this.moveTo(index, destination)) this.focusCard(destination);
+  }
+
+  /** Moves a step dropped with drag and drop; the steps run in their new order. */
+  protected drop(event: CdkDragDrop<Card[]>): void {
+    this.moveTo(event.previousIndex, event.currentIndex);
+  }
+
+  /** Moves the step at `from` to `to`, returning whether anything moved. */
+  private moveTo(from: number, to: number): boolean {
+    const cards = [...this.cards()];
+    if (from === to || from < 0 || to < 0 || from >= cards.length || to >= cards.length) {
+      return false;
+    }
+    moveItemInArray(cards, from, to);
     this.cards.set(cards);
     this.emit();
-    this.focusCard(destination);
+    return true;
   }
 
   protected remove(index: number): void {

@@ -3,3 +3,28 @@
 :host {
   margin-bottom: 1rem;
 }
+
+.drag-handle {
+  cursor: grab;
+  touch-action: none;
+}
+
+.cdk-drag-placeholder {
+  opacity: 0.35;
+}
+
+.cdk-drag-animating,
+.cdk-drop-list-dragging article:not(.cdk-drag-placeholder) {
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.drag-preview {
+  display: grid;
+  gap: 0.1rem;
+  max-width: 24rem;
+  padding: 0.6rem 0.9rem;
+  border-width: 1px;
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 25px -5px rgb(15 23 42 / 0.25);
+  cursor: grabbing;
+}

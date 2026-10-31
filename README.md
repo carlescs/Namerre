@@ -461,8 +461,8 @@ The collection can contain files from multiple folders. Start with an empty plug
 stack and add as many independently configured instances as needed: text replacement,
 regular-expression replacement, case change, extension case, prefix and suffix, number padding, counter, date, or TMDB resolution. Repeated plugin
 types are allowed, except TMDB: a recipe holds at most one TMDB step, since each one needs its own
-confirmed match for every file. Move instances up or down to choose the execution order; the
-catalog order does not determine execution order.
+confirmed match for every file. Drag a step by its handle or move it up or down with its arrows
+to choose the execution order; the catalog order does not determine execution order.
 
 ### Presets
 
@@ -750,8 +750,10 @@ server-relative paths. The collection displays source folders, sizes and
 modification dates. Its order is the renaming order that steps see as each file's
 position: new files are added at the end, and **Order** sorts the whole collection once
 (name in natural order, folder then name, size or modification date, either direction).
-Fine-tune it by dragging a row's handle or with its up and down arrows; reordering is
-disabled while a filter hides part of the collection. The collection, the renaming rules and the run options are kept in
+Fine-tune it by dragging a row's handle or with its up and down arrows; with **Include
+related files** on, a video's subtitles, `.nfo` and artwork are listed under it and drag
+and move with it as one group. Reordering is disabled while a filter hides part of the
+collection. The collection, the renaming rules and the run options are kept in
 the browser's local storage, so a reload picks up where you left off; confirmed TMDB
 matches are not kept and are matched again. The saved collection is dropped once a rename
 starts.
