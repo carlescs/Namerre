@@ -13,9 +13,16 @@ public static class DependencyInjection
         services.AddGeneratedMediator();
         // Registration order is the catalog order users see; execution order comes from each request.
         services.AddSingleton<IRenamePlugin, LiteralPlugin>();
+        services.AddSingleton<IRenamePlugin, ReplacementTablePlugin>();
         services.AddSingleton<IRenamePlugin, RegexPlugin>();
         services.AddSingleton<IRenamePlugin, CasePlugin>();
         services.AddSingleton<IRenamePlugin, AffixPlugin>();
+        services.AddSingleton<IRenamePlugin, SeparatorsPlugin>();
+        services.AddSingleton<IRenamePlugin, ReleaseTagsPlugin>();
+        services.AddSingleton<IRenamePlugin, CharactersPlugin>();
+        services.AddSingleton<IRenamePlugin, InsertPlugin>();
+        services.AddSingleton<IRenamePlugin, RemovePlugin>();
+        services.AddSingleton<IRenamePlugin, TruncatePlugin>();
         services.AddSingleton<IRenamePlugin, PadNumbersPlugin>();
         services.AddSingleton<IRenamePlugin, CounterPlugin>();
         services.AddSingleton<IRenamePlugin, DatePlugin>();

@@ -383,6 +383,35 @@ as short words (`El Mar i l'Àvia`). The identifier styles split words at spaces
 punctuation and case changes (`XMLHttpRequest` → `xml_http_request`), keep accented and
 non-Latin letters, and drop the apostrophe of short endings (`don't` → `dont`). Casing is
 culture-invariant.
+**Replacement table** applies several find/replace rows in one step, top to bottom, each
+to the previous row's result, with the same case and scope options as **Literal
+replacement**; a row with empty find text is rejected.
+**Clean up separators** turns dots and underscores (and, if chosen, dashes) into spaces,
+keeps the dot of short numbers such as `v1.2` or `5.1` (one or two digits each side, not
+followed by a letter, so `S01E02.1080p` still splits), collapses repeated whitespace and
+trims spaces, dots, underscores and dashes from both ends (`Show.Name.S01E02.1080p` →
+`Show Name S01E02 1080p`); each clean-up can be turned off.
+**Strip release tags** removes resolution (`1080p`, `2160p`, `4K`), video codec (`x264`,
+`H.265`, `HEVC`, `10bit`), source (`WEB-DL`, `WEBRip`, `BluRay`, `Remux`), audio (`DDP5.1`,
+`AAC2.0`, `DTS-HD MA`, `TrueHD`, `Atmos`) and HDR (`HDR10+`, `DV`, `Dolby Vision`) tags by
+category, bracketed groups (`[...]`; parenthesised groups such as years only when chosen),
+a trailing `-GROUP` that directly follows a release tag (so `Spider-Man` keeps its last
+word) and extra tokens listed one per line or comma-separated (up to 100). Matching is
+case-insensitive and on whole tokens only, so a tag inside a word is never removed; the
+separators around a removed token collapse into one and none are left at either end
+(`Movie.2010.1080p.BluRay.x264-GRP` → `Movie.2010`).
+**Remove accents and normalise characters** transliterates ligatures and typographic
+symbols (`æ` → `ae`, `ß` → `ss`, `’` → `'`, `–` → `-`), removes diacritics (`é` → `e`,
+`ç` → `c`, `ñ` → `n`), optionally replaces or removes every character still outside ASCII
+(per visible character, with `_` as the default replacement) and finally normalises to
+NFC (the default) or NFD. Names that end up identical are reported as clashing targets.
+**Insert text** inserts text a number of characters from the start or the end of the name;
+**Remove characters** removes a number of characters from the start, the end, or a range
+that starts some characters in from either end; **Truncate** shortens names longer than a
+maximum, optionally at the last space that fits and with a marker such as `…` that counts
+toward the maximum. These three count visible characters (grapheme clusters), so emoji and
+letters with combining accents are never split, and positions past the end of the name are
+clamped to it.
 **Pad numbers** zero-pads every, the first or the last run of digits in the name to a
 minimum width (`Episode 3` → `Episode 03`); numbers already that wide are never shortened,
 and numbers that look like years (four digits from 1900 to 2099) can be skipped.
