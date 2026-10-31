@@ -38,13 +38,24 @@ public sealed class NamingRulesTests
     [InlineData("upper", "THE QUICK FOX")]
     [InlineData("lower", "the quick fox")]
     [InlineData("title", "The Quick Fox")]
+    [InlineData("sentence", "The quick fox")]
+    [InlineData("smartTitle", "The Quick Fox")]
     public void ChangeCaseSupportsEachMode(string mode, string expected)
         => Assert.Equal(expected, NamingRules.ChangeCase("tHe QUICK fox", mode));
+
+    // Identifier styles split words at case changes, so tHe would become t_he.
+    [Theory]
+    [InlineData("snake", "the_quick_fox")]
+    [InlineData("kebab", "the-quick-fox")]
+    [InlineData("camel", "theQuickFox")]
+    [InlineData("pascal", "TheQuickFox")]
+    public void ChangeCaseSupportsEachIdentifierStyle(string mode, string expected)
+        => Assert.Equal(expected, NamingRules.ChangeCase("The QUICK fox", mode));
 
     [Theory]
     [InlineData("")]
     [InlineData("Upper")]
-    [InlineData("camel")]
+    [InlineData("camelCase")]
     public void ChangeCaseRejectsUnknownModes(string mode)
         => Assert.Throws<ArgumentException>(() => NamingRules.ChangeCase("name", mode));
 

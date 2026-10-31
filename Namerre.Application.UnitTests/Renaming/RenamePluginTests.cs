@@ -23,7 +23,7 @@ public sealed class RenamePluginTests
             [
                 """{"search":"","replacement":"","ignoreCase":false,"scope":"all"}""",
                 """{"pattern":"","replacement":"","ignoreCase":false}""",
-                """{"mode":"lower"}""",
+                """{"mode":"lower","language":"en"}""",
                 """{"prefix":"","suffix":""}""",
                 """{"width":2,"target":"all","skipYears":false}""",
                 """{"start":1,"step":1,"width":2,"perFolder":false,"position":"suffix","separator":" ","template":"{name} {n}"}""",
@@ -92,6 +92,31 @@ public sealed class RenamePluginTests
         Assert.Equal("InvalidPlugin", Assert.Throws<RenameException>(() => engine.ValidateRequest(
             new([new("a", "src/name.txt")], [Plugin("p", "suffix", new { }) with { Version = 2 }]))).Code);
         Assert.Throws<InvalidOperationException>(() => new PipelineEngine(fileSystem, [new SuffixPlugin(), new SuffixPlugin()]));
+    }
+
+    [Fact]
+    public async Task CaseStepUsesTheChosenLanguageAndDefaultsToEnglish()
+    {
+        var engine = TestPipeline.Create(metadata, fileSystem);
+        fileSystem.Exists("src/love in the time.txt").Returns(true);
+
+        var preview = await engine.Preview(new([new("a", "src/love in the time.txt")],
+            [Plugin("p", "case", new { mode = "smartTitle" }), Plugin("q", "case", new { mode = "smartTitle", language = "fr" })]),
+            default);
+
+        Assert.Equal("src/Love In The Time.txt", Assert.Single(preview.Files).TargetPath);
+        Assert.Equal("src/Love in the Time.txt", preview.Files[0].Steps[0].OutputPath);
+    }
+
+    [Fact]
+    public async Task CaseStepRejectsUnknownLanguages()
+    {
+        var engine = TestPipeline.Create(metadata, fileSystem);
+
+        var preview = await engine.Preview(new([new("a", "src/name.txt")],
+            [Plugin("p", "case", new { mode = "smartTitle", language = "xx" })]), default);
+
+        Assert.Equal("InvalidConfiguration", Assert.Single(preview.Files[0].Issues).Code);
     }
 
     [Fact]
