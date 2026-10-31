@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
+using Namerre.Infrastructure.Diagnostics;
 
 namespace Namerre.Authentication;
 
@@ -153,11 +154,13 @@ public static class AuthenticationSetup
                 services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(OidcLogin)).LogWarning(
                     "Single sign-on rejected subject {Subject}: the required role is missing.",
                     context.Principal?.FindFirst("sub")?.Value);
+                NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "oidc"), new("namerre.auth.outcome", "denied"));
                 // Failing here would still sign in, so end the request explicitly.
                 context.Response.Redirect("/?signInError=access-denied");
                 context.HandleResponse();
                 return Task.CompletedTask;
             }
+            NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "oidc"), new("namerre.auth.outcome", "success"));
             context.Principal = principal;
             context.Properties!.IsPersistent = false;
             context.Properties.RedirectUri = "/";
@@ -167,6 +170,7 @@ public static class AuthenticationSetup
         {
             context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(OidcLogin))
                 .LogWarning(context.Failure, "Single sign-on failed.");
+            NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "oidc"), new("namerre.auth.outcome", "failure"));
             context.Response.Redirect("/?signInError=failed");
             context.HandleResponse();
             return Task.CompletedTask;

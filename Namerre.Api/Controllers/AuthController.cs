@@ -12,6 +12,7 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Namerre.Authentication;
 using Namerre.Application.Authentication;
 using Namerre.Application.Renaming;
+using Namerre.Infrastructure.Diagnostics;
 
 namespace Namerre.Controllers;
 
@@ -111,9 +112,17 @@ public sealed class AuthController(AdminAccount account, OidcLogin oidc,
     {
         var verified = account.Authenticate(request.Username, request.Password);
         if (verified is null)
+        {
+            // The attempted username is not logged: people sometimes type a password into it.
+            NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "password"), new("namerre.auth.outcome", "failure"));
+            logger.LogWarning("Failed sign-in from {RemoteAddress}", HttpContext.Connection.RemoteIpAddress);
             return Unauthorized(new { message = "Invalid username or password." });
+        }
 
         await SignInAsync(verified);
+        NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "password"), new("namerre.auth.outcome", "success"));
+        logger.LogInformation("Administrator {Username} signed in from {RemoteAddress}", verified.Username,
+            HttpContext.Connection.RemoteIpAddress);
         return NoContent();
     }
 

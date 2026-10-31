@@ -8,6 +8,7 @@ using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Presets;
 using Namerre.Infrastructure.Authentication;
 using Namerre.Infrastructure.Configuration;
+using Namerre.Infrastructure.Diagnostics;
 using Namerre.Infrastructure.Folders;
 using Namerre.Infrastructure.Integrations;
 using Namerre.Infrastructure.Renaming;
@@ -62,6 +63,8 @@ public static class DependencyInjection
         services.AddSingleton<RenameService>();
         services.AddSingleton<IRenameService>(provider => provider.GetRequiredService<RenameService>());
         services.AddHostedService<RenameWorker>();
+        // Backlog gauges; only created when telemetry export asks for them.
+        services.AddSingleton<RenameStateMetrics>();
         services.AddSingleton<WatchFolderService>();
         services.AddSingleton<IWatchFolders>(provider => provider.GetRequiredService<WatchFolderService>());
         services.AddHostedService<WatchFolderWorker>();
