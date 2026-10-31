@@ -84,9 +84,11 @@ public sealed class TmdbMetadata(ITmdbClient client, IOptions<NamerreOptions> op
                          .Where(item => seen.Add(item.GetProperty("id").GetInt32())).Take(20))
             {
                 var date = Text(item, request.MediaType == "movie" ? "release_date" : "first_air_date");
+                var original = Text(item, request.MediaType == "movie" ? "original_title" : "original_name");
+                // The original title helps suggestions recognise files named in the original language.
                 matches.Add(new(item.GetProperty("id").GetInt32(), request.MediaType,
                     Text(item, request.MediaType == "movie" ? "title" : "name"), date.Length >= 4 ? date[..4] : null,
-                    null, null, null));
+                    null, null, null, OriginalTitle: string.IsNullOrWhiteSpace(original) ? null : original));
             }
         }
         return new(matches);

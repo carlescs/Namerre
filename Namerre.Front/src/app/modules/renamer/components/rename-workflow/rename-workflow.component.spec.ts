@@ -11,7 +11,9 @@ import type {
   PlanView,
   PluginInstance,
   PreviewResult,
+  TmdbMatch,
   TmdbPickerState,
+  TmdbSuggestion,
 } from '../../rename-api';
 import { RenameEvents } from '../../rename-events';
 import { FakeRenameEvents } from '../../rename-events.testing';
@@ -863,39 +865,50 @@ describe('RenameWorkflowComponent', () => {
     unconfirmed.flush(twoFiles);
   });
 
-  it('proposes a verified movie from its cleaned filename without approving it automatically', async () => {
+  const movie: TmdbMatch = {
+    id: 42,
+    mediaType: 'movie',
+    title: 'The Movie',
+    year: '2024',
+    season: null,
+    episode: null,
+    episodeTitle: null,
+    confirmationToken: null,
+  };
+  const parsed = (query: string, over: Partial<TmdbSuggestion['parsed']> = {}) => ({
+    query,
+    year: null,
+    season: null,
+    episode: null,
+    episodeEnd: null,
+    ...over,
+  });
+  const suggestions = '/api/metadata/tmdb/suggestions';
+
+  it('proposes a verified movie from its file name without approving it automatically', async () => {
     await showAutomaticFiles(['Movies/The.Movie.2024.1080p.mkv']);
     button('Find movie matches').click();
-    const search = http.expectOne('/api/metadata/tmdb/search');
-    expect(search.request.body).toEqual({
+    const request = http.expectOne(suggestions);
+    expect(request.request.body).toEqual({
+      fileId: 'Movies/The.Movie.2024.1080p.mkv',
+      instanceId: tmdb.instanceId,
+      inputPath: 'Movies/The.Movie.2024.1080p.mkv',
+      optionsHash: selection.optionsHash,
       mediaType: 'movie',
-      query: 'The Movie',
       language: 'en-US',
     });
-    const movie = {
-      id: 42,
-      mediaType: 'movie',
-      title: 'The Movie',
-      year: '2024',
-      season: null,
-      episode: null,
-      episodeTitle: null,
-      confirmationToken: null,
-    };
-    search.flush({ matches: [{ ...movie, id: 7, year: '1990' }, movie] });
-    const verify = http.expectOne('/api/metadata/tmdb/search');
-    expect(verify.request.body).toMatchObject({
-      id: 42,
-      fileId: 'Movies/The.Movie.2024.1080p.mkv',
-      inputPath: 'Movies/The.Movie.2024.1080p.mkv',
-      instanceId: tmdb.instanceId,
-      optionsHash: selection.optionsHash,
-    });
-    verify.flush({ matches: [{ ...movie, confirmationToken: 'movie-proposal' }] });
+    request.flush({
+      parsed: parsed('The Movie', { year: '2024' }),
+      candidates: [{ ...movie, id: 7, year: '1990' }, movie],
+      match: { ...movie, confirmationToken: 'movie-proposal' },
+      confidence: 1,
+      problem: null,
+    } satisfies TmdbSuggestion);
     await fixture.whenStable();
     expect(text()).toContain('The Movie');
     expect(text()).toContain('2024');
     expect(text()).toContain('Proposed');
+    expect(text()).toContain('100% confidence');
     expect(button('Next: review filenames').disabled).toBe(true);
     (
       fixture.nativeElement.querySelector('[aria-label^="Accept match"]') as HTMLButtonElement
@@ -914,7 +927,7 @@ describe('RenameWorkflowComponent', () => {
     accepted.flush({ files: [], canPrepare: false });
   });
 
-  it('makes one search and one verification per file for files that share a title', async () => {
+  it('asks for one suggestion per file and reports progress', async () => {
     await showAutomaticFiles(['Show.S01E01.mkv', 'Show.S01E02.mkv', 'Show.S01E03.mkv']);
     const primary = (fixture.nativeElement as HTMLElement).querySelector('button.btn-primary');
     expect(button('Find episode matches').classList.contains('btn-primary')).toBe(true);
@@ -923,23 +936,20 @@ describe('RenameWorkflowComponent', () => {
     button('Find episode matches').click();
     await fixture.whenStable();
     expect(text()).toContain('Matching 0 of 3 files');
-    const show = {
-      id: 1,
-      mediaType: 'tv',
-      title: 'Show',
-      year: '2020',
-      season: null,
-      episode: null,
-      episodeTitle: null,
-      confirmationToken: null,
-    };
-    http.expectOne('/api/metadata/tmdb/search').flush({ matches: [show] });
+    const show = { ...movie, id: 1, mediaType: 'tv', title: 'Show', year: '2020' };
     for (const episode of [1, 2, 3]) {
-      const verify = http.expectOne('/api/metadata/tmdb/search');
-      expect(verify.request.body).toMatchObject({ id: 1, season: 1, episode });
-      verify.flush({
-        matches: [{ ...show, season: 1, episode, confirmationToken: `token-${episode}` }],
+      const request = http.expectOne(suggestions);
+      expect(request.request.body).toMatchObject({
+        mediaType: 'tv',
+        inputPath: `Show.S01E0${episode}.mkv`,
       });
+      request.flush({
+        parsed: parsed('Show', { season: 1, episode }),
+        candidates: [show],
+        match: { ...show, season: 1, episode, confirmationToken: `token-${episode}` },
+        confidence: 0.88,
+        problem: null,
+      } satisfies TmdbSuggestion);
       await fixture.whenStable();
       if (episode === 1) expect(text()).toContain('Matching 1 of 3 files');
     }
@@ -948,44 +958,35 @@ describe('RenameWorkflowComponent', () => {
     expect(text()).toContain('Show (2020) · S01E02');
   });
 
-  it('infers and verifies each episode separately and restores its proposed search for correction', async () => {
-    await showAutomaticFiles(['A.Show.S02E03.mkv', 'A.Show.2x04.mkv']);
+  it('restores a proposal as the picker search and accepts high-confidence ones together', async () => {
+    await showAutomaticFiles(['A.Show.S02E03.mkv', 'A.Show.2x04-2x05.mkv', 'A.Show.S02E07.mkv']);
     button('Find episode matches').click();
-    const show = {
-      id: 42,
-      mediaType: 'tv',
-      title: 'A Show',
-      year: '2020',
-      season: null,
-      episode: null,
-      episodeTitle: null,
-      confirmationToken: null,
-    };
-    for (const episode of [3, 4]) {
-      if (episode === 3) {
-        // The show search is shared by both episodes; only verification repeats.
-        const search = http.expectOne('/api/metadata/tmdb/search');
-        expect(search.request.body).toMatchObject({ query: 'A Show', mediaType: 'tv' });
-        search.flush({ matches: [show] });
-      }
-      const verify = http.expectOne('/api/metadata/tmdb/search');
-      expect(verify.request.body).toMatchObject({ id: 42, season: 2, episode });
-      verify.flush({
-        matches: [
-          {
-            ...show,
-            season: 2,
-            episode,
-            episodeTitle: `Episode ${episode}`,
-            confirmationToken: `episode-${episode}`,
-          },
-        ],
-      });
+    const show = { ...movie, mediaType: 'tv', title: 'A Show', year: '2020' };
+    for (const [episode, episodeEnd, confidence] of [
+      [3, null, 0.88],
+      [4, 5, 0.88],
+      [7, null, 0.6],
+    ] as const) {
+      http.expectOne(suggestions).flush({
+        parsed: parsed('A Show', { season: 2, episode, episodeEnd }),
+        candidates: [show],
+        match: {
+          ...show,
+          season: 2,
+          episode,
+          episodeEnd,
+          episodeTitle: `Episode ${episode}`,
+          confirmationToken: `episode-${episode}`,
+        },
+        confidence,
+        problem: null,
+      } satisfies TmdbSuggestion);
     }
     await fixture.whenStable();
     expect(text()).toContain('Episode 3');
-    expect(text()).toContain('Episode 4');
-    expect(button('Accept all matches').disabled).toBe(false);
+    expect(text()).toContain('S02E04-E05');
+    expect(text()).toContain('Check proposal');
+    expect(button('Accept high-confidence matches (2)').disabled).toBe(false);
     button('Change').click();
     await fixture.whenStable();
     expect(picker().context().state).toMatchObject({
@@ -993,12 +994,13 @@ describe('RenameWorkflowComponent', () => {
       query: 'A Show',
       season: 2,
       episode: 3,
+      episodeEnd: null,
       selected: { id: 42 },
     });
     expect(text()).not.toContain('Use this match');
     button('Cancel').click();
     await fixture.whenStable();
-    button('Accept all matches').click();
+    button('Accept high-confidence matches').click();
     await fixture.whenStable();
     button('Refresh preview').click();
     const accepted = http.expectOne('/api/rename-previews');
@@ -1011,89 +1013,83 @@ describe('RenameWorkflowComponent', () => {
       },
       {
         ...selection,
-        fileId: 'A.Show.2x04.mkv',
-        inputPath: 'A.Show.2x04.mkv',
+        fileId: 'A.Show.2x04-2x05.mkv',
+        inputPath: 'A.Show.2x04-2x05.mkv',
         confirmationToken: 'episode-4',
       },
     ]);
     accepted.flush({ files: [], canPrepare: false });
   });
 
-  it('accepts all verified proposals in one preview and leaves failed matches unapproved', async () => {
-    await showAutomaticFiles(['A.Movie.2024.mkv', 'Other.Movie.2023.mkv', 'Unknown.mkv']);
-    expect(button('Accept all matches').disabled).toBe(true);
-    button('Find movie matches').click();
-    await fixture.whenStable();
-    expect(button('Accept all matches').disabled).toBe(true);
-    for (const [id, title, year] of [
-      [42, 'A Movie', '2024'],
-      [43, 'Other Movie', '2023'],
-    ] as const) {
-      const movie = {
-        id,
-        title,
-        year,
-        mediaType: 'movie',
-        season: null,
-        episode: null,
-        episodeTitle: null,
-        confirmationToken: null,
-      };
-      http.expectOne('/api/metadata/tmdb/search').flush({ matches: [movie] });
-      http.expectOne('/api/metadata/tmdb/search').flush({
-        matches: [{ ...movie, confirmationToken: `confirmed-${id}` }],
-      });
-    }
-    http.expectOne('/api/metadata/tmdb/search').flush({ matches: [] });
-    await fixture.whenStable();
-    expect(button('Accept all matches').disabled).toBe(false);
-    expect(text()).toContain('No TMDB matches');
-    button('Accept all matches').click();
-    await fixture.whenStable();
-    expect(button('Accept all matches').disabled).toBe(true);
-    button('Refresh preview').click();
-    const accepted = http.expectOne('/api/rename-previews');
-    expect(accepted.request.body.selections).toEqual([
-      {
-        ...selection,
-        fileId: 'A.Movie.2024.mkv',
-        inputPath: 'A.Movie.2024.mkv',
-        confirmationToken: 'confirmed-42',
-      },
-      {
-        ...selection,
-        fileId: 'Other.Movie.2023.mkv',
-        inputPath: 'Other.Movie.2023.mkv',
-        confirmationToken: 'confirmed-43',
-      },
-    ]);
-    accepted.flush({ files: [], canPrepare: false });
-  });
-
-  it('continues after a failed lookup and leaves unidentified episode numbers for manual correction', async () => {
+  it('continues after a failed lookup and shows why other files have no proposal', async () => {
     await showAutomaticFiles(['A.Show.S01E01.mkv', 'Unknown.Pilot.mkv', 'Other.Show.S01E02.mkv']);
     button('Find episode matches').click();
     http
-      .expectOne('/api/metadata/tmdb/search')
+      .expectOne(suggestions)
       .flush(
-        { detail: 'TMDB rate limit reached. Try later.' },
-        { status: 429, statusText: 'Too Many Requests' },
+        { title: 'TMDB is unavailable or rejected the server credentials.' },
+        { status: 503, statusText: 'Service Unavailable' },
       );
-    const last = http.expectOne('/api/metadata/tmdb/search');
-    expect(last.request.body.query).toBe('Other Show');
-    last.flush({ matches: [] });
+    http.expectOne(suggestions).flush({
+      parsed: parsed('Unknown Pilot'),
+      candidates: [],
+      match: null,
+      confidence: 0,
+      problem:
+        'Could not infer the title or episode numbers. Search again and enter them manually.',
+    } satisfies TmdbSuggestion);
+    http.expectOne(suggestions).flush({
+      parsed: parsed('Other Show', { season: 1, episode: 2 }),
+      candidates: [],
+      match: null,
+      confidence: 0,
+      problem: 'No TMDB matches. Search again with a different title.',
+    } satisfies TmdbSuggestion);
     await fixture.whenStable();
-    expect(text()).toContain('TMDB rate limit reached');
+    expect(text()).toContain('TMDB is unavailable');
     expect(text()).toContain('Could not infer the title or episode numbers');
     expect(text()).toContain('No TMDB matches');
     expect(button('Find episode matches').disabled).toBe(false);
+    expect(button('Accept high-confidence matches').disabled).toBe(true);
     expect(button('Next: review filenames').disabled).toBe(true);
+  });
+
+  it('waits and retries when TMDB is busy or rate-limited', async () => {
+    await showAutomaticFiles(['A.Movie.2024.mkv']);
+    vi.useFakeTimers();
+    try {
+      button('Find movie matches').click();
+      const busy = { status: 429, statusText: 'Too Many Requests' };
+      http.expectOne(suggestions).flush({ title: 'Four TMDB lookups are already running.' }, busy);
+      http.expectNone(suggestions);
+      await vi.advanceTimersByTimeAsync(1000);
+      http.expectOne(suggestions).flush({ title: 'TMDB rate limit reached.' }, busy);
+      await vi.advanceTimersByTimeAsync(2000);
+      http.expectOne(suggestions).flush({
+        parsed: parsed('A Movie', { year: '2024' }),
+        candidates: [movie],
+        match: { ...movie, confirmationToken: 'after-retry' },
+        confidence: 0.9,
+        problem: null,
+      } satisfies TmdbSuggestion);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(text()).toContain('Proposed');
+      button('Find movie matches').click();
+      for (const wait of [0, 1000, 2000, 4000]) {
+        await vi.advanceTimersByTimeAsync(wait);
+        http.expectOne(suggestions).flush({ title: 'TMDB rate limit reached.' }, busy);
+      }
+      await vi.advanceTimersByTimeAsync(0);
+      expect(text()).toContain('TMDB rate limit reached.');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('cancels suggestions on configuration changes and discards stale proposal information', async () => {
     await showAutomaticFiles(['A.Movie.2024.mkv']);
     button('Find movie matches').click();
-    const stale = http.expectOne('/api/metadata/tmdb/search');
+    const stale = http.expectOne(suggestions);
     changePlugins([{ ...tmdb, options: { ...tmdb.options, language: 'fr' } }]);
     await fixture.whenStable();
     expect(stale.cancelled).toBe(true);
@@ -1106,11 +1102,17 @@ describe('RenameWorkflowComponent', () => {
     changePlugins([tmdb]);
     await fixture.whenStable();
     button('Next: match metadata').click();
-    http.expectNone('/api/metadata/tmdb/search');
+    http.expectNone(suggestions);
     http.expectOne('/api/rename-previews').flush(tmdbPreview);
     await fixture.whenStable();
     button('Find movie matches').click();
-    http.expectOne('/api/metadata/tmdb/search').flush({ matches: [] });
+    http.expectOne(suggestions).flush({
+      parsed: parsed('a'),
+      candidates: [],
+      match: null,
+      confidence: 0,
+      problem: 'No TMDB matches. Search again with a different title.',
+    } satisfies TmdbSuggestion);
     await fixture.whenStable();
     expect(text()).toContain('No TMDB matches');
   });

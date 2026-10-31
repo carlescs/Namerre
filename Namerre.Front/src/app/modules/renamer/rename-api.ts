@@ -295,6 +295,37 @@ export interface MatchSuggestion {
   optionsHash: string;
   match: TmdbMatch | null;
   error: string;
+  /** 0–1; proposals at or above `HIGH_CONFIDENCE` can be accepted together. */
+  confidence?: number;
+}
+/** Mirrors `MatchConfidence.High` on the server. */
+export const HIGH_CONFIDENCE = 0.85;
+export interface TmdbSuggestionRequest {
+  mediaType: string;
+  language: string;
+  fileId: string;
+  instanceId: string;
+  /** The TMDB step's input as the preview traced it; the server reads the title from it. */
+  inputPath: string;
+  optionsHash: string;
+}
+/** What a file name says about its movie or episode, as the server read it. */
+export interface ParsedFileName {
+  query: string;
+  year: string | null;
+  season: number | null;
+  episode: number | null;
+  episodeEnd: number | null;
+}
+export interface TmdbSuggestion {
+  parsed: ParsedFileName;
+  /** The search results the proposal was chosen from. */
+  candidates: TmdbMatch[];
+  /** Verified and bound to the request, but only used once accepted. */
+  match: TmdbMatch | null;
+  confidence: number;
+  /** Why there is no match. */
+  problem: string | null;
 }
 export interface TmdbMatchRow {
   fileId: string;
@@ -394,6 +425,10 @@ export class RenameApi {
   }
   tmdb(request: TmdbRequest) {
     return this.http.post<{ matches: TmdbMatch[] }>('/api/metadata/tmdb/search', request);
+  }
+  /** Proposes a verified match from the step input's file name; nothing is accepted automatically. */
+  suggestTmdb(request: TmdbSuggestionRequest) {
+    return this.http.post<TmdbSuggestion>('/api/metadata/tmdb/suggestions', request);
   }
 }
 

@@ -1,5 +1,3 @@
-import type { TmdbMatch } from './rename-api';
-
 export interface TmdbFilename {
   query: string;
   year?: string;
@@ -9,6 +7,10 @@ export interface TmdbFilename {
   episodeEnd?: number;
 }
 
+/**
+ * Mirrors `TmdbFileName.Parse` on the server (which makes the automatic suggestions) so the picker
+ * starts from the same title, year and episode numbers; keep both in sync.
+ */
 export function tmdbFilename(path: string, mediaType: string): TmdbFilename {
   const parts = path.split('/');
   const name = (parts.pop() ?? '').replace(/\.[^.]+$/, '');
@@ -24,25 +26,17 @@ export function tmdbFilename(path: string, mediaType: string): TmdbFilename {
   }
   const year = [...title.matchAll(/[ ._([]((?:19|20)\d{2})(?=$|[ ._)\]])/g)].pop();
   if (year) title = title.slice(0, year.index);
-  title = title.split(
-    /\b(?:480p|720p|1080[pi]|2160p|4k|bluray|blu-ray|web[ .-]?dl|webrip|hdtv|dvdrip|x26[45]|h26[45])\b/i,
-  )[0];
+  // Underscores are word characters, so they become spaces before tags are found on word boundaries.
+  title = title
+    .replace(/_/g, ' ')
+    .split(
+      /\b(?:480p|720p|1080[pi]|2160p|4k|bluray|blu-ray|web[ .-]?dl|webrip|hdtv|dvdrip|x26[45]|h26[45])\b/i,
+    )[0];
   return {
     query: clean(title),
     ...(year ? { year: year[1] } : {}),
     ...(episode ? episodeNumbers(episode) : {}),
   };
-}
-
-export function preferredTmdbMatch(
-  matches: TmdbMatch[],
-  filename: TmdbFilename,
-): TmdbMatch | undefined {
-  const normalize = (value: string) => value.toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
-  const score = (match: TmdbMatch) =>
-    (normalize(match.title) === normalize(filename.query) ? 2 : 0) +
-    (filename.year && match.year === filename.year ? 1 : 0);
-  return [...matches].sort((left, right) => score(right) - score(left))[0];
 }
 
 function episodeNumbers(

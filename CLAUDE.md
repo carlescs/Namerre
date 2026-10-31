@@ -134,6 +134,11 @@ frontend's `tmdb-presets.ts` uses to fill templates, is ignored by rendering and
 write literal braces as `{{`/`}}`; `TmdbPlugin.Render` and `tmdb-template-preview.ts` must agree. The frontend
 reimplements this in `Namerre.Front/src/app/modules/renamer/options-hash.ts` (pure-JS SHA-256 so it
 works on plain-HTTP origins); keep both sides in sync. Confirmed metadata is snapshotted into the plan.
+Automatic suggestions run server-side in `Application/Renaming/Metadata/TmdbSuggester` (parse with `TmdbFileName`,
+score with `MatchConfidence`, verify the best candidate); the frontend's `tmdb-filename.ts` mirrors the parser
+to prefill the picker and `HIGH_CONFIDENCE` mirrors `MatchConfidence.High` — keep them in sync. A multi-episode
+match carries `EpisodeEnd` (titles joined by `EpisodeTitles.Join`); `{episode}` renders the range in the step's
+`episodeRange` style on both sides.
 
 **Configuration.** Everything app-specific is under the `Namerre` section, bound to
 `NamerreOptions` (`Infrastructure/Configuration`) and consumed via `IOptions<NamerreOptions>`:

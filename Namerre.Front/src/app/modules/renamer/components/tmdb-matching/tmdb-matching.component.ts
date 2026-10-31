@@ -1,5 +1,6 @@
 import { Component, computed, ElementRef, inject, input, output } from '@angular/core';
 import {
+  HIGH_CONFIDENCE,
   isMatchingIssue,
   type MatchSuggestion,
   type StepTrace,
@@ -8,7 +9,7 @@ import {
 } from '../../rename-api';
 import { tmdbFilename } from '../../tmdb-filename';
 
-type RowStatus = 'needs' | 'proposed' | 'confirmed' | 'problem' | 'waiting';
+type RowStatus = 'needs' | 'proposed' | 'review' | 'confirmed' | 'problem' | 'waiting';
 
 interface RowView {
   key: string;
@@ -20,11 +21,14 @@ interface RowView {
   problem: string;
   code: string;
   proposal: MatchSuggestion | null;
+  /** Confidence of the proposal in whole percent, or null without one. */
+  confidence: number | null;
 }
 
 const STATUS_LABELS: Record<RowStatus, string> = {
   needs: 'Needs match',
   proposed: 'Proposed',
+  review: 'Check proposal',
   confirmed: 'Confirmed',
   problem: 'Problem',
   waiting: 'Waiting',
@@ -33,6 +37,7 @@ const STATUS_LABELS: Record<RowStatus, string> = {
 const STATUS_CLASSES: Record<RowStatus, string> = {
   needs: 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200',
   proposed: 'bg-indigo-100 text-indigo-900 dark:bg-indigo-500/20 dark:text-indigo-200',
+  review: 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200',
   confirmed: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-200',
   problem: 'bg-rose-100 text-rose-900 dark:bg-rose-500/15 dark:text-rose-200',
   waiting: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
@@ -51,7 +56,8 @@ export class TmdbMatchingComponent {
   readonly loadingPreview = input(false);
   readonly hasPreview = input(false);
   readonly disabled = input(false);
-  readonly canAcceptAll = input(false);
+  /** Verified proposals at or above the high-confidence threshold, accepted together. */
+  readonly acceptableMatches = input(0);
   readonly searchRequested = output<string>();
   readonly allAccepted = output<void>();
   readonly suggestionAccepted = output<MatchSuggestion>();
@@ -112,7 +118,8 @@ export class TmdbMatchingComponent {
     let status: RowStatus;
     if (!step) status = 'waiting';
     else if (problem) status = 'problem';
-    else if (verified) status = 'proposed';
+    else if (verified)
+      status = (verified.confidence ?? 0) >= HIGH_CONFIDENCE ? 'proposed' : 'review';
     else if (step.error) status = 'needs';
     else status = 'confirmed';
     const match = suggestion?.inputPath === step?.inputPath ? suggestion?.match : null;
@@ -126,6 +133,7 @@ export class TmdbMatchingComponent {
       problem,
       code: otherError?.code ?? '',
       proposal: verified,
+      confidence: verified?.confidence === undefined ? null : Math.round(verified.confidence * 100),
     };
   }
 

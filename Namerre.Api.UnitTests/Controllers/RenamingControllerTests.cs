@@ -215,6 +215,18 @@ public sealed class RenamingControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task SuggestTmdbSendsRequest()
+    {
+        var request = new TmdbSuggestionRequest("movie", "file", "step", "Alien.1979.mkv", new string('a', 64));
+        var suggestion = new TmdbSuggestion(new("Alien", "1979"), [], null, 0, "No TMDB matches.");
+        sender.Send(Arg.Is<SuggestTmdbMatchQuery>(q => q.Request == request), Token).Returns(suggestion);
+
+        var result = await controller.SuggestTmdb(request, Token);
+
+        Assert.Same(suggestion, Assert.IsType<OkObjectResult>(result).Value);
+    }
+
+    [Fact]
     public async Task SenderFailuresPropagateToTheExceptionFilter()
     {
         sender.Send(Arg.Any<GetRenameRunQuery>(), Token)

@@ -63,7 +63,7 @@
         [loadingPreview]="loadingPreview()"
         [hasPreview]="!!preview()"
         [disabled]="!validCollection() || preparing() || executing()"
-        [canAcceptAll]="!!pendingMatches().length"
+        [acceptableMatches]="pendingMatches().length"
         (searchRequested)="suggestMatches($event)"
         (allAccepted)="acceptAllMatches()"
         (suggestionAccepted)="acceptSuggestion($event)"

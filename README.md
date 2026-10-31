@@ -730,6 +730,21 @@ base folder, the presets give:
 | Kodi | `Movies/The Matrix (1999)/The Matrix (1999).mkv` | `TV/Game of Thrones (2011)/Season 01/Game of Thrones S01E02 - The Kingsroad.mkv` |
 
 The TMDB matching stage appears automatically when an enabled TMDB plugin is added.
+**Find movie matches** and **Find episode matches** propose a match for every file that still needs
+one: the server reads the title, year, season and episode (or episode range) from the step's input
+name (`Show.Name.S02E05.1080p`, `Show 2x05`, `Movie.Name.2019.1080p.BluRay`, a bare `S01E05.mkv`
+inside a show folder), searches TMDB, scores the results and verifies the best one. Lookups use the
+same TMDB concurrency limit, timeouts and cache as manual searches, one file at a time, and a busy
+or rate-limited TMDB (HTTP 429) is retried after 1, 2 and 4 seconds before the row reports it. The
+confidence (0–100%) is three quarters title similarity — exact after ignoring case, accents and
+punctuation, against the title or original title, else partial — and one quarter year (same year,
+one year apart, or unknown); an equally good rival without a year to tell them apart (remakes,
+same-named shows) lowers it. A proposal is never applied by itself: **Accept high-confidence
+matches** confirms every proposal at 85% or more in one go, and the rest are marked **Check
+proposal** to accept or correct one by one. The API is `POST /api/metadata/tmdb/suggestions` with
+the step binding (`fileId`, `instanceId`, `inputPath`, `optionsHash`), `mediaType` and `language`;
+it returns the parsed name, the candidates, the verified `match` (with its confirmation token) and
+its `confidence`, or a `problem`.
 Existing matches survive unrelated plugin edits and collection additions; changed
 step inputs or TMDB options require confirmation again. Reopening a picker restores
 its search and episode fields. A previous show choice can be reused for another file,

@@ -1,6 +1,9 @@
 <section aria-labelledby="matching-heading">
   <h3 id="matching-heading">TMDB matching</h3>
-  <p>Find the movie or episode behind each file, then check the matches and accept them.</p>
+  <p>
+    Find the movie or episode behind each file, then check the matches and accept them. Proposals
+    the file name supports well can be accepted together; check the others one by one.
+  </p>
   <div class="actions" aria-label="Find TMDB matches automatically">
     <button
       type="button"
@@ -20,11 +23,15 @@
     </button>
     <button
       type="button"
-      [class.btn-primary]="canAcceptAll() && !busy()"
+      [class.btn-primary]="acceptableMatches() && !busy()"
       (click)="allAccepted.emit()"
-      [disabled]="!canAcceptAll() || busy()"
+      [disabled]="!acceptableMatches() || busy()"
     >
-      Accept all matches
+      {{
+        acceptableMatches()
+          ? 'Accept high-confidence matches (' + acceptableMatches() + ')'
+          : 'Accept high-confidence matches'
+      }}
     </button>
   </div>
   @if (suggesting()) {
@@ -80,6 +87,13 @@
             }
             @if (view.summary) {
               <p class="m-0 mt-1 text-sm">{{ view.summary }}</p>
+            }
+            @if (view.confidence !== null) {
+              <p class="m-0 text-xs text-slate-500 dark:text-slate-400">
+                {{ view.confidence }}% confidence from the file name{{
+                  view.status === 'review' ? ' — check it before accepting.' : '.'
+                }}
+              </p>
             }
           </div>
           <span
