@@ -372,6 +372,17 @@ Each step also learns the file's zero-based position in the request and among th
 of its source folder, the batch and folder sizes, and the file's size, last-modified and
 creation time (creation time is null or approximate on filesystems that don't record it).
 
+**Case change** converts the name to UPPERCASE, lowercase, Title Case (every word
+capitalized), Sentence case (`My file name`), Title Case with short words lowercase
+(`The Lord of the Rings`), `snake_case`, `kebab-case`, `camelCase` or `PascalCase`.
+The short-words title case keeps articles, conjunctions and prepositions lowercase unless
+they are the first or last word or follow `:`, `.`, a dash or an opening bracket; its
+**Short words** list is English, Spanish, Catalan, French, Italian or Portuguese (English
+when unset), and in Catalan, French and Italian it treats elisions such as `l'` and `dell'`
+as short words (`El Mar i l'Àvia`). The identifier styles split words at spaces,
+punctuation and case changes (`XMLHttpRequest` → `xml_http_request`), keep accented and
+non-Latin letters, and drop the apostrophe of short endings (`don't` → `dont`). Casing is
+culture-invariant.
 **Pad numbers** zero-pads every, the first or the last run of digits in the name to a
 minimum width (`Episode 3` → `Episode 03`); numbers already that wide are never shortened,
 and numbers that look like years (four digits from 1900 to 2099) can be skipped.

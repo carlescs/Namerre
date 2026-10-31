@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Text;
 
@@ -24,13 +23,9 @@ public static class NamingRules
         => Regex.Replace(stem, pattern, replacement,
             RegexOptions.CultureInvariant | (ignoreCase ? RegexOptions.IgnoreCase : RegexOptions.None), RegexTimeout);
 
-    public static string ChangeCase(string stem, string mode) => mode switch
-    {
-        "upper" => stem.ToUpperInvariant(),
-        "lower" => stem.ToLowerInvariant(),
-        "title" => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(stem.ToLowerInvariant()),
-        _ => throw new ArgumentException("Case mode must be upper, lower or title.")
-    };
+    /// <inheritdoc cref="CaseStyles.Apply"/>
+    public static string ChangeCase(string stem, string mode, string language = CaseStyles.DefaultLanguage)
+        => CaseStyles.Apply(stem, mode, language);
 
     public static void ValidateRelativePath(string path)
     {
