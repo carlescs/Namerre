@@ -1,0 +1,238 @@
+[
+  {
+    "id": "tvEpisodes",
+    "name": "TV episodes (TMDB)",
+    "description": "Names episodes from The Movie Database, e.g. Show - S01E02 - Episode title, and tidies the spacing.",
+    "tmdbMediaType": "tv",
+    "steps": [
+      {
+        "typeId": "tmdb",
+        "version": 1,
+        "options": {
+          "preset": "custom",
+          "nameTemplate": "{title} - S{season}E{episode} - {episodeTitle}",
+          "episodeRange": "repeat",
+          "language": "en-US",
+          "changeFolder": false,
+          "baseFolder": "",
+          "folderTemplate": "{title} ({year})",
+          "seasonFolder": false,
+          "seasonFolderTemplate": "Season {season}"
+        }
+      },
+      {
+        "typeId": "separators",
+        "version": 1,
+        "options": {
+          "characters": [],
+          "splitNumbers": false,
+          "keepSpaces": false,
+          "keepEnds": false
+        }
+      }
+    ],
+    "fields": [
+      {
+        "key": "style",
+        "label": "Name style",
+        "kind": "select",
+        "step": 0,
+        "option": "nameTemplate",
+        "choices": [
+          {
+            "value": "{title} - S{season}E{episode} - {episodeTitle}",
+            "label": "Show - S01E02 - Title (Emby, default)"
+          },
+          {
+            "value": "{title} ({showYear}) - s{season}e{episode} - {episodeTitle}",
+            "label": "Show (2008) - s01e02 - Title (Plex)"
+          },
+          {
+            "value": "{title} S{season}E{episode} - {episodeTitle}",
+            "label": "Show S01E02 - Title (Jellyfin, Kodi)"
+          }
+        ]
+      },
+      {
+        "key": "language",
+        "label": "Metadata language",
+        "kind": "text",
+        "step": 0,
+        "option": "language",
+        "hint": "Language of show and episode titles, e.g. en-US or es-ES.",
+        "suggestions": [
+          "en-US",
+          "en-GB",
+          "es-ES",
+          "ca-ES",
+          "fr-FR",
+          "de-DE",
+          "it-IT",
+          "pt-PT",
+          "pt-BR",
+          "ja-JP",
+          "ko-KR",
+          "zh-CN"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "movies",
+    "name": "Movies (TMDB)",
+    "description": "Names movies from The Movie Database as Title (Year).",
+    "tmdbMediaType": "movie",
+    "steps": [
+      {
+        "typeId": "tmdb",
+        "version": 1,
+        "options": {
+          "preset": "custom",
+          "nameTemplate": "{title} ({year})",
+          "episodeRange": "repeat",
+          "language": "en-US",
+          "changeFolder": false,
+          "baseFolder": "",
+          "folderTemplate": "{title} ({year})",
+          "seasonFolder": false,
+          "seasonFolderTemplate": "Season {season}"
+        }
+      }
+    ],
+    "fields": [
+      {
+        "key": "language",
+        "label": "Metadata language",
+        "kind": "text",
+        "step": 0,
+        "option": "language",
+        "hint": "Language of movie titles, e.g. en-US or es-ES.",
+        "suggestions": [
+          "en-US",
+          "en-GB",
+          "es-ES",
+          "ca-ES",
+          "fr-FR",
+          "de-DE",
+          "it-IT",
+          "pt-PT",
+          "pt-BR",
+          "ja-JP",
+          "ko-KR",
+          "zh-CN"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "cleanUp",
+    "name": "Clean up names",
+    "description": "Removes release tags such as 1080p or x264, turns dots and underscores into spaces, simplifies symbols and fixes the case.",
+    "steps": [
+      {
+        "typeId": "releaseTags",
+        "version": 1,
+        "options": {
+          "categories": ["resolution", "codec", "source", "audio", "hdr"],
+          "groups": ["brackets", "releaseGroup"],
+          "extra": ""
+        }
+      },
+      {
+        "typeId": "separators",
+        "version": 1,
+        "options": {
+          "characters": ["dots", "underscores"],
+          "splitNumbers": false,
+          "keepSpaces": false,
+          "keepEnds": false
+        }
+      },
+      {
+        "typeId": "characters",
+        "version": 1,
+        "options": {
+          "changes": ["transliterate"],
+          "nonAscii": "keep",
+          "replacement": "_",
+          "form": "nfc"
+        }
+      },
+      {
+        "typeId": "case",
+        "version": 1,
+        "options": {
+          "mode": "title",
+          "language": "en"
+        }
+      }
+    ],
+    "fields": [
+      {
+        "key": "case",
+        "label": "Case",
+        "kind": "select",
+        "step": 3,
+        "option": "mode",
+        "choices": [
+          { "value": "title", "label": "Title Case (Every Word)" },
+          { "value": "sentence", "label": "Sentence case" },
+          { "value": "lower", "label": "lowercase" },
+          { "value": "upper", "label": "UPPERCASE" }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "numberFiles",
+    "name": "Number files",
+    "description": "Adds a running number to each file in the order of your collection, e.g. 01 - Name.",
+    "steps": [
+      {
+        "typeId": "counter",
+        "version": 1,
+        "options": {
+          "start": 1,
+          "step": 1,
+          "width": 2,
+          "perFolder": false,
+          "position": "prefix",
+          "separator": " - ",
+          "template": "{name} {n}"
+        }
+      }
+    ],
+    "fields": [
+      {
+        "key": "position",
+        "label": "Number position",
+        "kind": "select",
+        "step": 0,
+        "option": "position",
+        "choices": [
+          { "value": "prefix", "label": "Before the name (01 - Name)" },
+          { "value": "suffix", "label": "After the name (Name - 01)" }
+        ]
+      },
+      {
+        "key": "start",
+        "label": "Start at",
+        "kind": "number",
+        "step": 0,
+        "option": "start",
+        "min": 0,
+        "max": 1000000000
+      },
+      {
+        "key": "width",
+        "label": "Digits",
+        "kind": "number",
+        "step": 0,
+        "option": "width",
+        "hint": "Pads with leading zeros, e.g. 3 gives 001.",
+        "min": 1,
+        "max": 10
+      }
+    ]
+  }
+]

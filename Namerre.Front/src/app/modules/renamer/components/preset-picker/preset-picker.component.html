@@ -1,0 +1,81 @@
+@if (unsupported()) {
+  <p class="notice" role="status">
+    The current steps were set up in Advanced mode and no preset matches them. Choose a preset to
+    replace them, or switch to Advanced mode to keep editing them.
+  </p>
+}
+<div class="cards" role="group" aria-label="Presets">
+  @for (preset of presets; track preset.id) {
+    <button
+      type="button"
+      class="card"
+      [attr.aria-pressed]="match()?.preset?.id === preset.id"
+      [disabled]="disabled()"
+      (click)="choose(preset)"
+    >
+      <span class="card-title">{{ preset.name }}</span>
+      <span class="card-text">{{ preset.description }}</span>
+    </button>
+  }
+</div>
+@if (match(); as current) {
+  @if (current.preset.fields.length) {
+    <fieldset class="fields" [disabled]="disabled()">
+      <legend>{{ current.preset.name }} options</legend>
+      <div class="field-grid">
+        @for (field of current.preset.fields; track field.key) {
+          <label [for]="fieldId(field)">
+            {{ field.label }}
+            @switch (field.kind) {
+              @case ('select') {
+                <select
+                  [id]="fieldId(field)"
+                  [attr.aria-describedby]="field.hint ? fieldId(field) + '-hint' : null"
+                  (change)="change(field, $event)"
+                >
+                  @for (choice of field.choices; track choice.value) {
+                    <option [value]="choice.value" [selected]="choice.value === value(field)">
+                      {{ choice.label }}
+                    </option>
+                  }
+                </select>
+              }
+              @case ('number') {
+                <input
+                  type="number"
+                  step="1"
+                  [id]="fieldId(field)"
+                  [attr.min]="field.min ?? null"
+                  [attr.max]="field.max ?? null"
+                  [value]="value(field)"
+                  [attr.aria-describedby]="field.hint ? fieldId(field) + '-hint' : null"
+                  (change)="change(field, $event)"
+                />
+              }
+              @default {
+                <input
+                  type="text"
+                  [id]="fieldId(field)"
+                  [value]="value(field)"
+                  [attr.list]="field.suggestions?.length ? fieldId(field) + '-list' : null"
+                  [attr.aria-describedby]="field.hint ? fieldId(field) + '-hint' : null"
+                  (change)="change(field, $event)"
+                />
+                @if (field.suggestions?.length) {
+                  <datalist [id]="fieldId(field) + '-list'">
+                    @for (suggestion of field.suggestions; track suggestion) {
+                      <option [value]="suggestion"></option>
+                    }
+                  </datalist>
+                }
+              }
+            }
+            @if (field.hint) {
+              <span [id]="fieldId(field) + '-hint'" class="hint">{{ field.hint }}</span>
+            }
+          </label>
+        }
+      </div>
+    </fieldset>
+  }
+}

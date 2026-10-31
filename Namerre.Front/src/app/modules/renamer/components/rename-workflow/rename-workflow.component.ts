@@ -29,6 +29,7 @@ import {
   throwError,
   timer,
 } from 'rxjs';
+import { WorkflowMode, type WorkflowModeValue } from '../../../../workflow-mode/workflow-mode';
 import { WorkloadLimits } from '../../../../workload-limits';
 import { detectCompanions } from '../../companions';
 import { loadPipelineDraft, saveFilesDraft, savePipelineDraft } from '../../draft-storage';
@@ -56,14 +57,30 @@ import {
 } from '../../rename-api';
 import { RenameEvents, refreshOn } from '../../rename-events';
 import type { RenamerFile } from '../../renamer-file';
+import { matchSimplePreset, simpleCompatible, simpleRunOptions } from '../../simple-presets';
 import { tmdbFilename } from '../../tmdb-filename';
 import { PluginConfigurationComponent } from '../plugin-configuration/plugin-configuration.component';
+import { PresetPickerComponent } from '../preset-picker/preset-picker.component';
 import { RenameConfirmationComponent } from '../rename-confirmation/rename-confirmation.component';
 import { RenamePreviewComponent } from '../rename-preview/rename-preview.component';
 import { TmdbMatchingComponent } from '../tmdb-matching/tmdb-matching.component';
 import { TmdbPickerComponent } from '../tmdb-picker/tmdb-picker.component';
 
-type WizardStage = 'files' | 'plugins' | 'matching' | 'preview' | 'confirmation';
+/**
+ * Advanced mode: files → plugins → [matching] → preview → confirmation.
+ * Simple mode: files → preset → [matching] → review (the preview, then the prepared plan).
+ */
+type WizardStage =
+  | 'files'
+  | 'plugins'
+  | 'preset'
+  | 'matching'
+  | 'preview'
+  | 'confirmation'
+  | 'review';
+
+/** The screen shown for a stage; Simple's review shows the preview or the confirmation. */
+type WizardScreen = Exclude<WizardStage, 'review'>;
 
 /** Retries of a suggestion TMDB refused with 429 (busy or rate-limited), after 1, 2 and 4 seconds. */
 const SUGGESTION_RETRIES = 3;
@@ -71,6 +88,7 @@ const SUGGESTION_RETRIES = 3;
 @Component({
   imports: [
     PluginConfigurationComponent,
+    PresetPickerComponent,
     RenameConfirmationComponent,
     RenamePreviewComponent,
     TmdbMatchingComponent,
@@ -91,6 +109,8 @@ export class RenameWorkflowComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly limits = inject(WorkloadLimits);
+  private readonly workflowMode = inject(WorkflowMode);
+  protected readonly mode = this.workflowMode.mode;
   protected readonly maxFiles = computed(() => this.limits.current().maxFilesPerRun);
   private readonly stageHeading =
     viewChild.required<ElementRef<HTMLHeadingElement>>('stageHeading');
@@ -103,12 +123,19 @@ export class RenameWorkflowComponent {
       description:
         'Build your collection from server folders. Add files from one folder or bring several together.',
     },
-    {
-      id: 'plugins',
-      title: 'Configure plugins',
-      description:
-        'Build a sequence of renaming rules. Each enabled plugin works on the output of the one before it.',
-    },
+    this.mode() === 'simple'
+      ? {
+          id: 'preset',
+          title: 'Choose a preset',
+          description:
+            'Pick what kind of renaming you need. Switch to Advanced mode for full control over every step.',
+        }
+      : {
+          id: 'plugins',
+          title: 'Configure plugins',
+          description:
+            'Build a sequence of renaming rules. Each enabled plugin works on the output of the one before it.',
+        },
     ...(this.tmdbPlugins().length
       ? [
           {
@@ -118,19 +145,39 @@ export class RenameWorkflowComponent {
           },
         ]
       : []),
-    {
-      id: 'preview',
-      title: 'Review filenames',
-      description:
-        'Compare the original and proposed paths. Resolve any conflicts before preparing your plan.',
-    },
-    {
-      id: 'confirmation',
-      title: 'Confirm renaming',
-      description:
-        'Review the exact prepared changes. Only your explicit confirmation can rename files.',
-    },
+    ...(this.mode() === 'simple'
+      ? [
+          {
+            id: 'review',
+            title: 'Review and rename',
+            description:
+              'Check the proposed names, then confirm. Nothing is renamed until you click the rename button.',
+          },
+        ]
+      : [
+          {
+            id: 'preview',
+            title: 'Review filenames',
+            description:
+              'Compare the original and proposed paths. Resolve any conflicts before preparing your plan.',
+          },
+          {
+            id: 'confirmation',
+            title: 'Confirm renaming',
+            description:
+              'Review the exact prepared changes. Only your explicit confirmation can rename files.',
+          },
+        ]),
   ]);
+  /** Whether Simple's review shows the prepared plan instead of the preview. */
+  protected readonly showingPlan = computed(
+    () => this.preparing() || !!this.plan() || !!this.planId(),
+  );
+  protected readonly screen = computed<WizardScreen>(() => {
+    const stage = this.stage();
+    if (stage !== 'review') return stage;
+    return this.showingPlan() ? 'confirmation' : 'preview';
+  });
   protected readonly stageIndex = computed(() =>
     this.stages().findIndex((stage) => stage.id === this.stage()),
   );
@@ -141,8 +188,7 @@ export class RenameWorkflowComponent {
   protected readonly catalogLoaded = signal(false);
   private catalogLoading = false;
   private readonly draft = loadPipelineDraft();
-  protected readonly restoredPlugins = this.draft?.plugins ?? [];
-  protected readonly plugins = signal<PluginInstance[]>(this.restoredPlugins);
+  protected readonly plugins = signal<PluginInstance[]>(this.draft?.plugins ?? []);
   protected readonly selections = signal<MetadataSelection[]>([]);
   /** Hand-edited target paths; dropped whenever the plugins or matches change the computed names. */
   protected readonly overrides = signal<TargetOverride[]>([]);
@@ -163,6 +209,10 @@ export class RenameWorkflowComponent {
   protected readonly searchType = signal('movie');
   protected readonly suggestProgress = signal({ done: 0, total: 0 });
   private readonly suggestions = signal<MatchSuggestion[]>([]);
+  /** The Simple preset that builds the current steps, if any. */
+  protected readonly simplePreset = computed(
+    () => matchSimplePreset(this.plugins())?.preset ?? null,
+  );
   protected readonly tmdbPlugins = computed(() =>
     this.plugins().filter((plugin) => plugin.enabled && plugin.typeId === 'tmdb'),
   );
@@ -242,6 +292,17 @@ export class RenameWorkflowComponent {
       this.includeRelated();
       untracked(() => this.invalidate());
     });
+    effect(() => {
+      const mode = this.mode();
+      untracked(() => this.modeChanged(mode));
+    });
+    let discarded = this.workflowMode.discarded();
+    effect(() => {
+      const count = this.workflowMode.discarded();
+      if (count === discarded) return;
+      discarded = count;
+      untracked(() => this.discardSteps());
+    });
     effect(() =>
       savePipelineDraft({
         plugins: this.plugins(),
@@ -263,7 +324,7 @@ export class RenameWorkflowComponent {
     if (!this.validCollection() || this.preparing() || this.executing()) return;
     switch (this.stage()) {
       case 'files':
-        this.goTo('plugins');
+        this.goTo(this.mode() === 'simple' ? 'preset' : 'plugins');
         if (!this.catalogLoaded() && !this.catalogLoading) this.loadCatalog();
         break;
       case 'plugins':
@@ -271,8 +332,13 @@ export class RenameWorkflowComponent {
         this.goTo(this.tmdbPlugins().length ? 'matching' : 'preview');
         if (this.previewRevision !== this.revision) this.refreshPreview();
         break;
+      case 'preset':
+        if (!this.simplePreset()) return;
+        this.goTo(this.tmdbPlugins().length ? 'matching' : 'review');
+        if (this.previewRevision !== this.revision) this.refreshPreview();
+        break;
       case 'matching':
-        if (this.canReview()) this.goTo('preview');
+        if (this.canReview()) this.goTo(this.reviewStage());
         break;
     }
   }
@@ -285,13 +351,15 @@ export class RenameWorkflowComponent {
     this.matching.set(null);
     switch (this.stage()) {
       case 'plugins':
+      case 'preset':
         this.goTo('files');
         break;
       case 'matching':
-        this.goTo('plugins');
+        this.goTo(this.editStage());
         break;
       case 'preview':
-        this.goTo(this.tmdbPlugins().length ? 'matching' : 'plugins');
+      case 'review':
+        this.goTo(this.tmdbPlugins().length ? 'matching' : this.editStage());
         break;
       case 'confirmation':
         this.goTo('preview');
@@ -307,6 +375,65 @@ export class RenameWorkflowComponent {
       !this.suggesting() &&
       !this.metadataPending()
     );
+  }
+
+  /** Where steps are edited in the current mode. */
+  private editStage(): WizardStage {
+    return this.mode() === 'simple' ? 'preset' : 'plugins';
+  }
+
+  /** Where names are reviewed in the current mode. */
+  private reviewStage(): WizardStage {
+    return this.mode() === 'simple' ? 'review' : 'preview';
+  }
+
+  /**
+   * Moves the open stage to its counterpart in the new mode; steps, files, matches and any plan
+   * carry over. Simple runs use its fixed run options, so they are applied when its steps are kept.
+   */
+  private modeChanged(mode: WorkflowModeValue): void {
+    if (mode === 'simple' && simpleCompatible(this.plugins())) this.applySimpleRunOptions();
+    const stage = this.stage();
+    const counterparts: Partial<Record<WizardStage, WizardStage>> =
+      mode === 'simple'
+        ? { plugins: 'preset', preview: 'review', confirmation: 'review' }
+        : {
+            preset: 'plugins',
+            review: this.showingPlan() ? 'confirmation' : 'preview',
+          };
+    const target = counterparts[stage];
+    if (target) {
+      this.stage.set(target);
+      afterNextRender(() => this.stageHeading().nativeElement.focus(), { injector: this.injector });
+    }
+    if (mode === 'advanced' && stage !== 'files' && !this.catalogLoaded() && !this.catalogLoading)
+      this.loadCatalog();
+  }
+
+  /** The user discarded the steps to switch to Simple: start the pipeline afresh. */
+  private discardSteps(): void {
+    this.plugins.set([]);
+    this.applySimpleRunOptions();
+    this.overrides.set([]);
+    this.invalidate();
+  }
+
+  private applySimpleRunOptions(): void {
+    if (this.numberCollisions() !== simpleRunOptions.numberCollisions) {
+      this.numberCollisions.set(simpleRunOptions.numberCollisions);
+      this.overrides.set([]);
+      this.invalidate();
+    }
+    this.verifyContent.set(simpleRunOptions.verifyContent);
+    this.deleteEmptyFolders.set(simpleRunOptions.deleteEmptyFolders);
+  }
+
+  /** A Simple preset or one of its options built new steps. */
+  protected choosePreset(plugins: PluginInstance[]): void {
+    this.changePlugins(plugins);
+    this.applySimpleRunOptions();
+    const mediaType = matchSimplePreset(plugins)?.preset.tmdbMediaType;
+    if (mediaType) this.searchType.set(mediaType);
   }
 
   private goTo(stage: WizardStage): void {
@@ -427,7 +554,7 @@ export class RenameWorkflowComponent {
 
   protected prepare(): void {
     if (!this.canPrepare()) return;
-    this.goTo('confirmation');
+    this.goTo(this.mode() === 'simple' ? 'review' : 'confirmation');
     const revision = this.revision;
     this.preparing.set(true);
     this.plan.set(null);
@@ -500,7 +627,7 @@ export class RenameWorkflowComponent {
           this.preview.set(preview);
           this.previewRevision = this.revision;
           if (this.canPrepare()) this.prepare();
-          else this.goTo('preview');
+          else this.goTo(this.reviewStage());
         },
         error: (error: unknown) => {
           if (revision === this.revision) this.error.set(renameError(error));
@@ -807,7 +934,7 @@ export class RenameWorkflowComponent {
     }
     if (overriding) return;
     if (this.stage() === 'confirmation') this.goTo('preview');
-    if (this.stage() === 'matching' && !this.tmdbPlugins().length) this.goTo('plugins');
+    if (this.stage() === 'matching' && !this.tmdbPlugins().length) this.goTo(this.editStage());
     if (
       this.stage() !== 'files' &&
       (this.previewStarted || this.tmdbPlugins().length > 0) &&

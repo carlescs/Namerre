@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
+import { workflowModeStorageKey } from '../../../../workflow-mode/workflow-mode';
 import { defaultLimits, WorkloadLimits } from '../../../../workload-limits';
 import { tmdbOptionsHash } from '../../options-hash';
 import { casePlugin } from '../../plugin-catalog.testing';
@@ -124,6 +125,8 @@ describe('RenameWorkflowComponent', () => {
 
   beforeEach(async () => {
     localStorage.clear();
+    // These specs cover the Advanced stages; Simple mode has its own.
+    localStorage.setItem(workflowModeStorageKey, 'advanced');
     events = new FakeRenameEvents();
     await TestBed.configureTestingModule({
       imports: [RenameWorkflowComponent],

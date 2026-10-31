@@ -8,6 +8,10 @@ import { Setup } from './auth/setup/setup';
 import { UserMenu } from './auth/user-menu/user-menu';
 import { Logo } from './brand/logo';
 import { ThemePicker } from './theme/theme-picker';
+import { WorkflowMode } from './workflow-mode/workflow-mode';
+import { WorkflowModePicker } from './workflow-mode/workflow-mode-picker';
+import { WorkflowModeWarning } from './workflow-mode/workflow-mode-warning';
+import { WorkflowOnboarding } from './workflow-mode/workflow-onboarding';
 
 @Component({
   imports: [
@@ -20,6 +24,9 @@ import { ThemePicker } from './theme/theme-picker';
     ThemePicker,
     UserMenu,
     Logo,
+    WorkflowModePicker,
+    WorkflowModeWarning,
+    WorkflowOnboarding,
   ],
   selector: 'app-root',
   styleUrl: './app.scss',
@@ -27,6 +34,7 @@ import { ThemePicker } from './theme/theme-picker';
 })
 export class App implements OnInit {
   protected readonly auth = inject(Auth);
+  protected readonly workflow = inject(WorkflowMode);
   protected readonly loading = signal(true);
   protected readonly error = signal('');
   protected readonly signingOut = signal(false);

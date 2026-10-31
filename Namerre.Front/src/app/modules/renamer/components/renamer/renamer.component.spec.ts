@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
+import { workflowModeStorageKey } from '../../../../workflow-mode/workflow-mode';
 import type { FolderListing } from '../../folder-listing';
 import { FolderPickerComponent } from '../folder-picker/folder-picker.component';
 import { RenamerComponent } from './renamer.component';
@@ -20,6 +21,8 @@ describe('RenamerComponent', () => {
 
   beforeEach(async () => {
     localStorage.clear();
+    // These specs cover the Advanced stages; Simple mode has its own.
+    localStorage.setItem(workflowModeStorageKey, 'advanced');
     await TestBed.configureTestingModule({
       imports: [RenamerComponent],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
