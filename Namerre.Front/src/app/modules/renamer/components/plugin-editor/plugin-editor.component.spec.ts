@@ -1,4 +1,5 @@
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { defaultLimits, WorkloadLimits } from '../../../../workload-limits';
 import { casePlugin, literalPlugin, regexPlugin, tmdbPlugin } from '../../plugin-catalog.testing';
 import type { PluginDescriptor, PluginInstance } from '../../rename-api';
 import { PluginEditorComponent } from './plugin-editor.component';
@@ -219,6 +220,52 @@ describe('PluginEditorComponent', () => {
     template.dispatchEvent(new Event('input'));
     await fixture.whenStable();
     expect(preview()).toContain('Episode is unavailable.');
+  });
+
+  it('fills TMDB templates from a naming preset and switches back to Custom on edits', async () => {
+    await add('tmdb');
+    const card = fixture.nativeElement.querySelector('article') as HTMLElement;
+    const field = (label: string) =>
+      [...card.querySelectorAll('label')]
+        .find((element) => element.textContent?.includes(label))!
+        .querySelector('input, select') as HTMLInputElement | HTMLSelectElement;
+    const preset = field('Naming preset') as HTMLSelectElement;
+    expect(preset.value).toBe('custom');
+
+    preset.value = 'plexMovies';
+    preset.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    expect(plugins[0].options).toEqual(
+      expect.objectContaining({
+        preset: 'plexMovies',
+        nameTemplate: '{title} ({year})',
+        changeFolder: true,
+        folderTemplate: '{title} ({year}) {{tmdb-{tmdbId}}}',
+        seasonFolder: false,
+      }),
+    );
+    expect(card.querySelector('section')!.textContent).toContain(
+      'Sample Movie (2024) {tmdb-12345}/Sample Movie (2024).mkv',
+    );
+
+    const template = field('Filename template') as HTMLInputElement;
+    template.value = '{title}';
+    template.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(plugins[0].options.preset).toBe('custom');
+    expect(plugins[0].options.nameTemplate).toBe('{title}');
+    expect(plugins[0].options.folderTemplate).toBe('{title} ({year}) {{tmdb-{tmdbId}}}');
+    expect(preset.value).toBe('custom');
+  });
+
+  it('follows the step limit the server reports', async () => {
+    TestBed.inject(WorkloadLimits).current.set({ ...defaultLimits, maxStepsPerRun: 2 });
+    await fixture.whenStable();
+    await add('case');
+    await add('case');
+    await add('case');
+    expect(plugins).toHaveLength(2);
+    expect(fixture.nativeElement.textContent).toContain('Your renaming steps (2/2)');
   });
 
   it('allows a single TMDB step and offers it again once that step is removed', async () => {

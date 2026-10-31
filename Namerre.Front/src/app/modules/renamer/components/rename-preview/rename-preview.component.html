@@ -133,6 +133,11 @@
                     [targetPath]="file.targetPath"
                     side="to"
                   />
+                  @if (file.numbered) {
+                    <p class="m-0 mt-1 text-xs text-amber-800 dark:text-amber-300">
+                      Numbered to avoid a name that is already taken.
+                    </p>
+                  }
                 }
                 @for (issue of problems(file); track $index) {
                   <p class="m-0 mt-1 text-xs text-rose-700 dark:text-rose-300">

@@ -26,6 +26,7 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
+import { WorkloadLimits } from '../../../../workload-limits';
 import { detectCompanions } from '../../companions';
 import { loadPipelineDraft, saveFilesDraft, savePipelineDraft } from '../../draft-storage';
 import { tmdbOptionsHash } from '../../options-hash';
@@ -82,6 +83,8 @@ export class RenameWorkflowComponent {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
+  private readonly limits = inject(WorkloadLimits);
+  protected readonly maxFiles = computed(() => this.limits.current().maxFilesPerRun);
   private readonly stageHeading =
     viewChild.required<ElementRef<HTMLHeadingElement>>('stageHeading');
   protected readonly stage = signal<WizardStage>('files');
@@ -125,7 +128,7 @@ export class RenameWorkflowComponent {
     this.stages().findIndex((stage) => stage.id === this.stage()),
   );
   protected readonly validCollection = computed(
-    () => this.files().length > 0 && this.files().length <= 200,
+    () => this.files().length > 0 && this.files().length <= this.maxFiles(),
   );
   protected readonly catalog = signal<PluginDescriptor[]>([]);
   protected readonly catalogLoaded = signal(false);
@@ -139,6 +142,7 @@ export class RenameWorkflowComponent {
   protected readonly checkingOverride = signal(false);
   protected readonly verifyContent = signal(this.draft?.verifyContent ?? false);
   protected readonly deleteEmptyFolders = signal(this.draft?.deleteEmptyFolders ?? true);
+  protected readonly numberCollisions = signal(this.draft?.numberCollisions ?? false);
   protected readonly preview = signal<PreviewResult | null>(null);
   protected readonly plan = signal<PlanView | null>(null);
   protected readonly matching = signal<MatchContext | null>(null);
@@ -232,6 +236,7 @@ export class RenameWorkflowComponent {
         plugins: this.plugins(),
         verifyContent: this.verifyContent(),
         deleteEmptyFolders: this.deleteEmptyFolders(),
+        numberCollisions: this.numberCollisions(),
       }),
     );
     this.destroyRef.onDestroy(() => {
@@ -331,10 +336,18 @@ export class RenameWorkflowComponent {
     this.invalidate();
   }
 
+  /** Collision handling changes the computed names, so the preview is taken again. */
+  protected setNumberCollisions(on: boolean): void {
+    if (on === this.numberCollisions()) return;
+    this.numberCollisions.set(on);
+    this.overrides.set([]);
+    this.invalidate();
+  }
+
   protected refreshPreview(): void {
     clearTimeout(this.debounce);
     this.request?.unsubscribe();
-    if (!this.files().length || this.files().length > 200) return;
+    if (!this.files().length || this.files().length > this.maxFiles()) return;
     this.previewStarted = true;
     const revision = this.revision;
     this.loadingPreview.set(true);
@@ -574,7 +587,7 @@ export class RenameWorkflowComponent {
       this.preparing() ||
       this.executing() ||
       !this.files().length ||
-      this.files().length > 200
+      this.files().length > this.maxFiles()
     )
       return;
     this.searchType.set(mediaType);
@@ -762,6 +775,7 @@ export class RenameWorkflowComponent {
       deleteEmptyFolders: this.deleteEmptyFolders(),
       overrides: this.overrides(),
       includeCompanions: this.includeRelated(),
+      onCollision: this.numberCollisions() ? 'AddNumber' : 'Report',
     };
   }
 

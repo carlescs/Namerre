@@ -50,6 +50,13 @@ public sealed class RenamingController(ISender sender) : ControllerBase
     public async Task<IActionResult> Run(string id, CancellationToken cancellationToken)
         => Ok(await sender.Send(new GetRenameRunQuery(id), cancellationToken));
 
+    [HttpGet("api/rename-runs/{id}/export")]
+    public async Task<IActionResult> ExportRun(string id, CancellationToken cancellationToken, string format = "csv")
+    {
+        var export = await sender.Send(new ExportRenameRunQuery(id, format), cancellationToken);
+        return File(export.Content, export.ContentType, export.FileName);
+    }
+
     [HttpDelete("api/rename-runs/{id}")]
     public async Task<IActionResult> DeleteRun(string id, CancellationToken cancellationToken)
     {

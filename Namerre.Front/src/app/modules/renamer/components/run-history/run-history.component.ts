@@ -128,6 +128,10 @@ export class RunHistoryComponent {
   protected readonly statusLabel = statusLabel;
   protected readonly runStatusLabel = runStatusLabel;
   protected readonly trashIcon = faTrashCan;
+  /** Address of the CSV or JSON export of a run's files (source, target, status and rollback). */
+  protected exportUrl(id: string, format: 'csv' | 'json'): string {
+    return this.api.exportUrl(id, format);
+  }
   private polling?: Subscription;
   private action?: Subscription;
   private checkProgress?: Subscription;

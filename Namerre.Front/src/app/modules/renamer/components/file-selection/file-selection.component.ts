@@ -28,6 +28,7 @@ import {
   faGripVertical,
   faTrashCan,
 } from '@fortawesome/free-solid-svg-icons';
+import { WorkloadLimits } from '../../../../workload-limits';
 import { detectCompanions } from '../../companions';
 import { formatFileSize } from '../../file-size';
 import type { FolderListing } from '../../folder-listing';
@@ -150,6 +151,8 @@ export class FileSelectionComponent {
     );
   });
   private readonly injector = inject(Injector);
+  private readonly limits = inject(WorkloadLimits);
+  protected readonly maxFiles = computed(() => this.limits.current().maxFilesPerRun);
   private readonly table = viewChild<ElementRef<HTMLElement>>('table');
   protected readonly removeShownLabel = computed(() => {
     const count = this.filteredFiles().length;

@@ -39,11 +39,17 @@ describe('draft storage', () => {
 
   it('round-trips the pipeline and drops malformed plugins', () => {
     const plugin = { instanceId: 'i', typeId: 'case', version: 1, enabled: true, options: {} };
-    savePipelineDraft({ plugins: [plugin], verifyContent: true, deleteEmptyFolders: false });
+    savePipelineDraft({
+      plugins: [plugin],
+      verifyContent: true,
+      deleteEmptyFolders: false,
+      numberCollisions: true,
+    });
     expect(loadPipelineDraft()).toEqual({
       plugins: [plugin],
       verifyContent: true,
       deleteEmptyFolders: false,
+      numberCollisions: true,
     });
     localStorage.setItem(
       'namerre.draft.pipeline.v1',

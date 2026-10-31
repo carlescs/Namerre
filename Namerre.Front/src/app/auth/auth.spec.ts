@@ -2,6 +2,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { DOCUMENT } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { defaultLimits, WorkloadLimits } from '../workload-limits';
 import { Auth, authenticationInterceptor } from './auth';
 
 describe('Auth', () => {
@@ -30,6 +31,23 @@ describe('Auth', () => {
     await loading;
     expect(auth.username()).toBe('admin');
     expect(auth.singleSignOn()).toBeNull();
+  });
+
+  it('applies the workload limits of a signed-in session and the defaults otherwise', async () => {
+    const limits = TestBed.inject(WorkloadLimits);
+    const configured = { maxFilesPerRun: 500, maxStepsPerRun: 40, maxQueuedJobs: 8 };
+    let loading = auth.refresh();
+    http
+      .expectOne('/api/auth/session')
+      .flush({ username: 'admin', requiresSetup: false, limits: configured });
+    await loading;
+    expect(limits.current()).toEqual(configured);
+    loading = auth.refresh();
+    http
+      .expectOne('/api/auth/session')
+      .flush({ username: null, requiresSetup: false, limits: null });
+    await loading;
+    expect(limits.current()).toEqual(defaultLimits);
   });
 
   it('reports the configured single sign-on provider', async () => {

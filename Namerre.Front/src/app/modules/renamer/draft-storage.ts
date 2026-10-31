@@ -11,6 +11,8 @@ export interface PipelineDraft {
   plugins: PluginInstance[];
   verifyContent: boolean;
   deleteEmptyFolders: boolean;
+  /** Colliding names get a ` (1)`, ` (2)`, … suffix instead of being reported. */
+  numberCollisions?: boolean;
 }
 
 export function loadFilesDraft(): RenamerFile[] {
@@ -38,13 +40,19 @@ export function loadPipelineDraft(): PipelineDraft | null {
     plugins: draft.plugins.filter(isPlugin),
     verifyContent: draft.verifyContent === true,
     deleteEmptyFolders: draft.deleteEmptyFolders === true,
+    numberCollisions: draft.numberCollisions === true,
   };
 }
 
 export function savePipelineDraft(draft: PipelineDraft): void {
   write(
     pipelineKey,
-    draft.plugins.length || draft.verifyContent || draft.deleteEmptyFolders ? draft : null,
+    draft.plugins.length ||
+      draft.verifyContent ||
+      draft.deleteEmptyFolders ||
+      draft.numberCollisions
+      ? draft
+      : null,
   );
 }
 

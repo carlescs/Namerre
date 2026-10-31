@@ -6,8 +6,6 @@ namespace Namerre.Domain.Renaming;
 public static class NamingRules
 {
     public static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(100);
-    public const int MaxFiles = 200;
-    public const int MaxPlugins = 32;
 
     public static string Literal(string stem, string search, string replacement, bool ignoreCase, string scope)
     {

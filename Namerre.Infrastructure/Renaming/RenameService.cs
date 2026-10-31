@@ -685,10 +685,11 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     {
         if (!Guid.TryParse(value, out _)) throw new RenameException("InvalidOperationId", "Use a UUID operationId.");
     }
-    private static void ValidateSelection(SelectionRequest request)
+    private void ValidateSelection(SelectionRequest request)
     {
-        if (request.FileIds is null || request.FileIds.Count is < 1 or > 200
+        var limit = pipeline.Limits.MaxFilesPerRun;
+        if (request.FileIds is null || request.FileIds.Count < 1 || request.FileIds.Count > limit
             || request.FileIds.Distinct().Count() != request.FileIds.Count)
-            throw new RenameException("InvalidSelection", "Select 1–200 distinct file IDs.");
+            throw new RenameException("InvalidSelection", $"Select 1–{limit} distinct file IDs.");
     }
 }

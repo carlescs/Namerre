@@ -92,7 +92,7 @@ public sealed class RenamingWorkflowTests : IDisposable
         using (var client = await AuthWebApplicationFactory.AuthenticatedClient(factory))
         {
             var catalog = await client.GetFromJsonAsync<PluginDescriptor[]>("/api/rename-plugins");
-            Assert.Equal(["literal", "replacements", "regex", "case", "affix", "separators", "releaseTags",
+            Assert.Equal(["literal", "replacements", "regex", "case", "extensionCase", "affix", "separators", "releaseTags",
             "characters", "insert", "remove", "truncate", "pad", "counter", "date", "tmdb"], catalog!.Select(p => p.TypeId));
             var request = Request(["alpha.txt"], [Plugin("case", "case", new { mode = "upper" })]);
             using var response = await client.PostAsJsonAsync("/api/rename-previews", request);
@@ -919,6 +919,153 @@ public sealed class RenamingWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task ExtensionCaseRenamesThroughStagingAndRollbackRestoresTheOriginalCase()
+    {
+        Write("Photos/IMG_01.JPG", "picture");
+        using var harness = Harness();
+        var plan = await Prepare(harness, Request(["Photos/IMG_01.JPG"],
+            [Plugin("ext", "extensionCase", new { mode = "lower" })]));
+        Assert.Equal("Photos/IMG_01.jpg", Assert.Single(plan.Files).TargetPath);
+
+        var rename = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+
+        var run = await harness.Service.GetRun(rename.Id, default);
+        Assert.Equal("Completed", run.Status);
+        Assert.Equal(["Stage", "Place"], run.Journal.Select(entry => entry.Kind));
+        Assert.Equal(["IMG_01.jpg"], Directory.GetFiles(Full("Photos")).Select(Path.GetFileName));
+        await harness.Service.Rollback(rename.Id, new(["0"], Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        Assert.Equal(["IMG_01.JPG"], Directory.GetFiles(Full("Photos")).Select(Path.GetFileName));
+        Assert.Equal("picture", Read("Photos/IMG_01.JPG"));
+    }
+
+    [Fact]
+    public async Task CollisionNumbersAreFixedInThePlanAndExecutionNeverPicksANewOne()
+    {
+        Write("a.txt", "A");
+        Write("b.txt", "B");
+        Write("NAME.txt", "existing");
+        using var harness = Harness();
+        var request = Request(["a.txt", "b.txt"], [Plugin("name", "regex", new { pattern = "^[ab]$", replacement = "NAME" })])
+            with { OnCollision = PipelineRequest.CollisionAddNumber };
+
+        var preview = await harness.Service.Preview(request, default);
+        Assert.Equal([("NAME (1).txt", true), ("NAME (2).txt", true)],
+            preview.Files.Select(f => (f.TargetPath, f.Numbered)));
+        var plan = await Prepare(harness, request);
+        Assert.Equal(["NAME (1).txt", "NAME (2).txt"], plan.Files.Select(f => f.TargetPath));
+        Assert.Equal(PipelineRequest.CollisionAddNumber, plan.Pipeline.OnCollision);
+
+        Write("NAME (2).txt", "appeared after preparation");
+        var run = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+
+        Assert.NotEqual("Completed", (await harness.Service.GetRun(run.Id, default)).Status);
+        Assert.Equal("appeared after preparation", Read("NAME (2).txt"));
+        Assert.Equal(("A", "B"), (Read("a.txt"), Read("b.txt")));
+        Assert.False(File.Exists(Full("NAME (3).txt")));
+    }
+
+    [Fact]
+    public async Task RunExportsAreAuthorizedUncachedCsvOrJson()
+    {
+        Write("alpha.txt", "original");
+        using var factory = Factory();
+        using var client = await AuthWebApplicationFactory.AuthenticatedClient(factory);
+        using var preparing = await client.PostAsJsonAsync("/api/rename-plans", UpperRequest(["alpha.txt"]));
+        var plan = await PollPlan(client, (await preparing.Content.ReadFromJsonAsync<JobAccepted>())!.Id);
+        using var confirmation = await client.PostAsJsonAsync($"/api/rename-plans/{plan.Id}/execute",
+            new ExecuteRequest(1, Guid.NewGuid().ToString()));
+        var runId = (await confirmation.Content.ReadFromJsonAsync<JobAccepted>())!.Id;
+        Assert.Equal("Completed", (await PollRun(client, runId)).Status);
+
+        using var csv = await client.GetAsync($"/api/rename-runs/{runId}/export?format=csv");
+        Assert.Equal(HttpStatusCode.OK, csv.StatusCode);
+        Assert.Equal("text/csv", csv.Content.Headers.ContentType!.MediaType);
+        Assert.Equal($"namerre-run-{runId}.csv", csv.Content.Headers.ContentDisposition!.FileNameStar
+            ?? csv.Content.Headers.ContentDisposition.FileName);
+        Assert.True(csv.Headers.CacheControl!.NoStore);
+        var bytes = await csv.Content.ReadAsByteArrayAsync();
+        Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, bytes[..3]);
+        var rows = System.Text.Encoding.UTF8.GetString(bytes[3..]).Split("\r\n");
+        Assert.StartsWith("runId,runKind,runStatus,", rows[0]);
+        Assert.Contains(",alpha.txt,ALPHA.txt,Completed,", rows[1]);
+
+        using var json = await client.GetAsync($"/api/rename-runs/{runId}/export?format=json");
+        Assert.Equal("application/json", json.Content.Headers.ContentType!.MediaType);
+        using var document = JsonDocument.Parse(await json.Content.ReadAsStringAsync());
+        Assert.Equal("ALPHA.txt", document.RootElement.GetProperty("files")[0].GetProperty("targetPath").GetString());
+
+        using var defaultFormat = await client.GetAsync($"/api/rename-runs/{runId}/export");
+        Assert.Equal("text/csv", defaultFormat.Content.Headers.ContentType!.MediaType);
+        using var invalid = await client.GetAsync($"/api/rename-runs/{runId}/export?format=xml");
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using var missing = await client.GetAsync("/api/rename-runs/missing/export");
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        using var anonymous = AuthWebApplicationFactory.AnonymousClient(factory);
+        using var unauthorized = await anonymous.GetAsync($"/api/rename-runs/{runId}/export");
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+    }
+
+    [Fact]
+    public async Task ConfiguredLimitsAreEnforcedAndReportedToSignedInClients()
+    {
+        Write("a.txt", "A");
+        Write("b.txt", "B");
+        using var factory = Factory(new()
+        {
+            ["Namerre:Limits:MaxFilesPerRun"] = "1", ["Namerre:Limits:MaxStepsPerRun"] = "3",
+            ["Namerre:Limits:MaxQueuedJobs"] = "1"
+        });
+        using var anonymous = AuthWebApplicationFactory.AnonymousClient(factory);
+        using (var session = await anonymous.GetAsync("/api/auth/session"))
+        {
+            using var document = JsonDocument.Parse(await session.Content.ReadAsStringAsync());
+            Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("limits").ValueKind);
+        }
+        using var client = await AuthWebApplicationFactory.AuthenticatedClient(factory);
+        using (var session = await client.GetAsync("/api/auth/session"))
+        {
+            using var document = JsonDocument.Parse(await session.Content.ReadAsStringAsync());
+            var limits = document.RootElement.GetProperty("limits");
+            Assert.Equal((1, 3, 1), (limits.GetProperty("maxFilesPerRun").GetInt32(),
+                limits.GetProperty("maxStepsPerRun").GetInt32(), limits.GetProperty("maxQueuedJobs").GetInt32()));
+        }
+
+        using var tooMany = await client.PostAsJsonAsync("/api/rename-previews", UpperRequest(["a.txt", "b.txt"]));
+        Assert.Equal(HttpStatusCode.BadRequest, tooMany.StatusCode);
+        Assert.Contains("BatchLimit", await tooMany.Content.ReadAsStringAsync());
+        using var allowed = await client.PostAsJsonAsync("/api/rename-previews", UpperRequest(["a.txt"]));
+        Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
+    }
+
+    [Fact]
+    public async Task TheQueueHoldsTheConfiguredNumberOfJobs()
+    {
+        Write("alpha.txt", "A");
+        using var harness = Harness(maxQueuedJobs: 2);
+        for (var i = 0; i < 2; i++) await harness.Service.Prepare(UpperRequest(["alpha.txt"]), default);
+
+        Assert.Equal("QueueFull", (await Assert.ThrowsAsync<RenameException>(
+            () => harness.Service.Prepare(UpperRequest(["alpha.txt"]), default))).Code);
+    }
+
+    [Theory]
+    [InlineData("MaxFilesPerRun", "0")]
+    [InlineData("MaxFilesPerRun", "2001")]
+    [InlineData("MaxStepsPerRun", "65")]
+    [InlineData("MaxQueuedJobs", "257")]
+    public void OutOfRangeLimitsFailStartup(string key, string value)
+    {
+        using var factory = Factory(new() { ["Namerre:Limits:" + key] = value });
+
+        var exception = Assert.ThrowsAny<Exception>(() => { _ = factory.Server; });
+
+        Assert.Contains("Namerre:Limits", (exception.InnerException ?? exception).Message + exception.Message);
+    }
+
+    [Fact]
     public async Task ReadOnlyPreviewDoesNotRequireStorageOrTmdbCredentials()
     {
         Write("alpha.txt", "A");
@@ -936,9 +1083,10 @@ public sealed class RenamingWorkflowTests : IDisposable
         Assert.False(Directory.Exists(Data));
     }
 
-    private WebApplicationFactory<Program> Factory() => new AuthWebApplicationFactory().WithWebHostBuilder(
-        builder => builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
-            new Dictionary<string, string?> { ["Namerre:RootPath"] = Root, ["Namerre:DataPath"] = Data })));
+    private WebApplicationFactory<Program> Factory(Dictionary<string, string?>? settings = null)
+        => new AuthWebApplicationFactory().WithWebHostBuilder(
+            builder => builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
+                new Dictionary<string, string?>(settings ?? []) { ["Namerre:RootPath"] = Root, ["Namerre:DataPath"] = Data })));
     private WebApplicationFactory<Program> FactoryWithoutWorker() => Factory().WithWebHostBuilder(
         builder => builder.ConfigureServices(services =>
         {
@@ -976,8 +1124,8 @@ public sealed class RenamingWorkflowTests : IDisposable
         => new(paths.Select((path, i) => new FileInput(i.ToString(), path)).ToArray(), plugins);
     private static PipelineRequest UpperRequest(string[] paths) => Request(paths, [Plugin("upper", "case", new { mode = "upper" })]);
     private TestHarness Harness(int moveFailure = 0, bool failAfter = false, Action<string>? boundary = null,
-        IRenameNotifier? notifier = null)
-        => new(Root, Data, workspace, moveFailure, failAfter, boundary, notifier);
+        IRenameNotifier? notifier = null, int maxQueuedJobs = RenameLimits.DefaultQueuedJobs)
+        => new(Root, Data, workspace, moveFailure, failAfter, boundary, notifier, maxQueuedJobs);
     private static async Task<PlanView> Prepare(TestHarness harness, PipelineRequest request)
     {
         var accepted = await harness.Service.Prepare(request, default);
@@ -1013,10 +1161,10 @@ public sealed class RenamingWorkflowTests : IDisposable
         public RenameService Service { get; }
         public FaultFileSystem? Fault { get; }
         public TestHarness(string root, string data, string workspace, int moveFailure, bool failAfter, Action<string>? boundary,
-            IRenameNotifier? notifier)
+            IRenameNotifier? notifier, int maxQueuedJobs)
         {
             var filesystem = new BoundedFileSystem(root, workspace);
-            Store = new RenameStore(filesystem, data, workspace, boundary);
+            Store = new RenameStore(filesystem, data, workspace, boundary, maxQueuedJobs);
             var metadata = new NoMetadata();
             Fault = moveFailure > 0 ? new FaultFileSystem(filesystem, moveFailure, failAfter) : null;
             IRenameFileSystem mutation = Fault is null ? filesystem : Fault;

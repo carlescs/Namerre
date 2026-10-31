@@ -45,6 +45,15 @@ describe('TMDB template preview', () => {
     );
   });
 
+  it('treats doubled braces as literal braces like the server', () => {
+    const preview = (nameTemplate: string) => tmdbTemplatePreview({ nameTemplate }, sampleMovie);
+    expect(preview('{title} {{tmdb-{tmdbId}}}').path).toBe('Sample Movie {tmdb-12345}.mkv');
+    expect(preview('{{{title}}}').path).toBe('{Sample Movie}.mkv');
+    for (const template of ['{title}}', '{title', '{}', '{ti{tle}']) {
+      expect(preview(template).error).toBeDefined();
+    }
+  });
+
   it('renders the extended fields and number formats', () => {
     const preview = (nameTemplate: string, match = sampleEpisode) =>
       tmdbTemplatePreview({ nameTemplate }, { ...match, id: 1396 }).path;

@@ -25,6 +25,31 @@ public sealed class BoundedFileSystemTests : IDisposable
         if (Directory.Exists(workspace)) Directory.Delete(workspace, true);
     }
 
+    [Fact]
+    public void CaseOnlyRenamesGoThroughTheStagingPathOnEitherKindOfFileSystem()
+    {
+        File.WriteAllText(Path.Combine(root, "Movies", "Photo.JPG"), "picture");
+        // Windows (and macOS) volumes usually ignore case; Linux ones do not. CI runs both.
+        var caseInsensitive = File.Exists(Path.Combine(root, "Movies", "Photo.jpg"));
+
+        Assert.Equal(caseInsensitive, fileSystem.SamePath("Movies/Photo.JPG", "Movies/Photo.jpg"));
+        Assert.Equal(caseInsensitive, fileSystem.Exists("Movies/Photo.jpg"));
+        if (caseInsensitive)
+        {
+            // A direct move would collide with the file itself, so the run stages it first.
+            Assert.Equal("TargetExists", Assert.Throws<RenameException>(() =>
+                fileSystem.Move("Movies/Photo.JPG", "Movies/Photo.jpg")).Code);
+        }
+
+        fileSystem.Move("Movies/Photo.JPG", "Movies/.namerre-stage-0123456789abcdef0123456789abcdef");
+        fileSystem.Move("Movies/.namerre-stage-0123456789abcdef0123456789abcdef", "Movies/Photo.jpg");
+
+        Assert.Equal("Movies/Photo.jpg", fileSystem.ActualPath("Movies/Photo.jpg"));
+        Assert.Contains("Photo.jpg", Directory.GetFiles(Path.Combine(root, "Movies")).Select(Path.GetFileName));
+        Assert.DoesNotContain("Photo.JPG", Directory.GetFiles(Path.Combine(root, "Movies")).Select(Path.GetFileName));
+        Assert.Equal("picture", File.ReadAllText(Path.Combine(root, "Movies", "Photo.jpg")));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -84,7 +109,7 @@ public sealed class BoundedFileSystemTests : IDisposable
     [InlineData("/etc/passwd")]
     [InlineData("Movies\\film.mkv")]
     [InlineData("C:/Windows")]
-    [InlineData("Movies/.namerre-stage-0123")]
+    [InlineData("Movies/.namerre-stage-0123456789abcdef0123456789abcdef")]
     [InlineData("")]
     public void ResolveRejectsPathsOutsideOrReserved(string path)
     {

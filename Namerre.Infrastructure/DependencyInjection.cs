@@ -21,7 +21,16 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<NamerreOptions>()
-            .Bind(configuration.GetSection(NamerreOptions.SectionName));
+            .Bind(configuration.GetSection(NamerreOptions.SectionName))
+            .ValidateOnStart();
+        // Reading the options validates them, so the store (created before the host starts) fails early too.
+        services.AddSingleton<IValidateOptions<NamerreOptions>>(new ValidateOptions<NamerreOptions>(null,
+            options => options.Limits.ToLimits().IsValid,
+            "Namerre:Limits values must be between 1 and their ceilings: MaxFilesPerRun "
+            + $"{RenameLimits.CeilingFiles}, MaxStepsPerRun {RenameLimits.CeilingSteps}, "
+            + $"MaxQueuedJobs {RenameLimits.CeilingQueuedJobs}."));
+        services.AddSingleton(provider =>
+            provider.GetRequiredService<IOptions<NamerreOptions>>().Value.Limits.ToLimits());
         services.AddSingleton(provider => new BoundedFileSystem(
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.RootPath,
             provider.GetRequiredService<IHostEnvironment>().ContentRootPath));
@@ -29,7 +38,8 @@ public static class DependencyInjection
         services.AddSingleton(provider => new RenameStore(
             provider.GetRequiredService<BoundedFileSystem>(),
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.DataPath,
-            provider.GetRequiredService<IHostEnvironment>().ContentRootPath));
+            provider.GetRequiredService<IHostEnvironment>().ContentRootPath,
+            maxQueuedJobs: provider.GetRequiredService<RenameLimits>().MaxQueuedJobs));
         services.AddSingleton<IAdministratorStore, AdministratorStore>();
         // TmdbResilience bounds each lookup (15 s overall); HttpClient's own 100 s default remains only as a backstop.
         services.AddHttpClient<TmdbClient>()

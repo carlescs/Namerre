@@ -352,7 +352,7 @@ public sealed class PipelineEngineValidationTests
             "SingleInstancePlugin"
         },
         {
-            new([new("a", "src/a.txt")], [], Enumerable.Range(0, NamingRules.MaxFiles * NamingRules.MaxPlugins + 1)
+            new([new("a", "src/a.txt")], [], Enumerable.Range(0, RenameLimits.DefaultFiles * RenameLimits.DefaultSteps + 1)
                 .Select(i => new MetadataSelection("a", i.ToString(), "src/a.txt", "", "")).ToArray()),
             "BatchLimit"
         },
@@ -410,7 +410,7 @@ public sealed class PipelineEngineValidationTests
     public void ValidateRequestAcceptsDisabledPluginsAndTheMaximumSelectionCount()
         => engine.ValidateRequest(new([new("a", "src/a.txt")],
             [Plugin("p", "tmdb", new { }) with { Enabled = false }],
-            Enumerable.Range(0, NamingRules.MaxFiles * NamingRules.MaxPlugins)
+            Enumerable.Range(0, RenameLimits.DefaultFiles * RenameLimits.DefaultSteps)
                 .Select(i => new MetadataSelection("a", i.ToString(), "src/a.txt", "", "")).ToArray()));
 
     [Fact]

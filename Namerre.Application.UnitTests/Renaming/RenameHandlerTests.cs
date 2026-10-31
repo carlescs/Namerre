@@ -220,6 +220,33 @@ public sealed class RenameHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task ExportReadsTheRunAndItsRollbacks()
+    {
+        var created = DateTimeOffset.UnixEpoch;
+        var run = new RunView("run", "plan", null, "Rename", "Completed",
+            [new("0", "a.txt", "A.txt", "", "h", "RolledBack")], [], created,
+            RollbackRuns: [new("undo", "Rollback", "Completed", created)]);
+        service.GetRun("run", Token).Returns(run);
+        service.GetRun("undo", Token).Returns(new RunView("undo", "plan", "run", "Rollback", "Completed",
+            [new("0", "A.txt", "a.txt", "", "h", "Completed")], [], created));
+
+        var export = await new ExportRenameRunQueryHandler(service).Handle(new ExportRenameRunQuery("run", "JSON"), Token);
+
+        Assert.Equal("namerre-run-run.json", export.FileName);
+        Assert.Contains("\"undo\"", System.Text.Encoding.UTF8.GetString(export.Content));
+    }
+
+    [Fact]
+    public async Task ExportRejectsUnknownFormatsBeforeReading()
+    {
+        var exception = await Assert.ThrowsAsync<RenameException>(() =>
+            new ExportRenameRunQueryHandler(service).Handle(new ExportRenameRunQuery("run", "xml"), Token));
+
+        Assert.Equal("InvalidExportFormat", exception.Code);
+        await service.DidNotReceiveWithAnyArgs().GetRun(default!, default);
+    }
+
+    [Fact]
     public async Task PluginsQueryReturnsEngineCatalog()
     {
         var engine = TestPipeline.Create(Substitute.For<ITmdbMetadata>(), Substitute.For<IRenameFileSystem>());
@@ -227,7 +254,7 @@ public sealed class RenameHandlerTests : IDisposable
         var result = await new GetRenamePluginsQueryHandler(engine).Handle(new GetRenamePluginsQuery(), Token);
 
         Assert.Same(engine.Catalog, result);
-        Assert.Equal(["literal", "replacements", "regex", "case", "affix", "separators", "releaseTags",
+        Assert.Equal(["literal", "replacements", "regex", "case", "extensionCase", "affix", "separators", "releaseTags",
             "characters", "insert", "remove", "truncate", "pad", "counter", "date", "tmdb"], result.Select(p => p.TypeId));
     }
 }

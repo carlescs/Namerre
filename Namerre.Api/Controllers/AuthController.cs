@@ -18,7 +18,8 @@ namespace Namerre.Controllers;
 [ApiController]
 [Route("api/auth")]
 public sealed class AuthController(AdminAccount account, OidcLogin oidc,
-    IOptionsMonitor<OpenIdConnectOptions> oidcOptions, IAntiforgery antiforgery, ILogger<AuthController> logger) : ControllerBase
+    IOptionsMonitor<OpenIdConnectOptions> oidcOptions, IAntiforgery antiforgery, ILogger<AuthController> logger,
+    RenameLimits? limits = null) : ControllerBase
 {
     private static readonly string WeakPasswordMessage =
         $"Use a password of at least {AdminAccount.MinimumPasswordLength} characters.";
@@ -35,13 +36,16 @@ public sealed class AuthController(AdminAccount account, OidcLogin oidc,
             SameSite = SameSiteMode.Strict,
             Path = "/"
         });
+        var signedIn = User.Identity?.IsAuthenticated == true;
         return Ok(new
         {
-            username = User.Identity?.IsAuthenticated == true ? User.Identity.Name : null,
+            username = signedIn ? User.Identity!.Name : null,
             requiresSetup = account.RequiresSetup,
             oidc = oidc.Enabled ? new { displayName = oidc.DisplayName } : null,
             // A single sign-on session does not know the local administrator password.
-            canChangePassword = account.CanChangePassword && !IsSingleSignOnSession
+            canChangePassword = account.CanChangePassword && !IsSingleSignOnSession,
+            // Configured workload limits, so the app shows the numbers the server enforces.
+            limits = signedIn ? limits ?? RenameLimits.Default : null
         });
     }
 
