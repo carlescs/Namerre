@@ -18,12 +18,15 @@ internal static class OptionBinding
     }
 
     /// <summary>Rejects forms the editor cannot render; called once per plugin when the engine is built.</summary>
-    /// <exception cref="InvalidOperationException">A choice field without choices, a list without columns or a nested list.</exception>
+    /// <exception cref="InvalidOperationException">A choice field without choices, a list without columns, a nested
+    /// list or a visibility condition that does not name choices of another select or multi-select field.</exception>
     public static void ValidateForm(PluginDescriptor descriptor)
     {
-        foreach (var field in descriptor.Form.SelectMany(g => g.Fields))
+        var fields = descriptor.Form.SelectMany(g => g.Fields).ToList();
+        foreach (var field in fields)
         {
             CheckField(descriptor, field);
+            CheckCondition(descriptor, field, fields);
             if (field.Kind != OptionFieldKind.List) continue;
             if (field.Fields is not { Count: > 0 } columns
                 || columns.Select(c => c.Key).Distinct().Count() != columns.Count)
@@ -33,6 +36,9 @@ internal static class OptionBinding
             {
                 if (column.Kind == OptionFieldKind.List)
                     throw new InvalidOperationException($"Rename plugin {descriptor.TypeId} nests list {column.Key}.");
+                if (column.VisibleWhen is not null)
+                    throw new InvalidOperationException(
+                        $"Rename plugin {descriptor.TypeId} list {field.Key} has conditional column {column.Key}.");
                 CheckField(descriptor, column);
             }
         }
@@ -44,6 +50,16 @@ internal static class OptionBinding
             throw new InvalidOperationException($"Rename plugin {descriptor.TypeId} field {field.Key} needs choices.");
         if (field is { Min: { } min, Max: { } max } && min > max || field.Step <= 0)
             throw new InvalidOperationException($"Rename plugin {descriptor.TypeId} field {field.Key} has an empty range.");
+    }
+
+    private static void CheckCondition(PluginDescriptor descriptor, OptionField field, List<OptionField> fields)
+    {
+        if (field.VisibleWhen is not { } condition) return;
+        var source = condition.Key == field.Key ? null : fields.FirstOrDefault(f => f.Key == condition.Key);
+        if (source is not { Kind: OptionFieldKind.Select or OptionFieldKind.MultiSelect } || condition.Values is not { Count: > 0 }
+            || !condition.Values.All(value => IsChoice(source, value)))
+            throw new InvalidOperationException(
+                $"Rename plugin {descriptor.TypeId} field {field.Key} needs a condition on choices of another select field.");
     }
 
     private static void ValidateFields(JsonElement values, IEnumerable<OptionField> fields, string prefix)

@@ -439,6 +439,108 @@ describe('PluginEditorComponent', () => {
     expect(plugins[0].options).toEqual({ prefix: 'old-', position: 'start', trim: true });
   });
 
+  it('shows a field only while its select condition holds and keeps its hidden value', async () => {
+    fixture.componentRef.setInput('catalog', [
+      {
+        typeId: 'counter',
+        version: 1,
+        name: 'Counter',
+        description: 'Number files',
+        defaultOptions: { position: 'suffix', separator: ' ', template: '{name} {n}' },
+        form: [
+          {
+            fields: [
+              {
+                key: 'position',
+                label: 'Position',
+                kind: 'select',
+                choices: [
+                  { value: 'prefix', label: 'Before' },
+                  { value: 'suffix', label: 'After' },
+                  { value: 'template', label: 'Custom' },
+                ],
+              },
+              {
+                key: 'separator',
+                label: 'Separator',
+                kind: 'text',
+                visibleWhen: { key: 'position', values: ['prefix', 'suffix'] },
+              },
+              {
+                key: 'template',
+                label: 'Template',
+                kind: 'text',
+                visibleWhen: { key: 'position', values: ['template'] },
+              },
+            ],
+          },
+        ],
+      },
+    ] satisfies PluginDescriptor[]);
+    await fixture.whenStable();
+    await add('counter');
+    const card = fixture.nativeElement.querySelector('article') as HTMLElement;
+    const labels = () =>
+      ['Separator', 'Template'].filter((name) =>
+        [...card.querySelectorAll('label')].some((label) => label.textContent?.includes(name)),
+      );
+    expect(labels()).toEqual(['Separator']);
+    const select = card.querySelector('select') as HTMLSelectElement;
+    select.value = 'template';
+    select.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    expect(labels()).toEqual(['Template']);
+    expect(plugins[0].options).toEqual({
+      position: 'template',
+      separator: ' ',
+      template: '{name} {n}',
+    });
+  });
+
+  it('shows a field while a multi-select condition includes one of its values', async () => {
+    fixture.componentRef.setInput('catalog', [
+      {
+        typeId: 'separators',
+        version: 1,
+        name: 'Separators',
+        description: 'Tidy separators',
+        defaultOptions: { characters: ['underscores'], splitNumbers: false },
+        form: [
+          {
+            fields: [
+              {
+                key: 'characters',
+                label: 'Replace with spaces',
+                kind: 'multiSelect',
+                choices: [
+                  { value: 'dots', label: 'Dots' },
+                  { value: 'underscores', label: 'Underscores' },
+                ],
+              },
+              {
+                key: 'splitNumbers',
+                label: 'Split short numbers',
+                kind: 'checkbox',
+                visibleWhen: { key: 'characters', values: ['dots'] },
+              },
+            ],
+          },
+        ],
+      },
+    ] satisfies PluginDescriptor[]);
+    await fixture.whenStable();
+    await add('separators');
+    const card = fixture.nativeElement.querySelector('article') as HTMLElement;
+    expect(card.textContent).not.toContain('Split short numbers');
+    (card.querySelector('fieldset input') as HTMLInputElement).click();
+    await fixture.whenStable();
+    expect(card.textContent).toContain('Split short numbers');
+    expect(plugins[0].options).toEqual({
+      characters: ['dots', 'underscores'],
+      splitNumbers: false,
+    });
+  });
+
   describe('number, textarea, list and multi-select fields', () => {
     const kindsPlugin: PluginDescriptor = {
       typeId: 'kinds',

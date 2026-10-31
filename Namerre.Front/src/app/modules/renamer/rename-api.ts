@@ -71,6 +71,15 @@ export interface OptionField {
   step?: number;
   /** Columns of each row of a `list` field; lists do not nest. */
   fields?: OptionField[];
+  /**
+   * Hidden (not removed) unless this select field holds one of the values, or this multi-select
+   * includes one; its value is still sent.
+   */
+  visibleWhen?: OptionCondition;
+}
+export interface OptionCondition {
+  key: string;
+  values: string[];
 }
 export interface OptionGroup {
   heading?: string;

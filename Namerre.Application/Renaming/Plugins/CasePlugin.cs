@@ -22,7 +22,7 @@ public sealed class CasePlugin() : RenamePlugin<CasePlugin.Options>("case", 1, "
             [
                 new("en", "English"), new("es", "Spanish"), new("ca", "Catalan"), new("fr", "French"),
                 new("it", "Italian"), new("pt", "Portuguese")
-            ], Hint: "Articles and prepositions kept lowercase by Title Case (short words lowercase)")
+            ], Hint: "Articles and prepositions kept lowercase", VisibleWhen: new("mode", ["smartTitle"]))
         ])
     ])
 {

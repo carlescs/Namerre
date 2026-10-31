@@ -10,6 +10,8 @@ namespace Namerre.Application.Renaming.Plugins;
 /// <param name="Step">Values of a <see cref="OptionFieldKind.Number"/> field are <paramref name="Min"/> (or 0) plus a
 /// multiple of this; 1 allows whole numbers only.</param>
 /// <param name="Fields">Columns of each row of a <see cref="OptionFieldKind.List"/> field; lists do not nest.</param>
+/// <param name="VisibleWhen">Shows the field only while a select or multi-select field holds one of the listed values; list columns
+/// cannot be conditional.</param>
 public sealed record OptionField(
     string Key,
     string Label,
@@ -22,4 +24,5 @@ public sealed record OptionField(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? Min = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? Max = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? Step = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<OptionField>? Fields = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<OptionField>? Fields = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] OptionCondition? VisibleWhen = null);

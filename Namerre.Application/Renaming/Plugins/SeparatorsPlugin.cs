@@ -14,7 +14,8 @@ public sealed partial class SeparatorsPlugin() : RenamePlugin<SeparatorsPlugin.O
         new([
             new("characters", "Replace with spaces", OptionFieldKind.MultiSelect,
                 [new("dots", "Dots (.)"), new("underscores", "Underscores (_)"), new("dashes", "Dashes (-)")]),
-            new("splitNumbers", "Also replace dots in short numbers (v1.2, 5.1)", OptionFieldKind.Checkbox),
+            new("splitNumbers", "Also replace dots in short numbers (v1.2, 5.1)", OptionFieldKind.Checkbox,
+                VisibleWhen: new("characters", ["dots"])),
             new("keepSpaces", "Keep repeated spaces", OptionFieldKind.Checkbox),
             new("keepEnds", "Keep spaces and separators at both ends", OptionFieldKind.Checkbox)
         ])

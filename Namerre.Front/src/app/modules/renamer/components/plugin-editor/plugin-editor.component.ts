@@ -200,6 +200,16 @@ export class PluginEditorComponent implements OnInit {
     return (group.requires ?? []).every((key) => values[key] === true);
   }
 
+  /** Whether a field's `visibleWhen` condition, if any, holds for the card's current values. */
+  protected shown(card: Card, field: OptionField): boolean {
+    const condition = field.visibleWhen;
+    if (!condition) return true;
+    const value = card.values()[condition.key];
+    if (Array.isArray(value))
+      return value.some((item) => condition.values.includes(item as string));
+    return typeof value === 'string' && condition.values.includes(value);
+  }
+
   /** Lines a revealed group up under the text of the checkbox that revealed it. */
   protected indent(group: OptionGroup): number {
     const depth = group.requires?.length ?? 0;
