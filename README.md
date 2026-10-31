@@ -344,6 +344,23 @@ types are allowed, except TMDB: a recipe holds at most one TMDB step, since each
 confirmed match for every file. Move instances up or down to choose the execution order; the
 catalog order does not determine execution order.
 
+### Related files
+
+With **Include related files** ticked (the default), files that belong to a video follow it
+instead of being renamed on their own: subtitles (`Movie.srt`, `Movie.en.hi.srt`, `.ass`, `.ssa`,
+`.sub`, `.idx`, `.vtt`), the `Movie.nfo` and artwork (`Movie-poster.jpg`, `-fanart`, `-thumb` as
+`.jpg`, `.jpeg`, `.png`, `.webp` or `.tbn`) in the same folder as a video in the collection. The
+name must be the video's stem followed directly by one of these suffixes, so `Movie 2.srt` belongs
+to `Movie 2.mkv`, never to `Movie.mkv`; when several videos match, the longest stem wins. The
+collection lists each related file under its video, moving or sorting a video carries its related
+files along, and removing a video removes them too. Related files skip the steps and take the
+video's final folder and name plus their own suffix, so a confirmed TMDB match, folder moves and a
+hand-edited name of the video apply to them, and they need no TMDB match of their own; step
+counters number the videos only. They stay separate files in the plan and the run (marked with
+`companionOf`, the video's file ID), so journaling, rollback and recovery still work per file —
+selecting a video for undo selects its related files too — and they count toward the 200-file
+limit. The API option is `includeCompanions` on the pipeline request (off unless sent).
+
 Plugins run on the server. Each enabled instance receives the preceding instance's
 output, and the preview shows the intermediate names and final relative destination.
 Text, regex, case, and prefix/suffix steps preserve the extension and folder; a

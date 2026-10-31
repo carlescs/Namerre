@@ -15,6 +15,7 @@ import {
   Injector,
   inject,
   input,
+  model,
   output,
   signal,
   viewChild,
@@ -27,6 +28,7 @@ import {
   faGripVertical,
   faTrashCan,
 } from '@fortawesome/free-solid-svg-icons';
+import { detectCompanions } from '../../companions';
 import { formatFileSize } from '../../file-size';
 import type { FolderListing } from '../../folder-listing';
 import type { RenamerFile } from '../../renamer-file';
@@ -78,6 +80,8 @@ export const sortOptions: readonly SortOption[] = [
 export class FileSelectionComponent {
   readonly files = input.required<RenamerFile[]>();
   readonly filesChanged = output<RenamerFile[]>();
+  /** Whether subtitles, .nfo files and artwork follow their video; on by default. */
+  readonly includeRelated = model(true);
   protected readonly trashIcon = faTrashCan;
   protected readonly folderIcon = faFolderOpen;
   protected readonly upIcon = faArrowUp;
@@ -115,13 +119,30 @@ export class FileSelectionComponent {
   protected readonly filtering = computed(
     () => this.activeType() !== null || this.search().trim() !== '',
   );
-  /** Collection positions by path; the order steps see as each file's position. */
-  protected readonly positions = computed(
-    () => new Map(this.files().map((file, index) => [file.path, index])),
+  /** Related file paths and the video each follows, while related files are included. */
+  protected readonly companions = computed(() =>
+    this.includeRelated()
+      ? detectCompanions(this.files().map((file) => file.path))
+      : new Map<string, string>(),
+  );
+  /** Number of related files by video path. */
+  protected readonly relatedCounts = computed(() => {
+    const counts = new Map<string, number>();
+    for (const video of this.companions().values()) counts.set(video, (counts.get(video) ?? 0) + 1);
+    return counts;
+  });
+  /**
+   * The collection as movable units: each video or other file, followed by the related files that
+   * move with it. Without related files every unit is a single file.
+   */
+  protected readonly units = computed(() => groupUnits(this.files(), this.companions()));
+  /** Unit index by the path of the file leading it; related files have none. */
+  protected readonly unitIndex = computed(
+    () => new Map(this.units().map((unit, index) => [unit[0].path, index])),
   );
   /** The sort the collection is currently in, or empty for a custom order. */
   protected readonly currentSort = computed(() => {
-    const files = this.files();
+    const files = this.units().map((unit) => unit[0]);
     return (
       sortOptions.find((option) =>
         files.every((file, i) => i === 0 || option.compare(files[i - 1], file) <= 0),
@@ -144,26 +165,56 @@ export class FileSelectionComponent {
     this.filesChanged.emit([]);
   }
 
+  /** Removes a file; a video takes its related files with it so they are not renamed alone. */
   protected removeFile(path: string): void {
-    this.filesChanged.emit(this.files().filter((file) => file.path !== path));
+    const related = new Set(
+      [...this.companions()].filter(([, video]) => video === path).map(([companion]) => companion),
+    );
+    if (related.size) {
+      const name = path.slice(path.lastIndexOf('/') + 1);
+      this.notice.set(
+        `Removed ${name} and its ${related.size} related ${related.size === 1 ? 'file' : 'files'}.`,
+      );
+    }
+    this.filesChanged.emit(
+      this.files().filter((file) => file.path !== path && !related.has(file.path)),
+    );
+  }
+
+  protected nameOf(path: string): string {
+    return path.slice(path.lastIndexOf('/') + 1);
   }
 
   protected sort(value: string): void {
     const option = sortOptions.find((entry) => entry.value === value);
     if (!option) return;
     this.notice.set(`Sorted by ${option.label[0].toLowerCase()}${option.label.slice(1)}.`);
-    this.filesChanged.emit([...this.files()].sort(option.compare));
+    this.filesChanged.emit([...this.units()].sort((a, b) => option.compare(a[0], b[0])).flat());
   }
 
-  /** Moves a file by `offset` places; only offered while the whole collection is shown. */
+  /** Turns related files on or off; on, each video's related files are placed right after it. */
+  protected setIncludeRelated(include: boolean): void {
+    this.includeRelated.set(include);
+    if (include) this.filesChanged.emit(this.units().flat());
+  }
+
+  /**
+   * Moves a file, with its related files, by `offset` places; only offered while the whole
+   * collection is shown.
+   */
   protected move(path: string, offset: number): void {
-    const from = this.positions().get(path);
+    const from = this.unitIndex().get(path);
     if (from === undefined) return;
     this.moveTo(from, from + offset, offset < 0 ? 'up' : 'down');
   }
 
   protected drop(event: CdkDragDrop<RenamerFile[]>): void {
-    this.moveTo(event.previousIndex, event.currentIndex);
+    const rows = this.filteredFiles();
+    const unitOf = (file: RenamerFile | undefined) =>
+      file && this.unitIndex().get(this.companions().get(file.path) ?? file.path);
+    const from = this.unitIndex().get(rows[event.previousIndex]?.path ?? '');
+    const to = unitOf(rows[event.currentIndex]);
+    if (from !== undefined && to !== undefined) this.moveTo(from, to);
   }
 
   protected toggleType(type: string): void {
@@ -207,20 +258,26 @@ export class FileSelectionComponent {
     } else {
       this.notice.set(`No files were found in ${label}.`);
     }
-    this.filesChanged.emit([...files, ...additions]);
+    const all = [...files, ...additions];
+    this.filesChanged.emit(
+      this.includeRelated()
+        ? groupUnits(all, detectCompanions(all.map((entry) => entry.path))).flat()
+        : all,
+    );
   }
 
+  /** Moves the unit at `from` to unit index `to`. */
   private moveTo(from: number, to: number, focus?: 'up' | 'down'): void {
-    const files = [...this.files()];
-    if (this.filtering() || from === to || to < 0 || to >= files.length) return;
-    const file = files[from];
-    moveItemInArray(files, from, to);
-    this.notice.set(`Moved ${file.name} to position ${to + 1} of ${files.length}.`);
-    this.filesChanged.emit(files);
+    const units = [...this.units()];
+    if (this.filtering() || from === to || to < 0 || to >= units.length) return;
+    const file = units[from][0];
+    moveItemInArray(units, from, to);
+    this.notice.set(`Moved ${file.name} to position ${to + 1} of ${units.length}.`);
+    this.filesChanged.emit(units.flat());
     if (!focus) return;
     // Keep focus on the moved file, switching direction once it reaches either end.
     const direction =
-      (focus === 'up' && to === 0) || (focus === 'down' && to === files.length - 1)
+      (focus === 'up' && to === 0) || (focus === 'down' && to === units.length - 1)
         ? focus === 'up'
           ? 'down'
           : 'up'
@@ -246,6 +303,19 @@ export class FileSelectionComponent {
     this.search.set('');
     this.typeFilter.set(null);
   }
+}
+
+/** Each file that is not a related file, followed by the related files that follow it. */
+function groupUnits(files: RenamerFile[], companions: Map<string, string>): RenamerFile[][] {
+  const units = new Map<string, RenamerFile[]>();
+  for (const file of files) {
+    if (!companions.has(file.path)) units.set(file.path, [file]);
+  }
+  for (const file of files) {
+    const video = companions.get(file.path);
+    if (video) units.get(video)?.push(file);
+  }
+  return [...units.values()];
 }
 
 function extensionOf(name: string): string {

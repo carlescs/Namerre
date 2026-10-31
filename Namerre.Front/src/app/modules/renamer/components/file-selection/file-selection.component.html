@@ -74,6 +74,20 @@
             }
           </select>
         </label>
+        <label class="m-0 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <input
+            id="include-related"
+            type="checkbox"
+            [checked]="includeRelated()"
+            (change)="setIncludeRelated($event.target.checked)"
+            aria-describedby="include-related-hint"
+          />
+          Include related files
+          <span id="include-related-hint" class="sr-only"
+            >Subtitles, .nfo files and artwork named after a video in the same folder are renamed
+            and moved with it.</span
+          >
+        </label>
       </div>
       <p class="m-0 text-xs text-slate-500 dark:text-slate-400" role="status">
         Showing {{ filteredFiles().length }} of {{ files().length }} files. Filtering does not
@@ -100,6 +114,9 @@
       } @else {
         Steps number files in this order. Drag the handle or use the arrows to move a file.
       }
+      @if (companions().size) {
+        Related files stay with their video, are renamed and moved with it and take no number.
+      }
     </p>
     <div #table class="file-list" tabindex="0" role="region" aria-label="Files added for renaming">
       <table id="collection-table">
@@ -124,14 +141,15 @@
           (cdkDropListDropped)="drop($event)"
         >
           @for (file of filteredFiles(); track file.path) {
-            @let position = positions().get(file.path) ?? 0;
+            @let position = unitIndex().get(file.path);
             <tr
               cdkDrag
+              [cdkDragDisabled]="position === undefined"
               [cdkDragData]="file"
               class="max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:gap-x-4 max-sm:gap-y-1 max-sm:border-t max-sm:border-slate-200 max-sm:p-3 dark:max-sm:border-slate-800"
             >
               <td class="whitespace-nowrap tabular-nums max-sm:order-1 max-sm:p-0">
-                @if (!filtering() && files().length > 1) {
+                @if (!filtering() && units().length > 1 && position !== undefined) {
                   <span
                     cdkDragHandle
                     class="drag-handle text-slate-400 dark:text-slate-500"
@@ -140,7 +158,12 @@
                     ><fa-icon [icon]="gripIcon"
                   /></span>
                 }
-                {{ position + 1 }}
+                @if (companions().get(file.path); as video) {
+                  <span aria-hidden="true">↳</span>
+                  <span class="sr-only">Related to {{ nameOf(video) }}</span>
+                } @else {
+                  {{ (position ?? 0) + 1 }}
+                }
               </td>
               <td class="max-sm:order-2 max-sm:min-w-0 max-sm:flex-1 max-sm:p-0">
                 <span class="block font-medium break-all text-slate-900 dark:text-slate-100">{{
@@ -149,6 +172,15 @@
                 <span class="block text-xs break-all text-slate-500 dark:text-slate-400">{{
                   file.folderPath || 'Server root'
                 }}</span>
+                @if (companions().get(file.path); as video) {
+                  <span class="block text-xs text-indigo-700 dark:text-indigo-300"
+                    >Follows {{ nameOf(video) }}</span
+                  >
+                } @else if (relatedCounts().get(file.path); as count) {
+                  <span class="block text-xs text-indigo-700 dark:text-indigo-300"
+                    >With {{ count }} related {{ count === 1 ? 'file' : 'files' }}</span
+                  >
+                }
               </td>
               <td
                 class="whitespace-nowrap tabular-nums max-sm:order-3 max-sm:p-0"
@@ -162,7 +194,7 @@
                 {{ file.lastModifiedUtc | date: 'mediumDate' }}
               </td>
               <td class="whitespace-nowrap max-sm:order-5 max-sm:ml-auto max-sm:p-0">
-                @if (!filtering()) {
+                @if (!filtering() && position !== undefined) {
                   <button
                     type="button"
                     class="icon-button"
@@ -182,7 +214,7 @@
                     data-move="down"
                     [attr.data-path]="file.path"
                     [attr.aria-label]="'Move ' + file.path + ' down'"
-                    [disabled]="position === files().length - 1"
+                    [disabled]="position === units().length - 1"
                     (click)="move(file.path, 1)"
                   >
                     <fa-icon [icon]="downIcon" aria-hidden="true" />

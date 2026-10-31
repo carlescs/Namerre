@@ -11,7 +11,15 @@
       </p>
     }
   </div>
-  <app-rename-workflow [files]="files()" (fileRemoved)="removeFile($event)">
-    <app-file-selection [files]="files()" (filesChanged)="files.set($event)" />
+  <app-rename-workflow
+    [files]="files()"
+    [includeRelated]="includeRelated()"
+    (fileRemoved)="removeFile($event)"
+  >
+    <app-file-selection
+      [files]="files()"
+      [(includeRelated)]="includeRelated"
+      (filesChanged)="files.set($event)"
+    />
   </app-rename-workflow>
 </main>

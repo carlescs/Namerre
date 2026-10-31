@@ -75,6 +75,14 @@ describe('FileSelectionComponent', () => {
     const el = (): HTMLElement => fixture.nativeElement;
     const rows = () => el().querySelectorAll('tbody tr');
     const squash = (text: string | null | undefined) => (text ?? '').replace(/\s+/g, ' ').trim();
+    /** A cell's text with its parts (such as name, folder and note) separated by spaces. */
+    const cellText = (cell: Element | null) =>
+      squash(
+        Array.from(cell?.childNodes ?? [])
+          .filter((node) => node.nodeType !== Node.COMMENT_NODE)
+          .map((node) => node.textContent)
+          .join(' '),
+      );
     const button = (label: string): HTMLButtonElement | undefined =>
       Array.from(el().querySelectorAll('button')).find((b) =>
         squash(b.textContent).startsWith(label),
@@ -133,6 +141,63 @@ describe('FileSelectionComponent', () => {
       expect(changed).toHaveBeenCalledWith([videos[0], videos[2], ...thumbs]);
     });
 
+    describe('related files', () => {
+      const related = () => el().querySelector('#include-related') as HTMLInputElement;
+      const notes = () =>
+        Array.from(rows()).map((row) => cellText(row.querySelector('td:nth-child(2)')));
+
+      it('groups artwork with its video and numbers only the videos', () => {
+        expect(related().checked).toBe(true);
+        expect(notes()).toEqual([
+          'e1.mp4 Show/S01 With 1 related file',
+          'e2.mp4 Show/S01 With 1 related file',
+          'e3.MP4 Show/S01',
+          'e1-thumb.jpg Show/S01 Follows e1.mp4',
+          'e2-thumb.jpg Show/S01 Follows e2.mp4',
+        ]);
+        expect(el().textContent).toContain('Related files stay with their video');
+        expect(Array.from(rows()).map((row) => cellText(row.querySelector('td')))).toEqual([
+          '1',
+          '2',
+          '3',
+          '↳ Related to e1.mp4',
+          '↳ Related to e2.mp4',
+        ]);
+      });
+
+      it('removes a video together with its related files', () => {
+        const remove = el().querySelector(
+          'button[aria-label="Remove Show/S01/e1.mp4 from collection"]',
+        ) as HTMLButtonElement;
+        remove.click();
+        expect(changed).toHaveBeenCalledWith([videos[1], videos[2], thumbs[1]]);
+        fixture.detectChanges();
+        expect(el().textContent).toContain('Removed e1.mp4 and its 1 related file.');
+      });
+
+      it('treats every file on its own once the option is turned off', () => {
+        related().click();
+        fixture.detectChanges();
+        expect(fixture.componentInstance.includeRelated()).toBe(false);
+        expect(notes()).toEqual([
+          'e1.mp4 Show/S01',
+          'e2.mp4 Show/S01',
+          'e3.MP4 Show/S01',
+          'e1-thumb.jpg Show/S01',
+          'e2-thumb.jpg Show/S01',
+        ]);
+        expect(
+          Array.from(rows()).map((row) => squash(row.querySelector('td')?.textContent)),
+        ).toEqual(['1', '2', '3', '4', '5']);
+        (
+          el().querySelector(
+            'button[aria-label="Remove Show/S01/e1.mp4 from collection"]',
+          ) as HTMLButtonElement
+        ).click();
+        expect(changed).toHaveBeenCalledWith([videos[1], videos[2], ...thumbs]);
+      });
+    });
+
     it('offers no bulk removal without a filter', () => {
       expect(button('Remove')).toBeUndefined();
       expect(button('Clear collection')).toBeDefined();
@@ -149,89 +214,175 @@ describe('FileSelectionComponent', () => {
         fixture.debugElement.query(By.directive(CdkDropList)).injector.get(CdkDropList);
       const lastEmitted = () => changed.mock.lastCall?.[0] ?? [];
 
-      it('numbers files in collection order and recognises a custom order', () => {
-        expect(
-          Array.from(rows()).map((row) => squash(row.querySelector('td')?.textContent)),
-        ).toEqual(['1', '2', '3', '4', '5']);
-        expect(select().selectedOptions[0].textContent?.trim()).toBe('Custom order');
-      });
-
-      it('sorts the collection naturally once and recognises the sort', async () => {
-        const numbered = [make('ep10.mkv', 'B'), make('ep2.mkv', 'A'), make('Ep1.mkv', 'C')];
-        fixture.componentRef.setInput('files', numbered);
-        await fixture.whenStable();
-        select().value = 'name';
-        select().dispatchEvent(new Event('change'));
-        expect(names(lastEmitted())).toEqual(['Ep1.mkv', 'ep2.mkv', 'ep10.mkv']);
-        select().value = 'folder';
-        select().dispatchEvent(new Event('change'));
-        expect(names(lastEmitted())).toEqual(['ep2.mkv', 'ep10.mkv', 'Ep1.mkv']);
-
-        fixture.componentRef.setInput('files', lastEmitted());
-        await fixture.whenStable();
-        expect(select().selectedOptions[0].textContent?.trim()).toBe('Folder, then name');
-        expect(status()).toContain('Sorted by folder, then name.');
-      });
-
-      it('sorts by size and modification date in both directions', () => {
-        const small = { ...make('small.mkv', 'A', 5), lastModifiedUtc: '2026-01-02T00:00:00Z' };
-        const large = { ...make('large.mkv', 'A', 50), lastModifiedUtc: '2026-01-01T00:00:00Z' };
-        fixture.componentRef.setInput('files', [small, large]);
-        fixture.detectChanges();
-        const sorted = (value: string) => {
-          select().value = value;
+      describe('with related files', () => {
+        it('keeps related files right after their video when sorting and adding', async () => {
+          select().value = 'name-desc';
           select().dispatchEvent(new Event('change'));
-          return names(lastEmitted());
-        };
-        expect(sorted('size')).toEqual(['small.mkv', 'large.mkv']);
-        expect(sorted('size-desc')).toEqual(['large.mkv', 'small.mkv']);
-        expect(sorted('modified')).toEqual(['large.mkv', 'small.mkv']);
-        expect(sorted('modified-desc')).toEqual(['small.mkv', 'large.mkv']);
+          expect(names(lastEmitted())).toEqual([
+            'e3.MP4',
+            'e2.mp4',
+            'e2-thumb.jpg',
+            'e1.mp4',
+            'e1-thumb.jpg',
+          ]);
+          fixture.componentRef.setInput('files', lastEmitted());
+          await fixture.whenStable();
+          expect(select().selectedOptions[0].textContent?.trim()).toBe('Name (Z to A)');
+
+          const picker = fixture.debugElement.query(By.directive(FolderPickerComponent))
+            .componentInstance as FolderPickerComponent;
+          const entry = (name: string) => ({ name, length: 1, lastModifiedUtc: '2026-10-18' });
+          picker.folderSelected.emit([
+            {
+              path: 'Show/S01',
+              parentPath: 'Show',
+              directories: [],
+              files: [entry('e3.en.srt'), entry('e4.mkv')],
+            },
+          ]);
+          expect(names(lastEmitted())).toEqual([
+            'e3.MP4',
+            'e3.en.srt',
+            'e2.mp4',
+            'e2-thumb.jpg',
+            'e1.mp4',
+            'e1-thumb.jpg',
+            'e4.mkv',
+          ]);
+        });
+
+        it('moves a video with its related files and offers no moves for related files', () => {
+          fixture.componentRef.setInput('files', [videos[0], thumbs[0], videos[1], thumbs[1]]);
+          fixture.detectChanges();
+          expect(moveButton(thumbs[0].path, 'down')).toBeNull();
+          moveButton(videos[0].path, 'down').click();
+          fixture.detectChanges();
+          expect(names(lastEmitted())).toEqual([
+            'e2.mp4',
+            'e2-thumb.jpg',
+            'e1.mp4',
+            'e1-thumb.jpg',
+          ]);
+          expect(status()).toContain('Moved e1.mp4 to position 2 of 2.');
+          dropList().dropped.emit({ previousIndex: 2, currentIndex: 1 } as CdkDragDrop<
+            RenamerFile[]
+          >);
+          expect(names(lastEmitted())).toEqual([
+            'e2.mp4',
+            'e2-thumb.jpg',
+            'e1.mp4',
+            'e1-thumb.jpg',
+          ]);
+        });
+
+        it('groups the collection again when related files are turned back on', () => {
+          const related = el().querySelector('#include-related') as HTMLInputElement;
+          related.click();
+          related.click();
+          expect(names(lastEmitted())).toEqual([
+            'e1.mp4',
+            'e1-thumb.jpg',
+            'e2.mp4',
+            'e2-thumb.jpg',
+            'e3.MP4',
+          ]);
+        });
       });
 
-      it('moves files with the arrow buttons, keeps focus and announces the move', async () => {
-        const files = [...videos, ...thumbs];
-        expect(moveButton(files[0].path, 'up').disabled).toBe(true);
-        expect(moveButton(files[4].path, 'down').disabled).toBe(true);
-        moveButton(files[0].path, 'down').click();
-        expect(changed).toHaveBeenLastCalledWith([files[1], files[0], ...files.slice(2)]);
-        fixture.componentRef.setInput('files', lastEmitted());
-        await fixture.whenStable();
-        expect(document.activeElement).toBe(moveButton(files[0].path, 'down'));
-        expect(status()).toContain('Moved e1.mp4 to position 2 of 5.');
+      describe('of single files', () => {
+        beforeEach(() => {
+          fixture.componentInstance.includeRelated.set(false);
+          fixture.detectChanges();
+        });
 
-        moveButton(files[0].path, 'up').click();
-        fixture.componentRef.setInput('files', lastEmitted());
-        await fixture.whenStable();
-        expect(changed).toHaveBeenLastCalledWith(files);
-        // At the top the up button is disabled, so focus moves to the down button.
-        expect(document.activeElement).toBe(moveButton(files[0].path, 'down'));
-      });
+        it('numbers files in collection order and recognises a custom order', () => {
+          expect(Array.from(rows()).map((row) => cellText(row.querySelector('td')))).toEqual([
+            '1',
+            '2',
+            '3',
+            '4',
+            '5',
+          ]);
+          expect(select().selectedOptions[0].textContent?.trim()).toBe('Custom order');
+        });
 
-      it('reorders files dropped with drag and drop', () => {
-        dropList().dropped.emit({ previousIndex: 4, currentIndex: 1 } as CdkDragDrop<
-          RenamerFile[]
-        >);
-        expect(changed).toHaveBeenLastCalledWith([
-          videos[0],
-          thumbs[1],
-          videos[1],
-          videos[2],
-          thumbs[0],
-        ]);
-        expect(el().querySelectorAll('.drag-handle')).toHaveLength(5);
-      });
+        it('sorts the collection naturally once and recognises the sort', async () => {
+          const numbered = [make('ep10.mkv', 'B'), make('ep2.mkv', 'A'), make('Ep1.mkv', 'C')];
+          fixture.componentRef.setInput('files', numbered);
+          await fixture.whenStable();
+          select().value = 'name';
+          select().dispatchEvent(new Event('change'));
+          expect(names(lastEmitted())).toEqual(['Ep1.mkv', 'ep2.mkv', 'ep10.mkv']);
+          select().value = 'folder';
+          select().dispatchEvent(new Event('change'));
+          expect(names(lastEmitted())).toEqual(['ep2.mkv', 'ep10.mkv', 'Ep1.mkv']);
 
-      it('offers no reordering while a filter hides part of the collection', () => {
-        typeText('e1');
-        expect(dropList().disabled).toBe(true);
-        expect(el().querySelector('button[aria-label^="Move"]')).toBeNull();
-        expect(el().querySelector('.drag-handle')).toBeNull();
-        expect(el().textContent).toContain('Clear the filter to change the order.');
-        dropList().dropped.emit({ previousIndex: 0, currentIndex: 1 } as CdkDragDrop<
-          RenamerFile[]
-        >);
-        expect(changed).not.toHaveBeenCalled();
+          fixture.componentRef.setInput('files', lastEmitted());
+          await fixture.whenStable();
+          expect(select().selectedOptions[0].textContent?.trim()).toBe('Folder, then name');
+          expect(status()).toContain('Sorted by folder, then name.');
+        });
+
+        it('sorts by size and modification date in both directions', () => {
+          const small = { ...make('small.mkv', 'A', 5), lastModifiedUtc: '2026-01-02T00:00:00Z' };
+          const large = { ...make('large.mkv', 'A', 50), lastModifiedUtc: '2026-01-01T00:00:00Z' };
+          fixture.componentRef.setInput('files', [small, large]);
+          fixture.detectChanges();
+          const sorted = (value: string) => {
+            select().value = value;
+            select().dispatchEvent(new Event('change'));
+            return names(lastEmitted());
+          };
+          expect(sorted('size')).toEqual(['small.mkv', 'large.mkv']);
+          expect(sorted('size-desc')).toEqual(['large.mkv', 'small.mkv']);
+          expect(sorted('modified')).toEqual(['large.mkv', 'small.mkv']);
+          expect(sorted('modified-desc')).toEqual(['small.mkv', 'large.mkv']);
+        });
+
+        it('moves files with the arrow buttons, keeps focus and announces the move', async () => {
+          const files = [...videos, ...thumbs];
+          expect(moveButton(files[0].path, 'up').disabled).toBe(true);
+          expect(moveButton(files[4].path, 'down').disabled).toBe(true);
+          moveButton(files[0].path, 'down').click();
+          expect(changed).toHaveBeenLastCalledWith([files[1], files[0], ...files.slice(2)]);
+          fixture.componentRef.setInput('files', lastEmitted());
+          await fixture.whenStable();
+          expect(document.activeElement).toBe(moveButton(files[0].path, 'down'));
+          expect(status()).toContain('Moved e1.mp4 to position 2 of 5.');
+
+          moveButton(files[0].path, 'up').click();
+          fixture.componentRef.setInput('files', lastEmitted());
+          await fixture.whenStable();
+          expect(changed).toHaveBeenLastCalledWith(files);
+          // At the top the up button is disabled, so focus moves to the down button.
+          expect(document.activeElement).toBe(moveButton(files[0].path, 'down'));
+        });
+
+        it('reorders files dropped with drag and drop', () => {
+          dropList().dropped.emit({ previousIndex: 4, currentIndex: 1 } as CdkDragDrop<
+            RenamerFile[]
+          >);
+          expect(changed).toHaveBeenLastCalledWith([
+            videos[0],
+            thumbs[1],
+            videos[1],
+            videos[2],
+            thumbs[0],
+          ]);
+          expect(el().querySelectorAll('.drag-handle')).toHaveLength(5);
+        });
+
+        it('offers no reordering while a filter hides part of the collection', () => {
+          typeText('e1');
+          expect(dropList().disabled).toBe(true);
+          expect(el().querySelector('button[aria-label^="Move"]')).toBeNull();
+          expect(el().querySelector('.drag-handle')).toBeNull();
+          expect(el().textContent).toContain('Clear the filter to change the order.');
+          dropList().dropped.emit({ previousIndex: 0, currentIndex: 1 } as CdkDragDrop<
+            RenamerFile[]
+          >);
+          expect(changed).not.toHaveBeenCalled();
+        });
       });
     });
 

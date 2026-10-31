@@ -361,6 +361,11 @@
                 <ng-container
                   *ngTemplateOutlet="pathCell; context: { $implicit: file.sourcePath }"
                 />
+                @if (file.companionOf) {
+                  <span class="block text-xs text-slate-500 dark:text-slate-400"
+                    >Related file, renamed with its video</span
+                  >
+                }
               </td>
               <td class="max-sm:block max-sm:px-0 max-sm:py-1">
                 <span class="text-xs text-slate-500 sm:hidden dark:text-slate-400">Renamed to</span>

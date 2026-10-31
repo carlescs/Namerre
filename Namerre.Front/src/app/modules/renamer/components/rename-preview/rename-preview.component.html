@@ -147,7 +147,11 @@
                       @for (step of file.steps; track step.instanceId) {
                         <li>
                           <strong>{{
-                            step.typeId === 'override' ? 'Edited by hand' : step.typeId
+                            step.typeId === 'override'
+                              ? 'Edited by hand'
+                              : step.typeId === 'companion'
+                                ? 'Named after its video'
+                                : step.typeId
                           }}</strong>
                           <p class="m-0">
                             From <code>{{ step.inputPath }}</code>

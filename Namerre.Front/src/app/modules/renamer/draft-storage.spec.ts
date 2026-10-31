@@ -1,7 +1,9 @@
 import {
   loadFilesDraft,
+  loadIncludeRelatedDraft,
   loadPipelineDraft,
   saveFilesDraft,
+  saveIncludeRelatedDraft,
   savePipelineDraft,
 } from './draft-storage';
 import type { RenamerFile } from './renamer-file';
@@ -17,6 +19,15 @@ describe('draft storage', () => {
 
   beforeEach(() => localStorage.clear());
   afterEach(() => vi.restoreAllMocks());
+
+  it('includes related files unless they were turned off', () => {
+    expect(loadIncludeRelatedDraft()).toBe(true);
+    saveIncludeRelatedDraft(false);
+    expect(loadIncludeRelatedDraft()).toBe(false);
+    saveIncludeRelatedDraft(true);
+    expect(localStorage.length).toBe(0);
+    expect(loadIncludeRelatedDraft()).toBe(true);
+  });
 
   it('round-trips files and removes the entry when the collection empties', () => {
     saveFilesDraft([file]);

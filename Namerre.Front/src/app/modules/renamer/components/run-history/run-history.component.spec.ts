@@ -305,6 +305,27 @@ describe('RunHistoryComponent', () => {
     expect(checkboxes.every((checkbox) => checkbox.disabled)).toBe(true);
   });
 
+  it('selects related files together with their video for undo', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush({
+      ...run,
+      files: [...run.files, { ...run.files[1], id: 'c', sourcePath: 'a.srt', companionOf: 'a' }],
+    });
+    await fixture.whenStable();
+    const checkboxes = Array.from(
+      fixture.nativeElement.querySelectorAll('input.file-select') as NodeListOf<HTMLInputElement>,
+    );
+    expect(fixture.nativeElement.textContent).toContain('Related file, renamed with its video');
+    checkboxes[0].click();
+    await fixture.whenStable();
+    expect(checkboxes.map((checkbox) => checkbox.checked)).toEqual([true, false, true]);
+    checkboxes[2].click();
+    await fixture.whenStable();
+    expect(checkboxes.map((checkbox) => checkbox.checked)).toEqual([true, false, false]);
+    checkboxes[0].click();
+    await fixture.whenStable();
+    expect(checkboxes.map((checkbox) => checkbox.checked)).toEqual([false, false, false]);
+  });
+
   it('invalidates an approved rollback when the selection changes', async () => {
     http.expectOne('/api/rename-runs/run-1').flush(run);
     await fixture.whenStable();

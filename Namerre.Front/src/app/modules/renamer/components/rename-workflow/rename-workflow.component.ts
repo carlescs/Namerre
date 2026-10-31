@@ -26,6 +26,7 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
+import { detectCompanions } from '../../companions';
 import { loadPipelineDraft, saveFilesDraft, savePipelineDraft } from '../../draft-storage';
 import { tmdbOptionsHash } from '../../options-hash';
 import {
@@ -73,6 +74,8 @@ type WizardStage = 'files' | 'plugins' | 'matching' | 'preview' | 'confirmation'
 })
 export class RenameWorkflowComponent {
   readonly files = input.required<RenamerFile[]>();
+  /** Related files (subtitles, .nfo, artwork) follow their video instead of running the steps. */
+  readonly includeRelated = input(true);
   readonly fileRemoved = output<string>();
   private readonly api = inject(RenameApi);
   private readonly events = inject(RenameEvents);
@@ -152,20 +155,32 @@ export class RenameWorkflowComponent {
   protected readonly tmdbPlugins = computed(() =>
     this.plugins().filter((plugin) => plugin.enabled && plugin.typeId === 'tmdb'),
   );
+  /** Related file paths and the video each follows, as the server will pair them. */
+  protected readonly companions = computed(() =>
+    this.includeRelated()
+      ? detectCompanions(this.files().map((file) => file.path))
+      : new Map<string, string>(),
+  );
   protected readonly matchRows = computed(() =>
-    this.files().flatMap((file) =>
-      this.tmdbPlugins().map((plugin) => ({
-        fileId: file.path,
-        plugin,
-        position: this.plugins().indexOf(plugin) + 1,
-        suggestion: this.suggestions().find(
-          (entry) => entry.fileId === file.path && entry.instanceId === plugin.instanceId,
-        ),
-        step: this.preview()
-          ?.files.find((entry) => entry.id === file.path)
-          ?.steps.find((step) => step.instanceId === plugin.instanceId),
-      })),
-    ),
+    this.files()
+      .filter(
+        (file) =>
+          !this.companions().has(file.path) &&
+          !this.preview()?.files.find((entry) => entry.id === file.path)?.companionOf,
+      )
+      .flatMap((file) =>
+        this.tmdbPlugins().map((plugin) => ({
+          fileId: file.path,
+          plugin,
+          position: this.plugins().indexOf(plugin) + 1,
+          suggestion: this.suggestions().find(
+            (entry) => entry.fileId === file.path && entry.instanceId === plugin.instanceId,
+          ),
+          step: this.preview()
+            ?.files.find((entry) => entry.id === file.path)
+            ?.steps.find((step) => step.instanceId === plugin.instanceId),
+        })),
+      ),
   );
   protected readonly metadataPending = computed(() => this.preview()?.files.some(awaitingMetadata));
   protected readonly unmatchedFiles = computed(
@@ -209,6 +224,7 @@ export class RenameWorkflowComponent {
   constructor() {
     effect(() => {
       this.files();
+      this.includeRelated();
       untracked(() => this.invalidate());
     });
     effect(() =>
@@ -745,6 +761,7 @@ export class RenameWorkflowComponent {
       verifyContent: this.verifyContent(),
       deleteEmptyFolders: this.deleteEmptyFolders(),
       overrides: this.overrides(),
+      includeCompanions: this.includeRelated(),
     };
   }
 

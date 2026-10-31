@@ -32,6 +32,9 @@ public sealed class PipelineEngine
     /// <summary>Instance and type ID of the trace step recording a manual target override.</summary>
     public const string OverrideStepId = "override";
 
+    /// <summary>Instance and type ID of the trace step that names a related file after its video.</summary>
+    public const string CompanionStepId = "companion";
+
     private readonly IRenameFileSystem fileSystem;
     private readonly Dictionary<(string TypeId, int Version), IRenamePlugin> plugins = [];
 
@@ -62,73 +65,28 @@ public sealed class PipelineEngine
         CancellationToken cancellationToken)
     {
         ValidateRequest(request);
-        var positions = Positions(request.Files);
-        var results = new List<PreviewFile>();
+        var companions = request.IncludeCompanions
+            ? CompanionFiles.Detect(request.Files) : new Dictionary<string, Companion>();
+        // Related files follow their video and take no position, so counters number the videos only.
+        var positions = Positions(request.Files.Where(f => !companions.ContainsKey(f.Id)).ToArray());
+        var computed = new PreviewFile[request.Files.Count];
+        var position = 0;
         for (var index = 0; index < request.Files.Count; index++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             var file = request.Files[index];
-            var current = file.Path;
-            var issues = new List<RenameIssue>();
-            var steps = new List<StepTrace>();
-            FileFacts? fileFacts = null;
-            try
-            {
-                fileSystem.Validate(current);
-                if (!fileSystem.Exists(current))
-                    throw new RenameException("SourceMissing", "The source file is unavailable.");
-                fileFacts = facts?.GetValueOrDefault(file.Id) ?? fileSystem.Facts(current);
-            }
-            catch (Exception exception) when (exception is RenameException or ArgumentException or IOException
-                or UnauthorizedAccessException)
-            {
-                issues.Add(Issue(exception));
-            }
-            foreach (var plugin in request.Plugins.Where(p => p.Enabled))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (issues.Count > 0) break;
-                var input = current;
-                try
-                {
-                    current = Apply(file, plugin, input, request.Selections ?? [], positions[index], fileFacts!);
-                    fileSystem.Validate(current);
-                    steps.Add(new(plugin.InstanceId, plugin.TypeId, input, current, null));
-                }
-                catch (Exception exception) when (exception is RenameException or ArgumentException
-                    or RegexMatchTimeoutException or InvalidOperationException or KeyNotFoundException
-                    or JsonException)
-                {
-                    var issue = Issue(exception);
-                    issues.Add(issue);
-                    steps.Add(new(plugin.InstanceId, plugin.TypeId, input, null, issue));
-                }
-            }
-            var targetOverride = request.Overrides?.FirstOrDefault(o => o.FileId == file.Id);
-            if (issues.Count == 0 && targetOverride is not null)
-            {
-                // A manual override replaces the computed name and may change any part of the path.
-                var input = current;
-                try
-                {
-                    fileSystem.Validate(targetOverride.TargetPath);
-                    current = targetOverride.TargetPath;
-                    steps.Add(new(OverrideStepId, OverrideStepId, input, current, null));
-                }
-                catch (Exception exception) when (exception is RenameException or ArgumentException)
-                {
-                    var issue = Issue(exception);
-                    issues.Add(issue);
-                    steps.Add(new(OverrideStepId, OverrideStepId, input, null, issue));
-                }
-            }
-            if (issues.Count == 0)
-            {
-                try { fileSystem.CheckSameDevice(file.Path, current); }
-                catch (RenameException exception) { issues.Add(Issue(exception)); }
-            }
-            results.Add(new(file.Id, file.Path, current, file.Path == current, steps, issues));
+            if (companions.ContainsKey(file.Id)) continue;
+            computed[index] = PreviewOne(request, file, positions[position++], facts, cancellationToken);
         }
+        var targets = request.Files.Select((file, index) => (file.Id, index))
+            .ToDictionary(entry => entry.Id, entry => entry.index, StringComparer.Ordinal);
+        for (var index = 0; index < request.Files.Count; index++)
+        {
+            var file = request.Files[index];
+            if (companions.TryGetValue(file.Id, out var companion))
+                computed[index] = PreviewCompanion(request, file, companion, computed[targets[companion.VideoId]],
+                    cancellationToken);
+        }
+        var results = computed.ToList();
         for (var i = 0; i < results.Count; i++)
         {
             var item = results[i];
@@ -146,6 +104,120 @@ public sealed class PipelineEngine
         }
         return Task.FromResult(new PreviewResult(results, results.Count > 0 && results.All(f => f.Issues.Count == 0)));
     }
+
+    private PreviewFile PreviewOne(PipelineRequest request, FileInput file, FilePosition position,
+        IReadOnlyDictionary<string, FileFacts>? facts, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var current = file.Path;
+        var issues = new List<RenameIssue>();
+        var steps = new List<StepTrace>();
+        FileFacts? fileFacts = null;
+        try
+        {
+            fileSystem.Validate(file.Path);
+            if (!fileSystem.Exists(file.Path))
+                throw new RenameException("SourceMissing", "The source file is unavailable.");
+            fileFacts = facts?.GetValueOrDefault(file.Id) ?? fileSystem.Facts(file.Path);
+        }
+        catch (Exception exception) when (exception is RenameException or ArgumentException or IOException
+            or UnauthorizedAccessException)
+        {
+            issues.Add(Issue(exception));
+        }
+        foreach (var plugin in request.Plugins.Where(p => p.Enabled))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (issues.Count > 0) break;
+            var input = current;
+            try
+            {
+                current = Apply(file, plugin, input, request.Selections ?? [], position, fileFacts!);
+                fileSystem.Validate(current);
+                steps.Add(new(plugin.InstanceId, plugin.TypeId, input, current, null));
+            }
+            catch (Exception exception) when (exception is RenameException or ArgumentException
+                or RegexMatchTimeoutException or InvalidOperationException or KeyNotFoundException
+                or JsonException)
+            {
+                var issue = Issue(exception);
+                issues.Add(issue);
+                steps.Add(new(plugin.InstanceId, plugin.TypeId, input, null, issue));
+            }
+        }
+        current = Finish(request, file, current, steps, issues);
+        return new(file.Id, file.Path, current, file.Path == current, steps, issues);
+    }
+
+    /// <summary>
+    /// A related file skips the steps: it takes its video's final folder and stem (after any override of the
+    /// video) and keeps its own suffix, so a confirmed TMDB match and folder moves of the video apply to it too.
+    /// </summary>
+    private PreviewFile PreviewCompanion(PipelineRequest request, FileInput file, Companion companion,
+        PreviewFile video, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var current = file.Path;
+        var issues = new List<RenameIssue>();
+        var steps = new List<StepTrace>();
+        try
+        {
+            fileSystem.Validate(file.Path);
+            if (!fileSystem.Exists(file.Path))
+                throw new RenameException("SourceMissing", "The source file is unavailable.");
+            if (video.Issues.Count > 0)
+                throw new RenameException("CompanionBlocked",
+                    $"Follows {FileName(video.SourcePath)}, which cannot be renamed yet.");
+            var videoName = FileName(video.TargetPath);
+            var folder = video.TargetPath[..^videoName.Length];
+            current = folder + Path.GetFileNameWithoutExtension(videoName) + companion.Suffix;
+            fileSystem.Validate(current);
+            steps.Add(new(CompanionStepId, CompanionStepId, file.Path, current, null));
+        }
+        catch (Exception exception) when (exception is RenameException or ArgumentException or IOException
+            or UnauthorizedAccessException)
+        {
+            var issue = Issue(exception);
+            issues.Add(issue);
+            if (issue.Code != "SourceMissing" && issue.Code != "SourceUnreadable")
+                steps.Add(new(CompanionStepId, CompanionStepId, file.Path, null, issue));
+            current = file.Path;
+        }
+        current = Finish(request, file, current, steps, issues);
+        return new(file.Id, file.Path, current, file.Path == current, steps, issues, companion.VideoId);
+    }
+
+    /// <summary>Applies a manual override and checks the device; returns the final target.</summary>
+    private string Finish(PipelineRequest request, FileInput file, string current, List<StepTrace> steps,
+        List<RenameIssue> issues)
+    {
+        var targetOverride = request.Overrides?.FirstOrDefault(o => o.FileId == file.Id);
+        if (issues.Count == 0 && targetOverride is not null)
+        {
+            // A manual override replaces the computed name and may change any part of the path.
+            var input = current;
+            try
+            {
+                fileSystem.Validate(targetOverride.TargetPath);
+                current = targetOverride.TargetPath;
+                steps.Add(new(OverrideStepId, OverrideStepId, input, current, null));
+            }
+            catch (Exception exception) when (exception is RenameException or ArgumentException)
+            {
+                var issue = Issue(exception);
+                issues.Add(issue);
+                steps.Add(new(OverrideStepId, OverrideStepId, input, null, issue));
+            }
+        }
+        if (issues.Count == 0)
+        {
+            try { fileSystem.CheckSameDevice(file.Path, current); }
+            catch (RenameException exception) { issues.Add(Issue(exception)); }
+        }
+        return current;
+    }
+
+    private static string FileName(string path) => path[(path.LastIndexOf('/') + 1)..];
 
     public void ValidateRequest(PipelineRequest request)
     {
