@@ -37,6 +37,7 @@ describe('RenamerComponent', () => {
 
   afterEach(() => {
     fixture.destroy();
+    localStorage.clear();
     http.verify();
   });
 

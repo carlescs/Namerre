@@ -155,6 +155,7 @@ describe('RenameWorkflowComponent', () => {
 
   afterEach(() => {
     fixture.destroy();
+    localStorage.clear();
     http.verify();
     vi.restoreAllMocks();
   });

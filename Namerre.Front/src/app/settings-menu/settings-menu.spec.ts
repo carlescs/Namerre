@@ -2,6 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { SettingsMenu } from './settings-menu';
 
 describe('SettingsMenu', () => {
+  // Other spec files share this browser storage; start from the default (Simple) mode.
+  beforeEach(() => localStorage.clear());
   afterEach(() => localStorage.clear());
 
   async function render() {
