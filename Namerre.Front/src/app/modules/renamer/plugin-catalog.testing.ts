@@ -120,7 +120,10 @@ export const tmdbPlugin: PluginDescriptor = {
           kind: 'text',
           wide: true,
           placeholder: 'Leave empty to use the default',
-          hint: 'Defaults: {title} ({year}) for movies, {title} - S{season}E{episode} - {episodeTitle} for episodes.',
+          hint:
+            'Fields: {title}, {originalTitle}, {year}, {showYear}, {airDate}, {tmdbId}, {season}, {seasonNumber}, {episode}, {episodeTitle}. ' +
+            'Pad numbers with zeros, e.g. {episode:000}. ' +
+            'Defaults: {title} ({year}) for movies, {title} - S{season}E{episode} - {episodeTitle} for episodes.',
         },
         {
           key: 'language',
@@ -162,7 +165,7 @@ export const tmdbPlugin: PluginDescriptor = {
           key: 'folderTemplate',
           label: 'Folder template',
           kind: 'text',
-          hint: 'Creates a folder inside the base folder.',
+          hint: 'Creates a folder inside the base folder, e.g. {title} ({year}) [tmdbid-{tmdbId}].',
         },
         { key: 'seasonFolder', label: 'Add season folder for episodes', kind: 'checkbox' },
       ],

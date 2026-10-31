@@ -304,6 +304,48 @@ public sealed class TmdbMetadataTests : IDisposable
     }
 
     [Fact]
+    public async Task MovieConfirmationsCarryTheOriginalTitleAndReleaseDate()
+    {
+        respond = _ => Task.FromResult(Json(
+            """{"id":5,"title":"Alien","original_title":"Alien original","release_date":"1979-05-25"}"""));
+
+        var match = Assert.Single((await Metadata().Search(Confirm(), default)).Matches);
+
+        Assert.Equal(("Alien original", "1979-05-25", (string?)null), (match.OriginalTitle, match.AirDate, match.ShowYear));
+    }
+
+    [Fact]
+    public async Task EpisodeConfirmationsCarryTheAirDateAndShowYear()
+    {
+        respond = request => Task.FromResult(request.RequestUri!.AbsolutePath.Contains("/episode/")
+            ? Json("""{"name":"Pilot","air_date":"2008-01-20"}""")
+            : Json("""{"name":"Show","original_name":"Original Show","first_air_date":"2008-01-20"}"""));
+
+        var match = Assert.Single((await Metadata().Search(
+            Confirm() with { MediaType = "tv", Season = 1, Episode = 1 }, default)).Matches);
+
+        Assert.Equal(("Original Show", "2008-01-20", "2008"), (match.OriginalTitle, match.AirDate, match.ShowYear));
+        Assert.Equal(1, match.Season);
+    }
+
+    [Theory]
+    [InlineData("""{"name":"Pilot"}""")]
+    [InlineData("""{"name":"Pilot","air_date":""}""")]
+    [InlineData("""{"name":"Pilot","air_date":"2008"}""")]
+    [InlineData("""{"name":"Pilot","air_date":"2008-13-40"}""")]
+    public async Task MissingOrMalformedValuesAreLeftUnavailable(string episode)
+    {
+        respond = request => Task.FromResult(request.RequestUri!.AbsolutePath.Contains("/episode/")
+            ? Json(episode)
+            : Json("""{"name":"Show","original_name":" "}"""));
+
+        var match = Assert.Single((await Metadata().Search(
+            Confirm() with { MediaType = "tv", Season = 1, Episode = 1 }, default)).Matches);
+
+        Assert.Equal(((string?)null, (string?)null, (string?)null), (match.OriginalTitle, match.AirDate, match.ShowYear));
+    }
+
+    [Fact]
     public void UnknownConfirmationTokensAreStale()
     {
         var exception = Assert.Throws<RenameException>(() => Metadata().Resolve(

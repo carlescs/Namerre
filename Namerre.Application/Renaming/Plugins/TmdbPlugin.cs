@@ -15,7 +15,9 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
             new([
                 new("nameTemplate", "Filename template", Wide: true,
                     Placeholder: "Leave empty to use the default",
-                    Hint: "Defaults: {title} ({year}) for movies, {title} - S{season}E{episode} - {episodeTitle} for episodes."),
+                    Hint: "Fields: {title}, {originalTitle}, {year}, {showYear}, {airDate}, {tmdbId}, {season}, {seasonNumber}, {episode}, {episodeTitle}. "
+                        + "Pad numbers with zeros, e.g. {episode:000}. "
+                        + "Defaults: {title} ({year}) for movies, {title} - S{season}E{episode} - {episodeTitle} for episodes."),
                 new("language", "Metadata language",
                     Hint: "Sets the language of titles. Pick one or type your own.",
                     Suggestions: ["en-US", "en-GB", "es-ES", "ca-ES", "fr-FR", "de-DE", "it-IT", "pt-PT", "pt-BR",
@@ -25,7 +27,8 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
             new([
                 new("baseFolder", "Base folder", Placeholder: "Library root",
                     Hint: "Relative to the library root, with forward slashes, e.g. Movies/Archive."),
-                new("folderTemplate", "Folder template", Hint: "Creates a folder inside the base folder."),
+                new("folderTemplate", "Folder template",
+                    Hint: "Creates a folder inside the base folder, e.g. {title} ({year}) [tmdbid-{tmdbId}]."),
                 new("seasonFolder", "Add season folder for episodes", OptionFieldKind.Checkbox)
             ], Requires: ["changeFolder"]),
             new([
@@ -89,21 +92,44 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
     private static string Render(string template, TmdbMatch match)
     {
         if (template.Length > 1000) throw new RenameException("InvalidTemplate", "Template is too long.");
-        var result = Regex.Replace(template, @"\{([^{}]+)\}", m => m.Groups[1].Value switch
+        var result = Regex.Replace(template, @"\{([^{}]+)\}", m =>
         {
-            "title" => MetadataText(match.Title),
-            "year" => match.Year is null ? "" : MetadataText(match.Year),
-            "season" => match.Season?.ToString("00") ?? throw new RenameException("InvalidTemplate", "Season is unavailable."),
-            "seasonNumber" => match.Season?.ToString(CultureInfo.InvariantCulture)
-                ?? throw new RenameException("InvalidTemplate", "Season is unavailable."),
-            "episode" => match.Episode?.ToString("00") ?? throw new RenameException("InvalidTemplate", "Episode is unavailable."),
-            "episodeTitle" => MetadataText(match.EpisodeTitle ?? throw new RenameException("InvalidTemplate", "Episode title is unavailable.")),
-            _ => throw new RenameException("InvalidTemplate", "Unknown template field.")
+            var token = m.Groups[1].Value;
+            var colon = token.IndexOf(':');
+            var field = colon < 0 ? token : token[..colon];
+            var format = colon < 0 ? null : token[(colon + 1)..];
+            return field switch
+            {
+                "season" => Number(match.Season ?? throw Unavailable("Season"), format, "00"),
+                "seasonNumber" => Number(match.Season ?? throw Unavailable("Season"), format, "0"),
+                "episode" => Number(match.Episode ?? throw Unavailable("Episode"), format, "00"),
+                "tmdbId" => Number(match.Id, format, "0"),
+                _ when format is not null => throw new RenameException("InvalidTemplate", "Only numeric fields take a format."),
+                "title" => MetadataText(match.Title),
+                "originalTitle" => MetadataText(match.OriginalTitle ?? throw Unavailable("Original title")),
+                "year" => match.Year is null ? "" : MetadataText(match.Year),
+                "showYear" => MetadataText(match.ShowYear ?? throw Unavailable("Show year")),
+                "airDate" => MetadataText(match.AirDate ?? throw Unavailable("Air date")),
+                "episodeTitle" => MetadataText(match.EpisodeTitle ?? throw Unavailable("Episode title")),
+                _ => throw new RenameException("InvalidTemplate", "Unknown template field.")
+            };
         }, RegexOptions.CultureInvariant, NamingRules.RegexTimeout);
         if (result.Contains('{') || result.Contains('}') || result.Contains('/') || result.Contains('\\'))
             throw new RenameException("InvalidTemplate", "Templates must render a single path segment without braces.");
         return result;
     }
+
+    /// <summary>Formats with a zero-padding pattern such as <c>0</c>, <c>00</c> or <c>000</c>.</summary>
+    private static string Number(int value, string? format, string defaultFormat)
+    {
+        format ??= defaultFormat;
+        if (format.Length is 0 or > 6 || format.Any(c => c != '0'))
+            throw new RenameException("InvalidTemplate", "Number formats are 1 to 6 zeros, e.g. {episode:000}.");
+        return value.ToString(format, CultureInfo.InvariantCulture);
+    }
+
+    private static RenameException Unavailable(string field)
+        => new("InvalidTemplate", $"{field} is unavailable.");
 
     private static string MetadataText(string value)
     {
