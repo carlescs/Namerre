@@ -10,6 +10,9 @@ export const sampleMovie: TmdbMatch = {
   episode: null,
   episodeTitle: null,
   confirmationToken: null,
+  originalTitle: 'Sample Movie',
+  airDate: '2024-03-15',
+  showYear: null,
 };
 export const sampleEpisode: TmdbMatch = {
   id: 0,
@@ -20,6 +23,9 @@ export const sampleEpisode: TmdbMatch = {
   episode: 5,
   episodeTitle: 'The Example Episode',
   confirmationToken: null,
+  originalTitle: 'Sample Show',
+  airDate: '2021-10-08',
+  showYear: '2019',
 };
 
 export type TemplatePreview = { path: string; error?: never } | { path?: never; error: string };
@@ -57,25 +63,34 @@ export function tmdbTemplatePreview(
 
 function render(template: string, match: TmdbMatch): string {
   if (template.length > 1000) throw new Error('Template is too long.');
-  const pad = (value: number) => value.toString().padStart(2, '0');
-  const result = template.replace(/\{([^{}]+)\}/g, (_, field: string) => {
+  const result = template.replace(/\{([^{}]+)\}/g, (_, token: string) => {
+    const colon = token.indexOf(':');
+    const field = colon < 0 ? token : token.slice(0, colon);
+    const format = colon < 0 ? undefined : token.slice(colon + 1);
+    switch (field) {
+      case 'season':
+        return formatNumber(available(match.season, 'Season'), format, '00');
+      case 'seasonNumber':
+        return formatNumber(available(match.season, 'Season'), format, '0');
+      case 'episode':
+        return formatNumber(available(match.episode, 'Episode'), format, '00');
+      case 'tmdbId':
+        return formatNumber(match.id, format, '0');
+    }
+    if (format !== undefined) throw new Error('Only numeric fields take a format.');
     switch (field) {
       case 'title':
         return metadataText(match.title);
+      case 'originalTitle':
+        return metadataText(available(match.originalTitle, 'Original title'));
       case 'year':
         return match.year === null ? '' : metadataText(match.year);
-      case 'season':
-        if (match.season === null) throw new Error('Season is unavailable.');
-        return pad(match.season);
-      case 'seasonNumber':
-        if (match.season === null) throw new Error('Season is unavailable.');
-        return match.season.toString();
-      case 'episode':
-        if (match.episode === null) throw new Error('Episode is unavailable.');
-        return pad(match.episode);
+      case 'showYear':
+        return metadataText(available(match.showYear, 'Show year'));
+      case 'airDate':
+        return metadataText(available(match.airDate, 'Air date'));
       case 'episodeTitle':
-        if (match.episodeTitle === null) throw new Error('Episode title is unavailable.');
-        return metadataText(match.episodeTitle);
+        return metadataText(available(match.episodeTitle, 'Episode title'));
       default:
         throw new Error(`Unknown template field {${field}}.`);
     }
@@ -84,6 +99,20 @@ function render(template: string, match: TmdbMatch): string {
     throw new Error('Templates must render a single path segment without braces.');
   }
   return result;
+}
+
+function available<T>(value: T | null | undefined, field: string): T {
+  if (value === null || value === undefined) throw new Error(`${field} is unavailable.`);
+  return value;
+}
+
+// Formats with a zero-padding pattern such as 0, 00 or 000, like the server.
+function formatNumber(value: number, format: string | undefined, defaultFormat: string): string {
+  const pattern = format ?? defaultFormat;
+  if (!/^0{1,6}$/.test(pattern)) {
+    throw new Error('Number formats are 1 to 6 zeros, e.g. {episode:000}.');
+  }
+  return value.toString().padStart(pattern.length, '0');
 }
 
 function metadataText(value: string): string {

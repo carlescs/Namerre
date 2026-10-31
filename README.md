@@ -591,7 +591,17 @@ optional and off by default. When folder changes are enabled, episodes can addit
 be placed in a season folder inside the show folder (for example
 `TV/Show Title (2010)/Season 01/`). The season folder template defaults to
 `Season {season}` (two-digit, `Season 01`); use `{seasonNumber}` for the unpadded number
-(`Season 1`) or any other single-segment format such as `S{season}`. Movies ignore it. Confirmed metadata is snapshotted for the run so a
+(`Season 1`) or any other single-segment format such as `S{season}`. Movies ignore it.
+
+Templates can use `{title}`, `{originalTitle}` (title in the original language), `{year}`,
+`{showYear}` (first-air year of the show, episodes only), `{airDate}` (episode air date or movie
+release date, `yyyy-MM-dd`), `{tmdbId}` (movie or show ID), `{season}`, `{seasonNumber}`,
+`{episode}` and `{episodeTitle}`. Numeric fields take a zero-padding format of 1 to 6 zeros, such as
+`{episode:000}` (`007`) or `{season:0}` (`7`). A template that uses a value TMDB did not provide
+(for example a missing air date) is reported in the preview instead of rendering. For Jellyfin and
+Plex, `{title} ({year}) [tmdbid-{tmdbId}]` identifies an item reliably. Templates only depend on the
+metadata language for confirmation, so editing them never invalidates confirmed matches.
+Confirmed metadata is snapshotted for the run so a
 later TMDB change or outage does not alter an approved execution or rollback.
 
 The TMDB matching stage appears automatically when an enabled TMDB plugin is added.

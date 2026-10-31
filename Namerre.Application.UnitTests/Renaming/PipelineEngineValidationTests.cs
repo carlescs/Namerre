@@ -194,6 +194,62 @@ public sealed class PipelineEngineValidationTests
         Assert.Equal("InvalidTemplate", Assert.Single(Assert.Single(preview.Files).Issues).Code);
     }
 
+    [Theory]
+    [InlineData("{title} ({year}) [tmdbid-{tmdbId}]", "src/Show (2008) [tmdbid-1396].mkv")]
+    [InlineData("{originalTitle}", "src/Shō- One.mkv")]
+    [InlineData("{title} {airDate}", "src/Show 2010-03-21.mkv")]
+    [InlineData("{title} ({showYear})", "src/Show (2008).mkv")]
+    [InlineData("{title} S{season:0}E{episode:000}", "src/Show S3E007.mkv")]
+    [InlineData("{seasonNumber:00}x{episode:0}", "src/03x7.mkv")]
+    [InlineData("{tmdbId:000000}", "src/001396.mkv")]
+    public async Task ExtendedFieldsAndNumberFormatsRender(string template, string? expected)
+    {
+        var plugin = Plugin("tmdb", "tmdb", new { nameTemplate = template });
+        var selection = Selection(plugin, "src/show.mkv");
+        metadata.Resolve(selection).Returns(new TmdbMatch(1396, "tv", "Show", "2008", 3, 7, "Pilot",
+            OriginalTitle: "Shō: One", AirDate: "2010-03-21", ShowYear: "2008"));
+
+        var preview = await engine.Preview(new([new("file", "src/show.mkv")], [plugin], [selection]), default);
+
+        var file = Assert.Single(preview.Files);
+        if (expected is null) Assert.Equal("InvalidTemplate", Assert.Single(file.Issues).Code);
+        else Assert.Equal(expected, file.TargetPath);
+    }
+
+    [Theory]
+    [InlineData("{title} {airDate}")]
+    [InlineData("{title} {showYear}")]
+    [InlineData("{title} {originalTitle}")]
+    [InlineData("{title} {episode:000}")]
+    [InlineData("{title:00}")]
+    [InlineData("{tmdbId:}")]
+    [InlineData("{tmdbId:0000000}")]
+    [InlineData("{tmdbId:#0}")]
+    [InlineData("{rating}")]
+    public async Task UnavailableFieldsAndInvalidFormatsAreRejected(string template)
+    {
+        var plugin = Plugin("tmdb", "tmdb", new { nameTemplate = template });
+        var selection = Selection(plugin, "src/movie.mkv");
+        metadata.Resolve(selection).Returns(new TmdbMatch(1, "movie", "Movie", "2020", null, null, null));
+
+        var preview = await engine.Preview(new([new("file", "src/movie.mkv")], [plugin], [selection]), default);
+
+        Assert.Equal("InvalidTemplate", Assert.Single(Assert.Single(preview.Files).Issues).Code);
+    }
+
+    [Fact]
+    public async Task MovieMatchesRenderTheirReleaseDateAndOriginalTitle()
+    {
+        var plugin = Plugin("tmdb", "tmdb", new { nameTemplate = "{originalTitle} [{airDate}] {tmdbId}" });
+        var selection = Selection(plugin, "src/movie.mkv");
+        metadata.Resolve(selection).Returns(new TmdbMatch(348, "movie", "Alien", "1979", null, null, null,
+            OriginalTitle: "Alien", AirDate: "1979-05-25"));
+
+        var preview = await engine.Preview(new([new("file", "src/movie.mkv")], [plugin], [selection]), default);
+
+        Assert.Equal("src/Alien [1979-05-25] 348.mkv", Assert.Single(preview.Files).TargetPath);
+    }
+
     [Fact]
     public async Task MissingYearRendersAsEmptyText()
     {

@@ -256,6 +256,11 @@ export interface TmdbMatch {
   episode: number | null;
   episodeTitle: string | null;
   confirmationToken: string | null;
+  // Present on confirmed matches: original-language title, episode air date or movie release date
+  // (yyyy-MM-dd) and the show's first-air year (TV only).
+  originalTitle?: string | null;
+  airDate?: string | null;
+  showYear?: string | null;
 }
 export interface MatchSuggestion {
   fileId: string;

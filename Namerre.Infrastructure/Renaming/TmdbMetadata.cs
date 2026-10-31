@@ -32,6 +32,8 @@ public sealed class TmdbMetadata(ITmdbClient client, IOptions<NamerreOptions> op
             var details = await client.Get($"{request.MediaType}/{chosen}?language={Uri.EscapeDataString(language)}", cancellationToken);
             var title = Text(details, request.MediaType == "movie" ? "title" : "name");
             var date = Text(details, request.MediaType == "movie" ? "release_date" : "first_air_date");
+            var originalTitle = Text(details, request.MediaType == "movie" ? "original_title" : "original_name");
+            var airDate = request.MediaType == "movie" ? date : "";
             string? episodeTitle = null;
             if (request.MediaType == "tv")
             {
@@ -40,12 +42,16 @@ public sealed class TmdbMetadata(ITmdbClient client, IOptions<NamerreOptions> op
                 var episode = await client.Get($"tv/{chosen}/season/{request.Season}/episode/{request.Episode}?language={Uri.EscapeDataString(language)}",
                     cancellationToken);
                 episodeTitle = Text(episode, "name");
+                airDate = Text(episode, "air_date");
             }
             if (string.IsNullOrWhiteSpace(title) || (request.MediaType == "tv" && string.IsNullOrWhiteSpace(episodeTitle)))
                 throw new RenameException("MetadataIncomplete", "TMDB did not return the required title fields.", 502);
             var token = Guid.NewGuid().ToString("N");
-            var match = new TmdbMatch(chosen, request.MediaType, title, date.Length >= 4 ? date[..4] : null,
-                request.Season, request.Episode, episodeTitle, token);
+            var year = date.Length >= 4 ? date[..4] : null;
+            var match = new TmdbMatch(chosen, request.MediaType, title, year,
+                request.Season, request.Episode, episodeTitle, token,
+                string.IsNullOrWhiteSpace(originalTitle) ? null : originalTitle,
+                IsoDate(airDate), request.MediaType == "tv" ? year : null);
             var selection = new MetadataSelection(request.FileId, request.InstanceId, request.InputPath,
                 request.OptionsHash, token);
             store.Save(token, "Confirmation", "Confirmed", new Confirmation(selection, match));
@@ -86,6 +92,12 @@ public sealed class TmdbMetadata(ITmdbClient client, IOptions<NamerreOptions> op
             throw new RenameException("MetadataStale", "Confirm this TMDB match again.");
         }
     }
+
+    // Keeps only well-formed calendar dates so templates never render partial or garbled values.
+    private static string? IsoDate(string value)
+        => DateOnly.TryParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var date)
+            ? date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) : null;
 
     private static string Text(JsonElement element, string key)
         => element.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String
