@@ -222,6 +222,9 @@ upgrade them together.
   (`release.config.mjs`) on pushes to `main` (stable) and `next` (`-pre.N`), creates the tag and
   GitHub release, and calls `docker.yml` for the new tag; Docker images are built and published
   only for version tags (a hand-pushed tag runs CI in `docker.yml` first).
+- Issue and PR labels are declared in `.github/labels.json` (defaults, `security`, `breaking change`,
+  `dependencies` and `area: …` labels); `labels.yml` creates or updates them on pushes to `main` that
+  touch the file, and never deletes labels missing from it.
 - Commits follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, …; `!` or a
   `BREAKING CHANGE:` footer for majors) — they drive the version bump. CI lints PR
   commits with commitlint; root `npm ci` installs the lefthook `commit-msg` hook (`lefthook.yml`).
