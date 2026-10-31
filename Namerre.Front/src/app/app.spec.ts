@@ -3,6 +3,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
+import { provideServiceWorker } from '@angular/service-worker';
 import { App } from './app';
 import { routes } from './app.routes';
 import { Auth } from './auth/auth';
@@ -26,6 +27,7 @@ describe('App', () => {
         provideRouter(routes),
         provideHttpClient(),
         provideHttpClientTesting(),
+        provideServiceWorker('ngsw-worker.js', { enabled: false }),
         {
           provide: Auth,
           useValue: {
@@ -87,6 +89,33 @@ describe('App', () => {
     );
     expect(fixture.nativeElement.querySelector('app-login')).toBeNull();
     expect(fixture.nativeElement.querySelector('button').textContent).toBe('Retry');
+  });
+
+  it('reconnects automatically when the network comes back', async () => {
+    refresh.mockRejectedValueOnce(new Error('offline'));
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).not.toBeNull();
+
+    window.dispatchEvent(new Event('online'));
+    await fixture.whenStable();
+    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('app-login')).not.toBeNull();
+  });
+
+  it('says so when the device is offline', async () => {
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    try {
+      refresh.mockRejectedValue(new Error('offline'));
+      const fixture = TestBed.createComponent(App);
+      await fixture.whenStable();
+      expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain(
+        'you are offline',
+      );
+    } finally {
+      onLine.mockRestore();
+    }
   });
 
   it('offers the theme picker before and after signing in', async () => {

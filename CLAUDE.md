@@ -133,7 +133,8 @@ export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless `OtlpEndp
 
 **Hosting.** `Program.cs` requires HTTPS for `/api` (400 otherwise), sets `no-store` on API
 responses, requires authorization on all controllers, returns 404 for unmatched `/api/*`, and
-falls back to `index.html` otherwise. OpenAPI is exposed only in Development.
+falls back to `index.html` otherwise. OpenAPI is exposed only in Development. Static files go through
+`Hosting/StaticFileCaching` (`no-cache` for unhashed shell files: `index.html`, the manifest and the service worker).
 
 **Frontend.** Standalone Angular app (signals, explicit component imports, external templates +
 `styleUrl`, `app` selector prefix, SCSS component styles, Tailwind CSS v4 via PostCSS in
@@ -146,7 +147,11 @@ selection, plugin configuration, TMDB matching, preview, confirmation and run hi
 `plugin-editor` renders each step's options from the descriptor's `form`, so a new plugin needs no
 frontend change unless it has extra UI (like TMDB's template preview). Angular builds into `Namerre.Api/wwwroot` with no `browser`
 subdirectory (generated, cleared on rebuild) — put static assets in `Namerre.Front/public`.
-Missing asset files stay 404 rather than falling back to `index.html`.
+Missing asset files stay 404 rather than falling back to `index.html`. The app is an installable
+PWA: `public/manifest.webmanifest` plus `@angular/service-worker` (`ngsw-config.json`, production builds
+only), which caches only the app shell — never add `/api` to its asset or data groups. `app-update`
+offers a reload when a new version is ready. `@angular/service-worker` pins `@angular/core` exactly, so
+upgrade them together.
 
 ## Conventions
 
