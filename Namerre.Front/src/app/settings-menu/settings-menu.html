@@ -1,0 +1,24 @@
+<button
+  #trigger
+  type="button"
+  class="trigger"
+  aria-label="Options"
+  aria-controls="settings-menu"
+  [attr.aria-expanded]="open()"
+  title="Options"
+  (click)="toggle()"
+>
+  <fa-icon [icon]="gearIcon" aria-hidden="true" />
+</button>
+@if (open()) {
+  <div #panel id="settings-menu" class="panel" role="group" aria-label="Options">
+    <section>
+      <h2 class="section-title">Workflow mode</h2>
+      <app-workflow-mode-picker />
+    </section>
+    <section>
+      <h2 class="section-title">Theme</h2>
+      <app-theme-picker />
+    </section>
+  </div>
+}
