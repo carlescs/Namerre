@@ -154,7 +154,10 @@ match carries `EpisodeEnd` (titles joined by `EpisodeTitles.Join`); `{episode}` 
 values fail startup; signed-in `GET api/auth/session` reports them to the frontend's `WorkloadLimits`), `Authentication` (incl. optional `Oidc` single sign-on, e.g. Keycloak — see
 `Namerre.Api/Authentication/OidcLogin.cs`; the OIDC scheme is hidden by `OidcAwareSchemeProvider` unless
 `Authority` is set), `Tmdb`, `ReverseProxy`, `Telemetry` (optional OTLP
-export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless `OtlpEndpoint` is set). `Integrations`
+export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless `OtlpEndpoint` is set; Namerre's own
+`ActivitySource`/`Meter` and instruments live in `Infrastructure/Diagnostics/NamerreTelemetry`, backlog gauges in
+`RenameStateMetrics`; keep metric tags low-cardinality — never paths or IDs — and mark requests whose URL may hold a
+secret with `NamerreTelemetry.Untraced`; README lists every span and metric, keep it in sync). `Integrations`
 (optional Jellyfin/Emby/Plex library refresh and webhook after a `Completed`/`Recovered` run: `RenameService.Complete`
 calls `ILibraryNotifier.RunFinished`, implemented by `Infrastructure/Integrations/LibraryNotifier`, a bounded channel
 drained by a hosted service; best effort, tokens only in request headers and never logged;

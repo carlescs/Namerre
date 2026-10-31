@@ -11,6 +11,7 @@ using Namerre.Application.Renaming.Presets;
 using Namerre.Application.Renaming.Runs;
 using Namerre.Application.WatchFolders;
 using Namerre.Infrastructure.Configuration;
+using Namerre.Infrastructure.Diagnostics;
 using Namerre.Infrastructure.Renaming;
 
 namespace Namerre.Infrastructure.WatchFolders;
@@ -56,16 +57,23 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
                 var now = time.GetUtcNow();
                 if (state.LastScanAt is { } last && now - last < settings.Interval) continue;
                 state.LastScanAt = now;
+                System.Diagnostics.Activity? activity = null;
                 try
                 {
                     if (Paused(settings.Name)) continue;
+                    activity = NamerreTelemetry.Source.StartActivity("watch.scan");
+                    activity?.SetTag("namerre.watch.folder", settings.Name);
+                    var previous = state.Error;
                     state.Error = await ScanFolder(settings, state, cancellationToken);
+                    if (state.Error is not null && state.Error != previous)
+                        logger.LogWarning("Watch folder {Folder} cannot run: {Problem}", settings.Name, state.Error);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
                 catch (RenameException exception)
                 {
                     // Busy TMDB, a full queue or pending recovery: nothing is held against the files; try next interval.
                     state.Error = exception.Message;
+                    activity.Fail(exception);
                     logger.LogInformation("Watch folder {Folder} postponed: {Code}", settings.Name, exception.Code);
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
@@ -73,8 +81,10 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
                 {
                     state.Error = exception is FolderBrowserException browser
                         ? browser.Message : "The folder or the database could not be read. The next scan tries again.";
+                    activity.Fail(exception);
                     logger.LogWarning(exception, "Watch folder {Folder} scan failed", settings.Name);
                 }
+                finally { activity?.Dispose(); }
             }
         }
         finally { scanning.Release(); }
@@ -123,6 +133,7 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
             return $"Preset {preset.Name} has a TMDB step, which needs explicit confirmation. Set TmdbMediaType and "
                 + "TmdbAutoConfirm on the watch folder to accept suggestions above a confidence, or remove the step.";
         var candidates = await Stable(settings, state, cancellationToken);
+        System.Diagnostics.Activity.Current?.SetTag("namerre.watch.candidates", candidates.Count);
         if (candidates.Count == 0) return null;
         await Process(settings, preset, tmdb, candidates, cancellationToken);
         return null;
@@ -271,6 +282,9 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
                 foreach (var file in ready) Upsert(db, settings.Name, file.Id, fingerprints[file.Id], Done, now);
             return db.SaveChanges();
         });
+        if (failures.Count > 0)
+            logger.LogInformation("Watch folder {Folder}: {Count} files cannot be renamed", settings.Name, failures.Count);
+        if (unchanged) Count(settings, "unchanged", ready.Length);
         if (ready.Length == 0 || unchanged) return;
         var ids = ready.Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
         var subset = request with
@@ -289,6 +303,7 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
             }
             return db.SaveChanges();
         });
+        Count(settings, "prepared", ids.Count);
         logger.LogInformation("Watch folder {Folder} prepared plan {Plan} for {Count} files", settings.Name, accepted.Id, ids.Count);
     }
 
@@ -317,6 +332,8 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
             }
             return db.SaveChanges();
         });
+        Count(settings, "completed", rows.Count);
+        logger.LogInformation("Watch folder {Folder} renamed {Count} files in run {RunId}", settings.Name, rows.Count, run.Id);
     }
 
     private void Fail(WatchFolderSettings settings, List<WatchedFileRow> rows, string error)
@@ -327,6 +344,7 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
             foreach (var row in rows) FailRow(db, settings, row.Path, (row.Size, row.ModifiedTicks), error, now);
             return db.SaveChanges();
         });
+        logger.LogWarning("Watch folder {Folder}: a batch of {Count} files failed: {Error}", settings.Name, rows.Count, error);
     }
 
     private void Update(WatchFolderSettings settings, List<WatchedFileRow> rows, Action<WatchedFileRow> change)
@@ -337,7 +355,7 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
             return db.SaveChanges();
         });
 
-    private static void FailRow(RenameDbContext db, WatchFolderSettings settings, string path,
+    private void FailRow(RenameDbContext db, WatchFolderSettings settings, string path,
         (long Size, long Ticks) fingerprint, string error, DateTimeOffset now)
     {
         var existing = db.WatchedFiles.SingleOrDefault(f => f.Folder == settings.Name && f.Path == path);
@@ -350,7 +368,15 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
         row.PlanId = null;
         row.RunId = null;
         row.NextAttemptAt = row.Status == Ignored ? null : now + BackOff(settings.Interval, attempts);
+        Count(settings, row.Status == Ignored ? "ignored" : "failed", 1);
+        if (row.Status == Ignored)
+            logger.LogWarning("Watch folder {Folder} ignores {Path} after {Attempts} failed attempts until it changes",
+                settings.Name, path, attempts);
     }
+
+    private static void Count(WatchFolderSettings settings, string outcome, int files)
+        => NamerreTelemetry.WatchFiles.Add(files, new KeyValuePair<string, object?>("namerre.watch.folder", settings.Name),
+            new KeyValuePair<string, object?>("namerre.watch.outcome", outcome));
 
     private static string Percent(double value)
         => Math.Round(value * 100).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%";

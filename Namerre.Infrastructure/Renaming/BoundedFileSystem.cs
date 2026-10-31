@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using Microsoft.Win32.SafeHandles;
 using Namerre.Application.Renaming;
 using Namerre.Domain.Renaming;
+using Namerre.Infrastructure.Diagnostics;
 
 namespace Namerre.Infrastructure.Renaming;
 
@@ -87,6 +88,7 @@ public sealed class BoundedFileSystem(string? configuredRoot, string basePath) :
             128 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
         var size = stream.Length;
         var hash = await SHA256.HashDataAsync(stream, cancellationToken);
+        NamerreTelemetry.HashedBytes.Add(size);
         return (Convert.ToHexStringLower(hash), size);
     }
 

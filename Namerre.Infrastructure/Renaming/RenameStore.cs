@@ -139,6 +139,24 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         }
     }
 
+    /// <summary>Jobs waiting in the durable queue and runs awaiting or undergoing recovery.</summary>
+    public readonly record struct Backlog(int QueuedJobs, int RunsAwaitingRecovery);
+
+    /// <summary>True when a data directory is configured, so the store can be opened.</summary>
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(dataPath);
+
+    public Backlog ReadBacklog()
+    {
+        Initialize();
+        lock (gate)
+        {
+            using var db = Open();
+            string[] recovery = ["RecoveryRequired", "RecoveryQueued", "Recovering"];
+            return new(db.Jobs.Count(j => j.Status == "Queued"),
+                db.Documents.Count(d => d.Kind == "Run" && recovery.Contains(d.Status)));
+        }
+    }
+
     /// <summary>Lists the runs created from <paramref name="parentId"/> (rollbacks), oldest first.</summary>
     public IReadOnlyList<RunReference> ChildRuns(string parentId)
     {

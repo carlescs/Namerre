@@ -15,6 +15,7 @@ using Namerre.Application.Renaming.Previews;
 using Namerre.Application.Renaming.Recovery;
 using Namerre.Application.Renaming.Rollback;
 using Namerre.Application.Renaming.Runs;
+using Namerre.Infrastructure.Diagnostics;
 using Namerre.Infrastructure.Folders;
 using Namerre.Infrastructure.Renaming;
 using Xunit;
@@ -296,6 +297,76 @@ public sealed class RenamingWorkflowTests : IDisposable
 
         Assert.Equal("RolledBack", Assert.Single((await harness.Service.GetRun(rename.Id, default)).Files).Status);
         Assert.Equal("Ready", (await harness.Service.GetPlan(plan.Id, default)).Status);
+    }
+
+    [Fact]
+    public async Task JobsEmitSpansLinkedToTheQueuingRequestAndDurationMetrics()
+    {
+        Write("alpha.txt", "A");
+        using var harness = Harness();
+        var spans = new System.Collections.Concurrent.ConcurrentBag<System.Diagnostics.Activity>();
+        using var listener = new System.Diagnostics.ActivityListener
+        {
+            ShouldListenTo = source => source.Name == NamerreTelemetry.Name,
+            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _)
+                => System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = spans.Add
+        };
+        System.Diagnostics.ActivitySource.AddActivityListener(listener);
+        var durations = new System.Collections.Concurrent.ConcurrentBag<(string? Kind, string? Status)>();
+        var files = new System.Collections.Concurrent.ConcurrentBag<(string? Kind, string? Status, long Count)>();
+        using var meters = new System.Diagnostics.Metrics.MeterListener();
+        meters.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Meter.Name == NamerreTelemetry.Name) listener.EnableMeasurementEvents(instrument);
+        };
+        meters.SetMeasurementEventCallback<double>((instrument, _, tags, _) =>
+        {
+            if (instrument.Name == "namerre.rename.job.duration")
+                durations.Add((Tag(tags, "namerre.job.kind"), Tag(tags, "namerre.job.status")));
+        });
+        meters.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
+        {
+            if (instrument.Name == "namerre.rename.job.files")
+                files.Add((Tag(tags, "namerre.job.kind"), Tag(tags, "namerre.file.status"), value));
+        });
+        meters.Start();
+
+        using var request = new System.Diagnostics.Activity("request").Start();
+        var plan = await Prepare(harness, UpperRequest(["alpha.txt"]));
+        var run = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        request.Stop();
+        await harness.Service.ProcessNext(default);
+
+        var prepare = Assert.Single(spans, span => span.OperationName == "rename.prepare"
+            && (string?)span.GetTagItem("namerre.job.id") == plan.Id);
+        Assert.Equal("Ready", prepare.GetTagItem("namerre.job.status"));
+        Assert.Equal(request.TraceId, Assert.Single(prepare.Links).Context.TraceId);
+        var execute = Assert.Single(spans, span => span.OperationName == "rename.execute"
+            && (string?)span.GetTagItem("namerre.job.id") == run.Id);
+        Assert.Equal(("Rename", "Completed"), ((string?)execute.GetTagItem("namerre.job.kind"),
+            (string?)execute.GetTagItem("namerre.job.status")));
+        Assert.Equal(request.TraceId, Assert.Single(execute.Links).Context.TraceId);
+        Assert.NotEqual(request.TraceId, execute.TraceId);
+        foreach (var phase in new[] { "rename.preflight", "rename.stage", "rename.place" })
+            Assert.Contains(spans, span => span.OperationName == phase && span.ParentSpanId == execute.SpanId);
+        Assert.Contains(("Prepare", "Ready"), durations);
+        Assert.Contains(("Rename", "Completed"), durations);
+        Assert.Contains(files, file => file is ("Rename", "Completed", >= 1));
+    }
+
+    [Fact]
+    public async Task BacklogCountsQueuedJobsAndRunsAwaitingRecovery()
+    {
+        Write("alpha.txt", "before");
+        using var harness = Harness();
+        var plan = await Prepare(harness, UpperRequest(["alpha.txt"]));
+        Write("alpha.txt", "after!");
+        await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+
+        Assert.Equal(new RenameStore.Backlog(1, 0), harness.Store.ReadBacklog());
+        await harness.Service.ProcessNext(default);
+        Assert.Equal(new RenameStore.Backlog(0, 1), harness.Store.ReadBacklog());
     }
 
     [Fact]
@@ -1154,6 +1225,12 @@ public sealed class RenamingWorkflowTests : IDisposable
     private string Read(string path) => File.ReadAllText(Path.Combine(Root, path.Replace('/', Path.DirectorySeparatorChar)));
     private static PluginInstance Plugin(string id, string type, object options)
         => new(id, type, 1, true, JsonSerializer.SerializeToElement(options));
+    private static string? Tag(ReadOnlySpan<KeyValuePair<string, object?>> tags, string key)
+    {
+        foreach (var tag in tags)
+            if (tag.Key == key) return tag.Value as string;
+        return null;
+    }
     private static PipelineRequest Request(string[] paths, IReadOnlyList<PluginInstance> plugins)
         => new(paths.Select((path, i) => new FileInput(i.ToString(), path)).ToArray(), plugins);
     private static PipelineRequest UpperRequest(string[] paths) => Request(paths, [Plugin("upper", "case", new { mode = "upper" })]);
