@@ -68,7 +68,8 @@ routes always start with `api/` — `RenamingController` uses per-action routes 
 `api/rename-plans/{id}`) send CMediator requests via `ISender`. Each request and its handler
 live in separate files (`XQuery.cs` + `XQueryHandler.cs`), grouped by feature folder with a
 matching namespace (`Application/Renaming/{Plugins,Previews,Plans,Runs,Rollback,Recovery,Metadata}`).
-Renaming handlers are thin pass-throughs to `IRenameService`; the real
+Renaming handlers are thin pass-throughs to `IRenameService` (the run export handler also formats
+through `Runs/RunExportWriter`: RFC 4180 CSV with BOM and formula-injection guard, or JSON); the real
 logic lives in `Namerre.Infrastructure/Renaming/RenameService.cs` (a singleton). DTOs are one
 type per file: feature-specific ones (e.g. `RunView`, `PlanView`, `TmdbMatch`) sit in their
 feature folder; shared ones (`PipelineRequest`, `PluginInstance`, `RenameIssue`, `JobAccepted`, …),
@@ -76,7 +77,7 @@ the `IRenameService`/`ITmdbMetadata` contracts and `RenameException(code, messag
 (which carries API error codes) stay directly in `Application/Renaming`.
 
 **Renaming pipeline.** Each plugin is an `IRenamePlugin` in `Application/Renaming/Plugins`
-(`LiteralPlugin`, `ReplacementTablePlugin`, `RegexPlugin`, `CasePlugin`, `AffixPlugin`, `SeparatorsPlugin`,
+(`LiteralPlugin`, `ReplacementTablePlugin`, `RegexPlugin`, `CasePlugin`, `ExtensionCasePlugin`, `AffixPlugin`, `SeparatorsPlugin`,
 `ReleaseTagsPlugin`, `CharactersPlugin`, `InsertPlugin`, `RemovePlugin`, `TruncatePlugin`, `PadNumbersPlugin`,
 `CounterPlugin`, `DatePlugin`, `TmdbPlugin`; counter and date share `NameInsertion` for prefix/suffix/template
 placement, insert/remove/truncate count grapheme clusters through `TextElements`), usually derived from
@@ -89,8 +90,10 @@ options against the form before typed binding (malformed values → `InvalidConf
 field) and rejects forms the editor can't render when the engine is built. Plugins are registered as singletons in `AddApplication()` (registration order =
 catalog order); `PipelineEngine` takes them via DI, keys them by `(TypeId, Version)`, and applies
 enabled plugin instances in the request's order — catalog order never determines execution order.
-Plugins return `PathParts`; the engine rejects changed extensions, empty stems and separators,
-then validates the path. With `PipelineRequest.IncludeCompanions`, `CompanionFiles` pairs subtitles, `.nfo` and
+Plugins return `PathParts`; the engine rejects extension changes other than case (only
+`ExtensionCasePlugin` makes those), empty stems and separators, then validates the path. With
+`PipelineRequest.OnCollision = "AddNumber"` the engine gives taken targets a ` (n)` suffix
+(`PreviewFile.Numbered`, `collision` trace step) before related files are named; prepare stores the result. With `PipelineRequest.IncludeCompanions`, `CompanionFiles` pairs subtitles, `.nfo` and
 artwork with a video in the same folder; those skip the steps and take the video's final folder and stem plus
 their suffix (`PreviewFile`/`PlanFile`/`RunFile.CompanionOf`), and the frontend mirrors the rules in
 `companions.ts` to group the collection — keep both in sync. Steps also get a `FilePosition` (request and source-folder index and counts) and
@@ -126,13 +129,16 @@ private 256-entry, 10-minute `MemoryCache`), which takes a fresh typed `TmdbClie
 Polly pipeline (`TmdbResilience`: four-lookup concurrency limiter, 15 s total / 5 s attempt timeouts, retries
 that skip 429, circuit breaker) sits in front of it, and `TmdbClient` maps its rejections to API errors; requests carry
 `Namerre:Tmdb:ReadAccessToken` (never put the token in frontend config, plan snapshots or build args). Matches must be confirmed with a
-`ConfirmationToken` bound to `TmdbPlugin.OptionsHash` — SHA-256 of the plugin's `language` only. The frontend
+`ConfirmationToken` bound to `TmdbPlugin.OptionsHash` — SHA-256 of the plugin's `language` only (the `preset` option, which the
+frontend's `tmdb-presets.ts` uses to fill templates, is ignored by rendering and the hash). Templates
+write literal braces as `{{`/`}}`; `TmdbPlugin.Render` and `tmdb-template-preview.ts` must agree. The frontend
 reimplements this in `Namerre.Front/src/app/modules/renamer/options-hash.ts` (pure-JS SHA-256 so it
 works on plain-HTTP origins); keep both sides in sync. Confirmed metadata is snapshotted into the plan.
 
 **Configuration.** Everything app-specific is under the `Namerre` section, bound to
 `NamerreOptions` (`Infrastructure/Configuration`) and consumed via `IOptions<NamerreOptions>`:
-`RootPath`, `DataPath`, `Authentication` (incl. optional `Oidc` single sign-on, e.g. Keycloak — see
+`RootPath`, `DataPath`, `Limits` (bound to the Application `RenameLimits` singleton; out-of-range
+values fail startup; signed-in `GET api/auth/session` reports them to the frontend's `WorkloadLimits`), `Authentication` (incl. optional `Oidc` single sign-on, e.g. Keycloak — see
 `Namerre.Api/Authentication/OidcLogin.cs`; the OIDC scheme is hidden by `OidcAwareSchemeProvider` unless
 `Authority` is set), `Tmdb`, `ReverseProxy`, `Telemetry` (optional OTLP
 export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless `OtlpEndpoint` is set).
@@ -179,8 +185,9 @@ upgrade them together.
   100 columns, OS-native line endings. Keep the strict compiler flags enabled (TypeScript
   `noImplicitOverride`, `noPropertyAccessFromIndexSignature`, `noImplicitReturns`,
   `noFallthroughCasesInSwitch`; Angular strict injection parameters and input access modifiers).
-- Workload limits enforced server-side: ≤200 files and ≤32 plugin instances per run, ≤32 queued
-  jobs, regex timeout 100 ms, TMDB lookups 15 s overall (5 s per attempt).
+- Workload limits enforced server-side through `RenameLimits` (configurable under `Namerre:Limits`):
+  by default ≤200 files and ≤32 plugin instances per run, ≤32 queued jobs (ceilings 2000/64/256);
+  fixed regex timeout 100 ms, TMDB lookups 15 s overall (5 s per attempt).
 - CI (`.github/workflows/ci.yml`: backend build/tests on Ubuntu and Windows, frontend lint/tests,
   Betterleaks, commitlint on PRs) runs on PRs to `main`/`next` and is reused by `release.yml` and
   `docker.yml` — keep path handling cross-platform. Shared Node setup is the

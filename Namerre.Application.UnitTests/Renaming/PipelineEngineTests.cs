@@ -330,6 +330,37 @@ public sealed class PipelineEngineTests
     }
 
     [Theory]
+    [InlineData("{title} ({year}) {{tmdb-{tmdbId}}}", "Alpha (2000) {tmdb-10}")]
+    [InlineData("{{{title}}}", "{Alpha}")]
+    [InlineData("{title} [tmdbid={tmdbId}]", "Alpha [tmdbid=10]")]
+    [InlineData("{title}}", null)]
+    [InlineData("{title", null)]
+    [InlineData("{}", null)]
+    [InlineData("{ti{tle}", null)]
+    public async Task DoubledBracesAreLiteralBraces(string template, string? expected)
+    {
+        fileSystem.When(fs => fs.Validate(Arg.Any<string>()))
+            .Do(call => NamingRules.ValidateRelativePath((string)call[0]));
+        var plugin = Plugin("tmdb", "tmdb", new { nameTemplate = template });
+        var selection = new MetadataSelection("file", "tmdb", "folder/alpha.beta.MKV",
+            TmdbPlugin.OptionsHash(plugin.Options), "confirmed");
+        metadata.Resolve(selection).Returns(new TmdbMatch(10, "movie", "Alpha", "2000", null, null, null));
+
+        var preview = await TestPipeline.Create(metadata, fileSystem).Preview(
+            Request([plugin]) with { Selections = [selection] }, default);
+
+        var file = Assert.Single(preview.Files);
+        if (expected is null) Assert.Equal("InvalidTemplate", Assert.Single(file.Issues).Code);
+        else Assert.Equal($"folder/{expected}.MKV", file.TargetPath);
+    }
+
+    [Fact]
+    public void ThePresetDoesNotChangeTheOptionsHash()
+        => Assert.Equal(
+            TmdbPlugin.OptionsHash(JsonSerializer.SerializeToElement(new { language = "fr-FR", preset = "custom" })),
+            TmdbPlugin.OptionsHash(JsonSerializer.SerializeToElement(new { language = "fr-FR", preset = "plexTv" })));
+
+    [Theory]
     [InlineData("{title}/escape", "InvalidTemplate")]
     [InlineData("{unknown}", "InvalidTemplate")]
     [InlineData("../{title}", "InvalidTemplate")]

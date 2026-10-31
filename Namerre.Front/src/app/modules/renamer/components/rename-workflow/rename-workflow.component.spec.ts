@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
+import { defaultLimits, WorkloadLimits } from '../../../../workload-limits';
 import { tmdbOptionsHash } from '../../options-hash';
 import { casePlugin } from '../../plugin-catalog.testing';
 import type {
@@ -311,8 +312,45 @@ describe('RenameWorkflowComponent', () => {
       plugins: [tmdb],
       verifyContent: false,
       deleteEmptyFolders: true,
+      numberCollisions: false,
     });
     for (const request of http.match('/api/rename-previews')) request.flush(tmdbPreview);
+  });
+
+  it('reports collisions by default and numbers them when asked', async () => {
+    button('Next: review filenames').click();
+    const first = http.expectOne('/api/rename-previews');
+    expect(first.request.body.onCollision).toBe('Report');
+    first.flush(preview);
+    await fixture.whenStable();
+    const numbered = fixture.nativeElement.querySelector('#number-collisions') as HTMLInputElement;
+    expect(numbered.checked).toBe(false);
+    numbered.click();
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const second = http.expectOne('/api/rename-previews');
+    expect(second.request.body.onCollision).toBe('AddNumber');
+    second.flush({
+      ...preview,
+      files: [{ ...preview.files[0], targetPath: 'A (1).txt', numbered: true }],
+    });
+    await fixture.whenStable();
+    expect(text()).toContain('Numbered to avoid a name that is already taken.');
+    expect(
+      JSON.parse(localStorage.getItem('namerre.draft.pipeline.v1') ?? 'null').numberCollisions,
+    ).toBe(true);
+    button('Check files and continue').click();
+    expect(http.expectOne('/api/rename-plans').request.body.onCollision).toBe('AddNumber');
+  });
+
+  it('follows the file limit the server reports', async () => {
+    TestBed.inject(WorkloadLimits).current.set({ ...defaultLimits, maxFilesPerRun: 1 });
+    fixture.componentRef.setInput('files', [
+      ...files,
+      { ...files[0], name: 'b.txt', path: 'b.txt' },
+    ]);
+    await fixture.whenStable();
+    expect(text()).toContain('2 / 1 files selected');
+    expect(button('Next: review filenames').disabled).toBe(true);
   });
 
   it('deletes emptied folders by default', async () => {

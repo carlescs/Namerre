@@ -7,8 +7,9 @@ using Namerre.Domain.Renaming;
 
 namespace Namerre.Infrastructure.Renaming;
 
+/// <param name="maxQueuedJobs">Most jobs waiting in the durable queue; see <see cref="RenameLimits.MaxQueuedJobs"/>.</param>
 public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, string basePath,
-    Action<string>? boundary = null) : IDisposable
+    Action<string>? boundary = null, int maxQueuedJobs = RenameLimits.DefaultQueuedJobs) : IDisposable
 {
     private readonly object gate = new();
     private FileStream? ownership;
@@ -195,7 +196,7 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         {
             using var db = Open();
             using var transaction = db.Database.BeginTransaction();
-            if (db.Jobs.Count(j => j.Status == "Queued") >= 32)
+            if (db.Jobs.Count(j => j.Status == "Queued") >= maxQueuedJobs)
                 throw new RenameException("QueueFull", "The durable job queue is full. Try again later.", 429);
             Write(db, id, kind, status, value);
             db.Jobs.Add(new DurableRenameJob { Id = id, Kind = jobKind, Target = id, Status = "Queued",
@@ -300,7 +301,7 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         {
             using var db = Open();
             using var transaction = db.Database.BeginTransaction();
-            if (db.Jobs.Count(j => j.Status == "Queued") >= 32)
+            if (db.Jobs.Count(j => j.Status == "Queued") >= maxQueuedJobs)
                 throw new RenameException("QueueFull", "The durable job queue is full. Try again later.", 429);
             Write(db, run.Id, "Run", run.Status, run);
             var job = db.Jobs.Single(j => j.Id == run.Id);

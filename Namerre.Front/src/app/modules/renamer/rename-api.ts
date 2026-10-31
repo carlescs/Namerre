@@ -9,6 +9,7 @@ export type PluginOptionValue = PluginOptionCell | PluginOptionRow[];
 export interface PluginOptions {
   [key: string]: PluginOptionValue | undefined;
   // TMDB options read outside the generic editor (matching stage, template preview, options hash).
+  preset?: string;
   nameTemplate?: string;
   changeFolder?: boolean;
   baseFolder?: string;
@@ -97,6 +98,8 @@ export interface PipelineRequest {
   overrides?: TargetOverride[];
   /** True renames subtitles, .nfo files and artwork together with the video they belong to. */
   includeCompanions?: boolean;
+  /** `AddNumber` gives colliding names a ` (1)`, ` (2)`, … suffix; `Report` (default) blocks them. */
+  onCollision?: 'Report' | 'AddNumber';
 }
 export interface RenameIssue {
   code: string;
@@ -118,6 +121,8 @@ export interface PreviewFile {
   issues: RenameIssue[];
   /** ID of the video this related file follows. */
   companionOf?: string | null;
+  /** The name received a ` (n)` suffix to avoid a collision. */
+  numbered?: boolean;
 }
 export interface PreviewResult {
   files: PreviewFile[];
@@ -317,6 +322,10 @@ export class RenameApi {
   }
   runs(page: number) {
     return this.http.get<RunPage>('/api/rename-runs', { params: { page, pageSize: 20 } });
+  }
+  /** Same-origin download address of a run's history export. */
+  exportUrl(id: string, format: 'csv' | 'json') {
+    return `/api/rename-runs/${encodeURIComponent(id)}/export?format=${format}`;
   }
   run(id: string) {
     return this.http.get<RunView>(`/api/rename-runs/${encodeURIComponent(id)}`);

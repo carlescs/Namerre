@@ -25,6 +25,7 @@ public sealed class RenamePluginTests
                 """{"replacements":[],"ignoreCase":false,"scope":"all"}""",
                 """{"pattern":"","replacement":"","ignoreCase":false}""",
                 """{"mode":"lower","language":"en"}""",
+                """{"mode":"lower"}""",
                 """{"prefix":"","suffix":""}""",
                 """{"characters":["dots","underscores"],"splitNumbers":false,"keepSpaces":false,"keepEnds":false}""",
                 """{"categories":["resolution","codec","source","audio","hdr"],"groups":["brackets","releaseGroup"],"extra":""}""",
@@ -35,7 +36,7 @@ public sealed class RenamePluginTests
                 """{"width":2,"target":"all","skipYears":false}""",
                 """{"start":1,"step":1,"width":2,"perFolder":false,"position":"suffix","separator":" ","template":"{name} {n}"}""",
                 """{"source":"modified","format":"yyyy-MM-dd","timeZone":"","position":"prefix","separator":" ","template":"{date} {name}"}""",
-                """{"nameTemplate":"","changeFolder":false,"baseFolder":"","folderTemplate":"{title} ({year})","seasonFolder":false,"seasonFolderTemplate":"Season {season}","language":"en-US"}"""
+                """{"preset":"custom","nameTemplate":"","changeFolder":false,"baseFolder":"","folderTemplate":"{title} ({year})","seasonFolder":false,"seasonFolderTemplate":"Season {season}","language":"en-US"}"""
             ],
             catalog.Select(p => JsonSerializer.Serialize(p.DefaultOptions, Web)));
     }

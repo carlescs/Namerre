@@ -93,6 +93,11 @@ Application settings live in one `Namerre` section in `Namerre.Api\appsettings.j
       "Protocol": "Grpc",
       "Headers": "",
       "ServiceName": "namerre"
+    },
+    "Limits": {
+      "MaxFilesPerRun": 200,
+      "MaxStepsPerRun": 32,
+      "MaxQueuedJobs": 32
     }
   }
 }
@@ -339,7 +344,7 @@ Synology's `@eaDir`, plus `Thumbs.db`, `desktop.ini` and recycle-bin folders) ar
 skipped unless **Show hidden files and folders** is ticked in the picker.
 The collection can contain files from multiple folders. Start with an empty plugin
 stack and add as many independently configured instances as needed: text replacement,
-regular-expression replacement, case change, prefix and suffix, number padding, counter, date, or TMDB resolution. Repeated plugin
+regular-expression replacement, case change, extension case, prefix and suffix, number padding, counter, date, or TMDB resolution. Repeated plugin
 types are allowed, except TMDB: a recipe holds at most one TMDB step, since each one needs its own
 confirmed match for every file. Move instances up or down to choose the execution order; the
 catalog order does not determine execution order.
@@ -383,6 +388,12 @@ as short words (`El Mar i l'Àvia`). The identifier styles split words at spaces
 punctuation and case changes (`XMLHttpRequest` → `xml_http_request`), keep accented and
 non-Latin letters, and drop the apostrophe of short endings (`don't` → `dont`). Casing is
 culture-invariant.
+**Extension case** lowercases or uppercases the file extension (`IMG_01.JPG` →
+`IMG_01.jpg`). It is opt-in, and the only change to an extension the pipeline allows: any
+other step that alters the extension, or this one changing more than its case, fails the
+file. On case-insensitive filesystems (Windows, macOS) the rename still goes through a
+staging path, so the file is never mistaken for a collision with itself, and a rollback
+restores the original case. Related files keep their own extension.
 **Replacement table** applies several find/replace rows in one step, top to bottom, each
 to the previous row's result, with the same case and scope options as **Literal
 replacement**; a row with empty find text is rejected.
@@ -454,7 +465,17 @@ browser re-reads the record from the REST API. The signal carries no file paths.
 requires the same session cookie as the API and closes when the session expires; a fallback
 refresh every 15 seconds covers any missed signal.
 
-Existing targets and duplicate destinations block execution. Files can move within
+Existing targets and duplicate destinations block execution unless **Add a number when
+names collide** is ticked on the preview step (`onCollision: "AddNumber"` on the pipeline
+request; `"Report"`, the default, keeps the blocking behaviour). Then, in collection order,
+the first file keeps its name and each later file whose name is taken, by another file of
+the batch, a file that stays where it is, or an existing file that is not being renamed
+away, gets the first free ` (1)`, ` (2)`, … suffix before the extension (`Name (1).mkv`),
+following the filesystem's case rules. Related files follow their video's numbered name,
+manual overrides are never numbered, and the preview marks each numbered name
+(`numbered: true`). Numbers are chosen when the plan is prepared and stored in it, so
+execution never picks names; if a numbered target appears in the meantime, execution
+stops for that file and nothing is overwritten. Files can move within
 the configured root on the same filesystem, including swaps and case-only renames.
 Missing destination folders may be created. There is no overwrite, cross-filesystem
 copy-and-delete fallback, directory renaming, or automatic companion-file discovery.
@@ -480,6 +501,15 @@ been verified (`GET /api/rename-runs/{id}/rollback-preview/{operationId}`). A ha
 when different files contain identical bytes. Each rollback is saved as its own run:
 its details link back to the original run, and the original run's details list every
 rollback run created from it (`rollbackRuns` on `GET /api/rename-runs/{id}`).
+
+A run's details offer its file list as a download for audits or other tools
+(`GET /api/rename-runs/{id}/export?format=csv|json`, CSV by default). Each file has its
+source and target path, final status, error, and the most recent rollback run that
+included it (ID, status and time), next to the run's ID, kind, status and creation time.
+CSV follows RFC 4180 with a UTF-8 byte order mark so spreadsheets read accents correctly,
+and a cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return is prefixed with
+`'` so it is never evaluated as a formula. Like every API response, exports require a
+signed-in session and are sent with `Cache-Control: no-store`.
 
 Settled runs (completed or recovered) can be deleted from history, either from the
 list or the run details, after an inline confirmation (`DELETE /api/rename-runs/{id}`).
@@ -652,10 +682,26 @@ release date, `yyyy-MM-dd`), `{tmdbId}` (movie or show ID), `{season}`, `{season
 `{episode}` and `{episodeTitle}`. Numeric fields take a zero-padding format of 1 to 6 zeros, such as
 `{episode:000}` (`007`) or `{season:0}` (`7`). A template that uses a value TMDB did not provide
 (for example a missing air date) is reported in the preview instead of rendering. For Jellyfin and
-Plex, `{title} ({year}) [tmdbid-{tmdbId}]` identifies an item reliably. Templates only depend on the
+Plex, `{title} ({year}) [tmdbid-{tmdbId}]` identifies an item reliably. Write `{{` and `}}` for
+literal braces, as in Plex's `{{tmdb-{tmdbId}}}` (`{tmdb-603}`). Templates only depend on the
 metadata language for confirmation, so editing them never invalidates confirmed matches.
 Confirmed metadata is snapshotted for the run so a
 later TMDB change or outage does not alter an approved execution or rollback.
+
+**Naming preset** fills in the filename, folder and season folder templates (and turns on
+folder changes, plus season folders for TV) with a media server's recommended layout; it
+leaves the base folder and language alone. Editing any filled-in option afterwards switches
+the preset back to **Custom**, and the preset never invalidates confirmed matches. Each
+preset is for movies or for TV shows, since episode fields are unavailable for movies. For
+The Matrix (TMDB ID 603) and Game of Thrones S01E02 (show ID 1399), with `Movies` or `TV` as
+base folder, the presets give:
+
+| Preset | Movies | TV shows |
+| --- | --- | --- |
+| Plex | `Movies/The Matrix (1999) {tmdb-603}/The Matrix (1999).mkv` | `TV/Game of Thrones (2011) {tmdb-1399}/Season 01/Game of Thrones (2011) - s01e02 - The Kingsroad.mkv` |
+| Jellyfin | `Movies/The Matrix (1999) [tmdbid-603]/The Matrix (1999).mkv` | `TV/Game of Thrones (2011) [tmdbid-1399]/Season 01/Game of Thrones S01E02 - The Kingsroad.mkv` |
+| Emby | `Movies/The Matrix (1999) [tmdbid=603]/The Matrix (1999).mkv` | `TV/Game of Thrones (2011) [tmdbid=1399]/Season 1/Game of Thrones - S01E02 - The Kingsroad.mkv` |
+| Kodi | `Movies/The Matrix (1999)/The Matrix (1999).mkv` | `TV/Game of Thrones (2011)/Season 01/Game of Thrones S01E02 - The Kingsroad.mkv` |
 
 The TMDB matching stage appears automatically when an enabled TMDB plugin is added.
 Existing matches survive unrelated plugin edits and collection additions; changed
@@ -678,10 +724,16 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 ## Workload limits
 
-A run accepts up to 200 files and 32 plugin instances. These bounds do not prescribe
-which types to use or their order; repeated instances are independently configured.
-Larger collections can still be browsed, but must be split before preparing a run.
-The durable queue accepts up to 32 queued jobs and reports overload explicitly.
+By default a run accepts up to 200 files and 32 plugin instances, and the durable queue
+accepts up to 32 queued jobs, reporting overload explicitly. `Namerre:Limits` changes them
+(`MaxFilesPerRun` up to 2000, `MaxStepsPerRun` up to 64, `MaxQueuedJobs` up to 256, for
+example `Namerre__Limits__MaxFilesPerRun=500`); a value outside 1 to its ceiling stops
+startup. Larger runs mean longer preparation, since every file is hashed or checked, and
+larger journal writes while they execute. Signed-in sessions receive the effective limits
+(`limits` on `GET /api/auth/session`), so the app shows the configured numbers. These
+bounds do not prescribe which types to use or their order; repeated instances are
+independently configured. Larger collections can still be browsed, but must be split
+before preparing a run.
 Up to four previews and four TMDB calls can run concurrently.
 Regex matching has a 100 ms timeout. Each TMDB lookup gets 15 seconds overall and 5 seconds per attempt;
 transient failures (network errors, timeouts, 408 and 5xx responses) are retried twice with backoff, TMDB rate

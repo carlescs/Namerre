@@ -82,6 +82,23 @@
     >
       <label class="flex items-start gap-2 text-sm">
         <input
+          #numbered
+          id="number-collisions"
+          type="checkbox"
+          [checked]="numberCollisions()"
+          (change)="setNumberCollisions(numbered.checked)"
+          [disabled]="preparing() || executing()"
+        />
+        <span>
+          Add a number when names collide, e.g. Name (1).ext.
+          <span class="block text-xs text-slate-500 dark:text-slate-400"
+            >Applies to files that would get the same name or a name that is already taken. The
+            numbers are fixed when the plan is prepared; nothing is ever overwritten.</span
+          >
+        </span>
+      </label>
+      <label class="flex items-start gap-2 text-sm">
+        <input
           #quickCheck
           id="quick-check"
           type="checkbox"
@@ -153,7 +170,7 @@
       >
     } @else {
       <span class="hidden text-xs text-slate-500 dark:text-slate-400 sm:block" role="status"
-        >{{ files().length }} / 200 files selected</span
+        >{{ files().length }} / {{ maxFiles() }} files selected</span
       >
     }
     @switch (stage()) {

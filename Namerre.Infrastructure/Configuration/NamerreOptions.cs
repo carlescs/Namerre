@@ -1,3 +1,5 @@
+using Namerre.Application.Renaming;
+
 namespace Namerre.Infrastructure.Configuration;
 
 public sealed class NamerreOptions
@@ -10,6 +12,17 @@ public sealed class NamerreOptions
     public TmdbOptions Tmdb { get; set; } = new();
     public ReverseProxyOptions ReverseProxy { get; set; } = new();
     public TelemetryOptions Telemetry { get; set; } = new();
+    public LimitsOptions Limits { get; set; } = new();
+}
+
+/// <summary>Workload limits; values outside 1 to the ceilings of <see cref="RenameLimits"/> fail startup.</summary>
+public sealed class LimitsOptions
+{
+    public int MaxFilesPerRun { get; set; } = RenameLimits.DefaultFiles;
+    public int MaxStepsPerRun { get; set; } = RenameLimits.DefaultSteps;
+    public int MaxQueuedJobs { get; set; } = RenameLimits.DefaultQueuedJobs;
+
+    public RenameLimits ToLimits() => new(MaxFilesPerRun, MaxStepsPerRun, MaxQueuedJobs);
 }
 
 public sealed class AuthenticationOptions

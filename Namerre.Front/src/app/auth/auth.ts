@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse, type HttpInterceptorFn } from '@angular/common/http';
 import { DOCUMENT, Injectable, inject, signal } from '@angular/core';
 import { catchError, firstValueFrom, throwError } from 'rxjs';
+import { defaultLimits, type Limits, WorkloadLimits } from '../workload-limits';
 
 /** Matches the server's rule for new administrator passwords; existing shorter passwords still sign in. */
 export const minimumPasswordLength = 12;
@@ -23,12 +24,15 @@ interface Session {
   requiresSetup: boolean;
   canChangePassword?: boolean;
   oidc?: SingleSignOnProvider | null;
+  /** Configured workload limits; only sent to signed-in sessions. */
+  limits?: Limits | null;
 }
 
 @Injectable({ providedIn: 'root' })
 export class Auth {
   private readonly http = inject(HttpClient);
   private readonly document = inject(DOCUMENT);
+  private readonly limits = inject(WorkloadLimits);
   readonly username = signal<string | null>(null);
   readonly requiresSetup = signal(false);
   readonly canChangePassword = signal(false);
@@ -40,6 +44,7 @@ export class Auth {
     this.requiresSetup.set(session.requiresSetup);
     this.canChangePassword.set(session.canChangePassword ?? false);
     this.singleSignOn.set(session.oidc ?? null);
+    this.limits.current.set(session.limits ?? defaultLimits);
   }
 
   /** Leaves the app for the identity provider, which returns to `/` after sign-in. */

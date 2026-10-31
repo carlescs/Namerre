@@ -2,7 +2,7 @@ import type { PluginOptions, TmdbMatch } from './rename-api';
 
 // Fake metadata used only to illustrate templates; the server renders the confirmed match.
 export const sampleMovie: TmdbMatch = {
-  id: 0,
+  id: 12345,
   mediaType: 'movie',
   title: 'Sample Movie',
   year: '2024',
@@ -15,7 +15,7 @@ export const sampleMovie: TmdbMatch = {
   showYear: null,
 };
 export const sampleEpisode: TmdbMatch = {
-  id: 0,
+  id: 67890,
   mediaType: 'tv',
   title: 'Sample Show',
   year: '2019',
@@ -61,44 +61,64 @@ export function tmdbTemplatePreview(
   }
 }
 
+// `{{` and `}}` are literal braces (Plex reads ids such as `{tmdb-603}`), like TmdbPlugin.Render.
 function render(template: string, match: TmdbMatch): string {
   if (template.length > 1000) throw new Error('Template is too long.');
-  const result = template.replace(/\{([^{}]+)\}/g, (_, token: string) => {
-    const colon = token.indexOf(':');
-    const field = colon < 0 ? token : token.slice(0, colon);
-    const format = colon < 0 ? undefined : token.slice(colon + 1);
-    switch (field) {
-      case 'season':
-        return formatNumber(available(match.season, 'Season'), format, '00');
-      case 'seasonNumber':
-        return formatNumber(available(match.season, 'Season'), format, '0');
-      case 'episode':
-        return formatNumber(available(match.episode, 'Episode'), format, '00');
-      case 'tmdbId':
-        return formatNumber(match.id, format, '0');
+  let result = '';
+  for (let i = 0; i < template.length; i++) {
+    const c = template[i];
+    if ((c === '{' || c === '}') && template[i + 1] === c) {
+      result += c;
+      i++;
+    } else if (c === '}') {
+      throw new Error('Write }} for a literal closing brace.');
+    } else if (c === '{') {
+      const end = template.indexOf('}', i + 1);
+      const open = template.indexOf('{', i + 1);
+      if (end < 0 || (open >= 0 && open < end) || end === i + 1) {
+        throw new Error('Close each field with }, or write {{ for a literal brace.');
+      }
+      result += field(template.slice(i + 1, end), match);
+      i = end;
+    } else {
+      result += c;
     }
-    if (format !== undefined) throw new Error('Only numeric fields take a format.');
-    switch (field) {
-      case 'title':
-        return metadataText(match.title);
-      case 'originalTitle':
-        return metadataText(available(match.originalTitle, 'Original title'));
-      case 'year':
-        return match.year === null ? '' : metadataText(match.year);
-      case 'showYear':
-        return metadataText(available(match.showYear, 'Show year'));
-      case 'airDate':
-        return metadataText(available(match.airDate, 'Air date'));
-      case 'episodeTitle':
-        return metadataText(available(match.episodeTitle, 'Episode title'));
-      default:
-        throw new Error(`Unknown template field {${field}}.`);
-    }
-  });
-  if (/[{}/\\]/.test(result)) {
-    throw new Error('Templates must render a single path segment without braces.');
   }
+  if (/[/\\]/.test(result)) throw new Error('Templates must render a single path segment.');
   return result;
+}
+
+function field(token: string, match: TmdbMatch): string {
+  const colon = token.indexOf(':');
+  const name = colon < 0 ? token : token.slice(0, colon);
+  const format = colon < 0 ? undefined : token.slice(colon + 1);
+  switch (name) {
+    case 'season':
+      return formatNumber(available(match.season, 'Season'), format, '00');
+    case 'seasonNumber':
+      return formatNumber(available(match.season, 'Season'), format, '0');
+    case 'episode':
+      return formatNumber(available(match.episode, 'Episode'), format, '00');
+    case 'tmdbId':
+      return formatNumber(match.id, format, '0');
+  }
+  if (format !== undefined) throw new Error('Only numeric fields take a format.');
+  switch (name) {
+    case 'title':
+      return metadataText(match.title);
+    case 'originalTitle':
+      return metadataText(available(match.originalTitle, 'Original title'));
+    case 'year':
+      return match.year === null ? '' : metadataText(match.year);
+    case 'showYear':
+      return metadataText(available(match.showYear, 'Show year'));
+    case 'airDate':
+      return metadataText(available(match.airDate, 'Air date'));
+    case 'episodeTitle':
+      return metadataText(available(match.episodeTitle, 'Episode title'));
+    default:
+      throw new Error(`Unknown template field {${name}}.`);
+  }
 }
 
 function available<T>(value: T | null | undefined, field: string): T {

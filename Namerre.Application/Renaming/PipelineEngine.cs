@@ -35,12 +35,19 @@ public sealed class PipelineEngine
     /// <summary>Instance and type ID of the trace step that names a related file after its video.</summary>
     public const string CompanionStepId = "companion";
 
+    /// <summary>Instance and type ID of the trace step that numbers a colliding name.</summary>
+    public const string CollisionStepId = "collision";
+
+    /// <summary>Highest <c> (n)</c> suffix tried before a collision is reported instead.</summary>
+    public const int MaxCollisionNumber = 9999;
+
     private readonly IRenameFileSystem fileSystem;
     private readonly Dictionary<(string TypeId, int Version), IRenamePlugin> plugins = [];
 
-    public PipelineEngine(IRenameFileSystem fileSystem, IEnumerable<IRenamePlugin> plugins)
+    public PipelineEngine(IRenameFileSystem fileSystem, IEnumerable<IRenamePlugin> plugins, RenameLimits? limits = null)
     {
         this.fileSystem = fileSystem;
+        Limits = limits ?? RenameLimits.Default;
         var registered = plugins.ToArray();
         foreach (var plugin in registered)
         {
@@ -55,6 +62,9 @@ public sealed class PipelineEngine
 
     /// <summary>Registered plugins in registration order, which is unrelated to execution order.</summary>
     public IReadOnlyList<PluginDescriptor> Catalog { get; }
+
+    /// <summary>The configured workload limits every request is checked against.</summary>
+    public RenameLimits Limits { get; }
 
     public Task<PreviewResult> Preview(PipelineRequest request, CancellationToken cancellationToken)
         => Preview(request, null, cancellationToken);
@@ -77,6 +87,9 @@ public sealed class PipelineEngine
             if (companions.ContainsKey(file.Id)) continue;
             computed[index] = PreviewOne(request, file, positions[position++], facts, cancellationToken);
         }
+        // Numbered before related files are named, so they follow their video's numbered stem.
+        if (request.OnCollision == PipelineRequest.CollisionAddNumber)
+            NumberCollisions(request, computed, companions, cancellationToken);
         var targets = request.Files.Select((file, index) => (file.Id, index))
             .ToDictionary(entry => entry.Id, entry => entry.index, StringComparer.Ordinal);
         for (var index = 0; index < request.Files.Count; index++)
@@ -87,6 +100,11 @@ public sealed class PipelineEngine
                     cancellationToken);
         }
         var results = computed.ToList();
+        for (var i = 0; i < results.Count; i++)
+        {
+            if (results[i].CompanionOf is { } videoId && results[targets[videoId]].Numbered)
+                results[i] = results[i] with { Numbered = true };
+        }
         for (var i = 0; i < results.Count; i++)
         {
             var item = results[i];
@@ -103,6 +121,64 @@ public sealed class PipelineEngine
             results[i] = item with { Issues = issues };
         }
         return Task.FromResult(new PreviewResult(results, results.Count > 0 && results.All(f => f.Issues.Count == 0)));
+    }
+
+    /// <summary>
+    /// Gives each renamed file whose target is taken a free <c>stem (n).ext</c> in the same folder, in request
+    /// order, so the first file keeps its name. A path is taken when a file staying in place or an earlier target
+    /// holds it, or when it exists and no renamed file leaves it. Files with issues or a manual override keep their
+    /// target, and a collision left over is reported as usual.
+    /// </summary>
+    private void NumberCollisions(PipelineRequest request, PreviewFile?[] computed,
+        IReadOnlyDictionary<string, Companion> companions, CancellationToken cancellationToken)
+    {
+        var primary = computed.Where(file => file is not null).Select(file => file!).ToArray();
+        static bool Moving(PreviewFile file) => !file.Unchanged && file.Issues.Count == 0;
+        static bool Overridden(PreviewFile file) => file.Steps.Count > 0 && file.Steps[^1].TypeId == OverrideStepId;
+        var vacated = primary.Where(Moving).Select(file => file.SourcePath).ToArray();
+        // Related files are named later; until then they hold their source paths.
+        var taken = primary.Where(file => !Moving(file)).Select(file => file.SourcePath)
+            .Concat(request.Files.Where(file => companions.ContainsKey(file.Id)).Select(file => file.Path))
+            .Concat(primary.Where(file => Moving(file) && Overridden(file)).Select(file => file.TargetPath))
+            .ToList();
+        bool Taken(string path) => taken.Any(other => fileSystem.SamePath(other, path))
+            || (fileSystem.Exists(path) && !vacated.Any(source => fileSystem.SamePath(source, path)));
+        for (var index = 0; index < computed.Length; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var file = computed[index];
+            if (file is null || !Moving(file) || Overridden(file)) continue;
+            var target = file.TargetPath;
+            try
+            {
+                for (var number = 1; Taken(target) && number <= MaxCollisionNumber; number++)
+                {
+                    target = Numbered(file.TargetPath, number);
+                    fileSystem.Validate(target);
+                }
+            }
+            catch (Exception exception) when (exception is RenameException or ArgumentException)
+            {
+                // A numbered name that is too long or invalid leaves the collision to be reported.
+                target = file.TargetPath;
+            }
+            if (target != file.TargetPath && !Taken(target))
+            {
+                computed[index] = file with
+                {
+                    TargetPath = target, Numbered = true,
+                    Steps = [.. file.Steps, new(CollisionStepId, CollisionStepId, file.TargetPath, target, null)]
+                };
+            }
+            taken.Add(computed[index]!.TargetPath);
+        }
+    }
+
+    private static string Numbered(string path, int number)
+    {
+        var name = FileName(path);
+        var extension = Path.GetExtension(name);
+        return path[..^name.Length] + name[..^extension.Length] + $" ({number})" + extension;
     }
 
     private PreviewFile PreviewOne(PipelineRequest request, FileInput file, FilePosition position,
@@ -221,9 +297,10 @@ public sealed class PipelineEngine
 
     public void ValidateRequest(PipelineRequest request)
     {
-        if (request.Files is null || request.Plugins is null || request.Files.Count is < 1 or > NamingRules.MaxFiles
-            || request.Plugins.Count > NamingRules.MaxPlugins)
-            throw new RenameException("BatchLimit", "Supply 1–200 files and at most 32 plugin instances.");
+        if (request.Files is null || request.Plugins is null || request.Files.Count < 1
+            || request.Files.Count > Limits.MaxFilesPerRun || request.Plugins.Count > Limits.MaxStepsPerRun)
+            throw new RenameException("BatchLimit",
+                $"Supply 1–{Limits.MaxFilesPerRun} files and at most {Limits.MaxStepsPerRun} plugin instances.");
         if (request.Files.Any(f => string.IsNullOrWhiteSpace(f.Id) || f.Id.Length > 100 || f.Path is null)
             || request.Files.Select(f => f.Id).Distinct().Count() != request.Files.Count
             || request.Files.Select(f => f.Path).Distinct().Count() != request.Files.Count)
@@ -241,8 +318,10 @@ public sealed class PipelineEngine
             .Where(d => d.SingleInstance).GroupBy(d => d.TypeId).FirstOrDefault(g => g.Count() > 1);
         if (repeated is not null)
             throw new RenameException("SingleInstancePlugin", $"Add {repeated.First().Name} only once per pipeline.");
-        if ((request.Selections?.Count ?? 0) > NamingRules.MaxFiles * NamingRules.MaxPlugins)
+        if ((request.Selections?.Count ?? 0) > Limits.MaxFilesPerRun * Limits.MaxStepsPerRun)
             throw new RenameException("BatchLimit", "Too many metadata selections.");
+        if (request.OnCollision is not (null or PipelineRequest.CollisionReport or PipelineRequest.CollisionAddNumber))
+            throw new RenameException("InvalidCollisionMode", "Use Report or AddNumber for onCollision.");
         var overrides = request.Overrides ?? [];
         if (overrides.Any(o => o is null || o.TargetPath is null || o.TargetPath.Length > 2048
                 || !request.Files.Any(f => f.Id == o.FileId))
@@ -297,7 +376,9 @@ public sealed class PipelineEngine
         var parts = new PathParts(slash < 0 ? "" : input[..(slash + 1)], name[..(name.Length - extension.Length)], extension);
         var result = plugins[(plugin.TypeId, plugin.Version)]
             .Apply(new(file, plugin.InstanceId, input, parts, plugin.Options, selections, position, facts));
-        if (result.Extension != parts.Extension)
+        // Only the case of the extension may change (see ExtensionCasePlugin); the rest is never rewritten.
+        if (!string.Equals(result.Extension, parts.Extension, StringComparison.OrdinalIgnoreCase)
+            || result.Extension.Length != parts.Extension.Length)
             throw new InvalidOperationException($"Rename plugin {plugin.TypeId} changed the file extension.");
         if (result.Stem.Length == 0 || result.Stem.Contains('/') || result.Stem.Contains('\\'))
             throw new RenameException("InvalidName", "The plugin produced an empty name or path separator.");

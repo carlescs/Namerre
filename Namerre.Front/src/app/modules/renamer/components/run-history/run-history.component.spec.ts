@@ -490,6 +490,16 @@ describe('RunHistoryComponent', () => {
     expect(fixture.nativeElement.textContent).not.toContain('Undos of this rename');
   });
 
+  it('offers the run file list as CSV and JSON downloads', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush(run);
+    await fixture.whenStable();
+    const links = [...fixture.nativeElement.querySelectorAll('a[download]')] as HTMLAnchorElement[];
+    expect(links.map((link) => [link.textContent?.trim(), link.getAttribute('href')])).toEqual([
+      ['CSV', '/api/rename-runs/run-1/export?format=csv'],
+      ['JSON', '/api/rename-runs/run-1/export?format=json'],
+    ]);
+  });
+
   it('loads the saved plan once when the snapshot is opened and retries after a failure', async () => {
     http.expectOne('/api/rename-runs/run-1').flush({ ...run, parentRunId: 'parent-1' });
     await fixture.whenStable();

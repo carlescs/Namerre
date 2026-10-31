@@ -2,6 +2,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import {
   afterNextRender,
   Component,
+  computed,
   type ElementRef,
   Injector,
   inject,
@@ -24,6 +25,7 @@ import {
 } from '@angular/forms';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faArrowDown, faArrowUp, faTrashCan } from '@fortawesome/free-solid-svg-icons';
+import { WorkloadLimits } from '../../../../workload-limits';
 import {
   type OptionField,
   type OptionGroup,
@@ -34,6 +36,7 @@ import {
   type PluginOptionRow,
   type PluginOptions,
 } from '../../rename-api';
+import { linkTmdbPreset } from '../../tmdb-presets';
 import { sampleEpisode, sampleMovie, tmdbTemplatePreview } from '../../tmdb-template-preview';
 
 type OptionControl = FormControl<PluginOptionCell>;
@@ -66,7 +69,8 @@ export class PluginEditorComponent implements OnInit {
   /** Plugins restored from a saved draft; read once when the editor is created. */
   readonly initialPlugins = input<PluginInstance[]>([]);
   readonly pluginsChanged = output<PluginInstance[]>();
-  protected readonly maxPlugins = 32;
+  private readonly limits = inject(WorkloadLimits);
+  protected readonly maxPlugins = computed(() => this.limits.current().maxStepsPerRun);
   protected readonly upIcon = faArrowUp;
   protected readonly downIcon = faArrowDown;
   protected readonly trashIcon = faTrashCan;
@@ -94,13 +98,13 @@ export class PluginEditorComponent implements OnInit {
       if (this.initialPlugins().length) this.emit();
       return;
     }
-    this.cards.set(restored.slice(0, this.maxPlugins).map((plugin) => this.card(plugin)));
+    this.cards.set(restored.slice(0, this.maxPlugins()).map((plugin) => this.card(plugin)));
     if (restored.length !== this.initialPlugins().length) this.emit();
   }
 
   protected canAdd(descriptor: PluginDescriptor): boolean {
     return (
-      this.cards().length < this.maxPlugins &&
+      this.cards().length < this.maxPlugins() &&
       !(descriptor.singleInstance && this.included(descriptor))
     );
   }
@@ -244,6 +248,7 @@ export class PluginEditorComponent implements OnInit {
           : optionControl(field, plugin.options[field.key], fallback);
     }
     const form = new FormGroup(controls);
+    if (plugin.typeId === 'tmdb') linkTmdbPreset(form);
     const values = signal<PluginOptions>(form.getRawValue() as PluginOptions);
     const card: Card = { plugin, groups: optionGroups, form, values };
     form.valueChanges.subscribe(() => {

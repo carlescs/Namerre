@@ -22,9 +22,9 @@
   <p class="m-0 mt-3 text-sm text-slate-600 dark:text-slate-300 empty:hidden" role="status">
     {{ notice() }}
   </p>
-  @if (files().length > 200) {
+  @if (files().length > maxFiles()) {
     <p class="error" role="alert">
-      A workflow supports at most 200 files. Remove files before previewing.
+      A workflow supports at most {{ maxFiles() }} files. Remove files before previewing.
     </p>
   }
   @if (files().length) {

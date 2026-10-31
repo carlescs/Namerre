@@ -102,6 +102,7 @@ export const tmdbPlugin: PluginDescriptor = {
   description: 'Name movies and episodes from The Movie Database',
   singleInstance: true,
   defaultOptions: {
+    preset: 'custom',
     nameTemplate: '',
     changeFolder: false,
     baseFolder: '',
@@ -115,6 +116,23 @@ export const tmdbPlugin: PluginDescriptor = {
       heading: 'File name',
       fields: [
         {
+          key: 'preset',
+          label: 'Naming preset',
+          kind: 'select',
+          choices: [
+            { value: 'custom', label: 'Custom' },
+            { value: 'plexMovies', label: 'Plex — movies' },
+            { value: 'plexTv', label: 'Plex — TV shows' },
+            { value: 'jellyfinMovies', label: 'Jellyfin — movies' },
+            { value: 'jellyfinTv', label: 'Jellyfin — TV shows' },
+            { value: 'embyMovies', label: 'Emby — movies' },
+            { value: 'embyTv', label: 'Emby — TV shows' },
+            { value: 'kodiMovies', label: 'Kodi — movies' },
+            { value: 'kodiTv', label: 'Kodi — TV shows' },
+          ],
+          hint: "Fills in the templates with a media server's recommended layout. Editing a template switches back to Custom.",
+        },
+        {
           key: 'nameTemplate',
           label: 'Filename template',
           kind: 'text',
@@ -122,7 +140,7 @@ export const tmdbPlugin: PluginDescriptor = {
           placeholder: 'Leave empty to use the default',
           hint:
             'Fields: {title}, {originalTitle}, {year}, {showYear}, {airDate}, {tmdbId}, {season}, {seasonNumber}, {episode}, {episodeTitle}. ' +
-            'Pad numbers with zeros, e.g. {episode:000}. ' +
+            'Pad numbers with zeros, e.g. {episode:000}. Write {{ and }} for literal braces. ' +
             'Defaults: {title} ({year}) for movies, {title} - S{season}E{episode} - {episodeTitle} for episodes.',
         },
         {

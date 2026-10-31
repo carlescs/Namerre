@@ -13,10 +13,17 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
         "Name movies and episodes from The Movie Database",
         [
             new([
+                new("preset", "Naming preset", OptionFieldKind.Select,
+                [
+                    new(CustomPreset, "Custom"), new("plexMovies", "Plex — movies"), new("plexTv", "Plex — TV shows"),
+                    new("jellyfinMovies", "Jellyfin — movies"), new("jellyfinTv", "Jellyfin — TV shows"),
+                    new("embyMovies", "Emby — movies"), new("embyTv", "Emby — TV shows"),
+                    new("kodiMovies", "Kodi — movies"), new("kodiTv", "Kodi — TV shows")
+                ], Hint: "Fills in the templates with a media server's recommended layout. Editing a template switches back to Custom."),
                 new("nameTemplate", "Filename template", Wide: true,
                     Placeholder: "Leave empty to use the default",
                     Hint: "Fields: {title}, {originalTitle}, {year}, {showYear}, {airDate}, {tmdbId}, {season}, {seasonNumber}, {episode}, {episodeTitle}. "
-                        + "Pad numbers with zeros, e.g. {episode:000}. "
+                        + "Pad numbers with zeros, e.g. {episode:000}. Write {{ and }} for literal braces. "
                         + "Defaults: {title} ({year}) for movies, {title} - S{season}E{episode} - {episodeTitle} for episodes."),
                 new("language", "Metadata language",
                     Hint: "Sets the language of titles. Pick one or type your own.",
@@ -39,8 +46,16 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
         // A second TMDB step would ask for every file to be matched again and repeat each matching row.
         singleInstance: true)
 {
+    /// <summary>The <c>preset</c> value of hand-written templates.</summary>
+    public const string CustomPreset = "custom";
+
+    /// <remarks>
+    /// <see cref="Preset"/> only records which layout the editor filled the templates from; rendering ignores it
+    /// and so does <see cref="OptionsHash"/>, so choosing a preset never invalidates confirmed matches.
+    /// </remarks>
     public sealed class Options
     {
+        public string Preset { get; init; } = CustomPreset;
         public string NameTemplate { get; init; } = "";
         public bool ChangeFolder { get; init; }
         public string BaseFolder { get; init; } = "";
@@ -89,34 +104,61 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
         };
     }
 
+    /// <summary>
+    /// Renders <c>{field}</c> and <c>{field:000}</c> tokens; <c>{{</c> and <c>}}</c> stand for literal braces
+    /// (Plex reads ids such as <c>{tmdb-603}</c>). The frontend mirrors this in <c>tmdb-template-preview.ts</c>.
+    /// </summary>
     private static string Render(string template, TmdbMatch match)
     {
         if (template.Length > 1000) throw new RenameException("InvalidTemplate", "Template is too long.");
-        var result = Regex.Replace(template, @"\{([^{}]+)\}", m =>
+        var result = new StringBuilder();
+        for (var i = 0; i < template.Length; i++)
         {
-            var token = m.Groups[1].Value;
-            var colon = token.IndexOf(':');
-            var field = colon < 0 ? token : token[..colon];
-            var format = colon < 0 ? null : token[(colon + 1)..];
-            return field switch
+            var c = template[i];
+            if ((c is '{' or '}') && i + 1 < template.Length && template[i + 1] == c)
             {
-                "season" => Number(match.Season ?? throw Unavailable("Season"), format, "00"),
-                "seasonNumber" => Number(match.Season ?? throw Unavailable("Season"), format, "0"),
-                "episode" => Number(match.Episode ?? throw Unavailable("Episode"), format, "00"),
-                "tmdbId" => Number(match.Id, format, "0"),
-                _ when format is not null => throw new RenameException("InvalidTemplate", "Only numeric fields take a format."),
-                "title" => MetadataText(match.Title),
-                "originalTitle" => MetadataText(match.OriginalTitle ?? throw Unavailable("Original title")),
-                "year" => match.Year is null ? "" : MetadataText(match.Year),
-                "showYear" => MetadataText(match.ShowYear ?? throw Unavailable("Show year")),
-                "airDate" => MetadataText(match.AirDate ?? throw Unavailable("Air date")),
-                "episodeTitle" => MetadataText(match.EpisodeTitle ?? throw Unavailable("Episode title")),
-                _ => throw new RenameException("InvalidTemplate", "Unknown template field.")
-            };
-        }, RegexOptions.CultureInvariant, NamingRules.RegexTimeout);
-        if (result.Contains('{') || result.Contains('}') || result.Contains('/') || result.Contains('\\'))
-            throw new RenameException("InvalidTemplate", "Templates must render a single path segment without braces.");
-        return result;
+                result.Append(c);
+                i++;
+            }
+            else if (c == '}')
+                throw new RenameException("InvalidTemplate", "Write }} for a literal closing brace.");
+            else if (c == '{')
+            {
+                var end = template.IndexOf('}', i + 1);
+                var open = template.IndexOf('{', i + 1);
+                if (end < 0 || (open >= 0 && open < end) || end == i + 1)
+                    throw new RenameException("InvalidTemplate", "Close each field with }, or write {{ for a literal brace.");
+                result.Append(Field(template[(i + 1)..end], match));
+                i = end;
+            }
+            else result.Append(c);
+        }
+        var rendered = result.ToString();
+        if (rendered.Contains('/') || rendered.Contains('\\'))
+            throw new RenameException("InvalidTemplate", "Templates must render a single path segment.");
+        return rendered;
+    }
+
+    private static string Field(string token, TmdbMatch match)
+    {
+        var colon = token.IndexOf(':');
+        var field = colon < 0 ? token : token[..colon];
+        var format = colon < 0 ? null : token[(colon + 1)..];
+        return field switch
+        {
+            "season" => Number(match.Season ?? throw Unavailable("Season"), format, "00"),
+            "seasonNumber" => Number(match.Season ?? throw Unavailable("Season"), format, "0"),
+            "episode" => Number(match.Episode ?? throw Unavailable("Episode"), format, "00"),
+            "tmdbId" => Number(match.Id, format, "0"),
+            _ when format is not null => throw new RenameException("InvalidTemplate", "Only numeric fields take a format."),
+            "title" => MetadataText(match.Title),
+            "originalTitle" => MetadataText(match.OriginalTitle ?? throw Unavailable("Original title")),
+            "year" => match.Year is null ? "" : MetadataText(match.Year),
+            "showYear" => MetadataText(match.ShowYear ?? throw Unavailable("Show year")),
+            "airDate" => MetadataText(match.AirDate ?? throw Unavailable("Air date")),
+            "episodeTitle" => MetadataText(match.EpisodeTitle ?? throw Unavailable("Episode title")),
+            _ => throw new RenameException("InvalidTemplate", "Unknown template field.")
+        };
     }
 
     /// <summary>Formats with a zero-padding pattern such as <c>0</c>, <c>00</c> or <c>000</c>.</summary>
