@@ -172,7 +172,14 @@ falls back to `index.html` otherwise. OpenAPI is exposed only in Development. St
 The root route lazy-loads `modules/renamer`; `rename-api.ts` is the HTTP client for the
 resource-style renaming endpoints (`/api/rename-plugins`, `/api/rename-previews`,
 `/api/rename-plans`, …). The workflow is a staged wizard (`rename-workflow` component) across file
-selection, plugin configuration, TMDB matching, preview, confirmation and run history. The
+selection, plugin configuration, TMDB matching, preview, confirmation and run history. It has two
+modes, chosen per browser through the `WorkflowMode` service (`src/app/workflow-mode`, `localStorage`
+like `Theme`; header switch, first-run onboarding, and a warning before a switch to Simple discards
+steps): **Advanced** is that full wizard; **Simple** runs files → preset (`preset-picker`) → [matching]
+→ review (preview and confirmation on one screen) with fixed `simpleRunOptions`. Simple's built-in presets
+are data in `modules/renamer/simple-presets.json` (`simple-presets.ts` builds and recognises them);
+`Namerre.Application.UnitTests/Renaming/SimplePresetTests` links that file and previews every preset
+and select choice against the built-in catalog, so keep the JSON in sync with plugin options. The
 `plugin-editor` renders each step's options from the descriptor's `form`, so a new plugin needs no
 frontend change unless it has extra UI (like TMDB's template preview). Angular builds into `Namerre.Api/wwwroot` with no `browser`
 subdirectory (generated, cleared on rebuild) — put static assets in `Namerre.Front/public`.

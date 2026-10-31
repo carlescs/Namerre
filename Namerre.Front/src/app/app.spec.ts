@@ -58,6 +58,19 @@ describe('App', () => {
     expect(compiled.querySelector('app-renamer h1')?.textContent).toBe('Renamer');
   });
 
+  it('asks a signed-in user for a workflow mode until one is chosen', async () => {
+    HTMLDialogElement.prototype.showModal = vi.fn();
+    HTMLDialogElement.prototype.close = vi.fn();
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('app-workflow-onboarding')).toBeNull();
+    expect(fixture.nativeElement.querySelector('app-workflow-mode-picker')).toBeNull();
+    username.set('admin');
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('app-workflow-onboarding')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('app-workflow-mode-picker')).not.toBeNull();
+  });
+
   it('shows only the login screen to an anonymous visitor', async () => {
     const fixture = TestBed.createComponent(App);
     await TestBed.inject(Router).navigateByUrl('/');

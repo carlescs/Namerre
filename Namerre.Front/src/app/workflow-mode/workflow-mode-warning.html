@@ -1,0 +1,17 @@
+<dialog
+  #dialog
+  role="alertdialog"
+  aria-labelledby="mode-warning-heading"
+  aria-describedby="mode-warning-text"
+  (cancel)="$event.preventDefault(); cancel()"
+>
+  <h2 id="mode-warning-heading" class="mt-0">Switch to Simple mode?</h2>
+  <p id="mode-warning-text">
+    This pipeline uses advanced steps. Switching to Simple will discard them. Your selected files
+    are kept, and prepared plans and runs are not affected.
+  </p>
+  <div class="actions mt-4 justify-end gap-2">
+    <button type="button" (click)="cancel()">Keep Advanced</button>
+    <button type="button" class="btn-danger" (click)="discard()">Discard steps and switch</button>
+  </div>
+</dialog>

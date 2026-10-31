@@ -40,30 +40,41 @@
     </p>
   </header>
   <div class="wizard-screens workflow-content p-5 sm:p-8" [class.backwards]="backwards()">
-    <div class="wizard-screen" [hidden]="stage() !== 'files'">
+    <div class="wizard-screen" [hidden]="screen() !== 'files'">
       <ng-content />
     </div>
-    <app-plugin-configuration
-      class="wizard-screen"
-      [hidden]="stage() !== 'plugins'"
-      [catalog]="catalog()"
-      [loaded]="catalogLoaded()"
-      [error]="catalogError()"
-      [initialPlugins]="restoredPlugins"
-      [plugins]="plugins()"
-      [runOptions]="{
-        verifyContent: verifyContent(),
-        deleteEmptyFolders: deleteEmptyFolders(),
-        numberCollisions: numberCollisions(),
-      }"
-      (retryRequested)="loadCatalog()"
-      (pluginsChanged)="changePlugins($event)"
-      (presetLoaded)="applyPreset($event)"
-    />
+    @if (mode() === 'advanced') {
+      <!-- Created when Advanced opens, so the editor starts from the steps Simple built. -->
+      <app-plugin-configuration
+        class="wizard-screen"
+        [hidden]="screen() !== 'plugins'"
+        [catalog]="catalog()"
+        [loaded]="catalogLoaded()"
+        [error]="catalogError()"
+        [initialPlugins]="plugins()"
+        [plugins]="plugins()"
+        [runOptions]="{
+          verifyContent: verifyContent(),
+          deleteEmptyFolders: deleteEmptyFolders(),
+          numberCollisions: numberCollisions(),
+        }"
+        (retryRequested)="loadCatalog()"
+        (pluginsChanged)="changePlugins($event)"
+        (presetLoaded)="applyPreset($event)"
+      />
+    } @else {
+      <app-preset-picker
+        class="wizard-screen"
+        [hidden]="screen() !== 'preset'"
+        [plugins]="plugins()"
+        [disabled]="preparing() || executing()"
+        (pluginsChanged)="choosePreset($event)"
+      />
+    }
     @if (tmdbPlugins().length) {
       <app-tmdb-matching
         class="wizard-screen"
-        [hidden]="stage() !== 'matching'"
+        [hidden]="screen() !== 'matching'"
         [rows]="matchRows()"
         [suggesting]="suggesting()"
         [suggestProgress]="suggestProgress()"
@@ -81,67 +92,69 @@
     }
     <app-rename-preview
       class="wizard-screen"
-      [hidden]="stage() !== 'preview'"
+      [hidden]="screen() !== 'preview'"
       [result]="preview()"
       [loading]="loadingPreview()"
       [disabled]="!validCollection() || suggesting() || preparing() || executing()"
       (previewRequested)="refreshPreview()"
     >
-      <label class="flex items-start gap-2 text-sm">
-        <input
-          #numbered
-          id="number-collisions"
-          type="checkbox"
-          [checked]="numberCollisions()"
-          (change)="setNumberCollisions(numbered.checked)"
-          [disabled]="preparing() || executing()"
-        />
-        <span>
-          Add a number when names collide, e.g. Name (1).ext.
-          <span class="block text-xs text-slate-500 dark:text-slate-400"
-            >Applies to files that would get the same name or a name that is already taken. The
-            numbers are fixed when the plan is prepared; nothing is ever overwritten.</span
-          >
-        </span>
-      </label>
-      <label class="flex items-start gap-2 text-sm">
-        <input
-          #quickCheck
-          id="quick-check"
-          type="checkbox"
-          [checked]="!verifyContent()"
-          (change)="verifyContent.set(!quickCheck.checked)"
-          [disabled]="preparing() || executing()"
-        />
-        <span>
-          Quick check: skip content hashing and only compare file size and modification time.
-          <span class="block text-xs text-slate-500 dark:text-slate-400"
-            >Much faster for large files, but a change that keeps both unchanged goes
-            undetected.</span
-          >
-        </span>
-      </label>
-      <label class="flex items-start gap-2 text-sm">
-        <input
-          #emptyFolders
-          id="delete-empty-folders"
-          type="checkbox"
-          [checked]="deleteEmptyFolders()"
-          (change)="deleteEmptyFolders.set(emptyFolders.checked)"
-          [disabled]="preparing() || executing()"
-        />
-        <span>
-          Delete folders left empty after their files are moved out.
-          <span class="block text-xs text-slate-500 dark:text-slate-400"
-            >Only folders that are empty once the run finishes are removed; a rollback of the run
-            does the same for the folders it empties.</span
-          >
-        </span>
-      </label>
+      @if (mode() === 'advanced') {
+        <label class="flex items-start gap-2 text-sm">
+          <input
+            #numbered
+            id="number-collisions"
+            type="checkbox"
+            [checked]="numberCollisions()"
+            (change)="setNumberCollisions(numbered.checked)"
+            [disabled]="preparing() || executing()"
+          />
+          <span>
+            Add a number when names collide, e.g. Name (1).ext.
+            <span class="block text-xs text-slate-500 dark:text-slate-400"
+              >Applies to files that would get the same name or a name that is already taken. The
+              numbers are fixed when the plan is prepared; nothing is ever overwritten.</span
+            >
+          </span>
+        </label>
+        <label class="flex items-start gap-2 text-sm">
+          <input
+            #quickCheck
+            id="quick-check"
+            type="checkbox"
+            [checked]="!verifyContent()"
+            (change)="verifyContent.set(!quickCheck.checked)"
+            [disabled]="preparing() || executing()"
+          />
+          <span>
+            Quick check: skip content hashing and only compare file size and modification time.
+            <span class="block text-xs text-slate-500 dark:text-slate-400"
+              >Much faster for large files, but a change that keeps both unchanged goes
+              undetected.</span
+            >
+          </span>
+        </label>
+        <label class="flex items-start gap-2 text-sm">
+          <input
+            #emptyFolders
+            id="delete-empty-folders"
+            type="checkbox"
+            [checked]="deleteEmptyFolders()"
+            (change)="deleteEmptyFolders.set(emptyFolders.checked)"
+            [disabled]="preparing() || executing()"
+          />
+          <span>
+            Delete folders left empty after their files are moved out.
+            <span class="block text-xs text-slate-500 dark:text-slate-400"
+              >Only folders that are empty once the run finishes are removed; a rollback of the run
+              does the same for the folders it empties.</span
+            >
+          </span>
+        </label>
+      }
     </app-rename-preview>
     <app-rename-confirmation
       class="wizard-screen"
-      [hidden]="stage() !== 'confirmation'"
+      [hidden]="screen() !== 'confirmation'"
       [plan]="plan()"
       [fileCount]="files().length"
       [verifyContent]="verifyContent()"
@@ -183,7 +196,17 @@
     @switch (stage()) {
       @case ('files') {
         <button class="btn-primary" type="button" (click)="next()" [disabled]="!validCollection()">
-          Next: configure plugins
+          {{ mode() === 'simple' ? 'Next: choose a preset' : 'Next: configure plugins' }}
+        </button>
+      }
+      @case ('preset') {
+        <button
+          class="btn-primary"
+          type="button"
+          (click)="next()"
+          [disabled]="!simplePreset() || !validCollection()"
+        >
+          {{ tmdbPlugins().length ? 'Next: match metadata' : 'Next: review and rename' }}
         </button>
       }
       @case ('plugins') {
@@ -198,13 +221,20 @@
       }
       @case ('matching') {
         <button class="btn-primary" type="button" (click)="next()" [disabled]="!canReview()">
-          Next: review filenames
+          {{ mode() === 'simple' ? 'Next: review and rename' : 'Next: review filenames' }}
         </button>
       }
       @case ('preview') {
         <button class="btn-primary" type="button" (click)="prepare()" [disabled]="!canPrepare()">
           {{ verifyContent() ? 'Hash files and continue' : 'Check files and continue' }}
         </button>
+      }
+      @case ('review') {
+        @if (!showingPlan()) {
+          <button class="btn-primary" type="button" (click)="prepare()" [disabled]="!canPrepare()">
+            {{ verifyContent() ? 'Hash files and continue' : 'Check files and continue' }}
+          </button>
+        }
       }
     }
   </nav>

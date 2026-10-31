@@ -40,12 +40,19 @@
           >
         </nav>
         <div class="ml-auto flex min-w-0 items-center gap-3">
+          <app-workflow-mode-picker />
           <app-theme-picker />
           <app-user-menu [username]="username" [signingOut]="signingOut()" (signOut)="logout()" />
         </div>
       </div>
     </header>
     <router-outlet />
+    @if (workflow.onboarding()) {
+      <app-workflow-onboarding />
+    }
+    @if (workflow.pending()) {
+      <app-workflow-mode-warning />
+    }
   } @else if (error()) {
     <div class="text-center"><button type="button" (click)="initialize()">Retry</button></div>
   } @else {

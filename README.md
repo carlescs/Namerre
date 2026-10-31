@@ -388,6 +388,41 @@ the same server, so the server must be running and reachable.
 
 ## Renaming workflow
 
+### Simple and Advanced modes
+
+The renamer has two modes. The first time someone signs in, Namerre asks which one to use;
+the choice is kept in that browser only (`localStorage`) and can be changed at any time with
+the **Simple / Advanced** switch in the header, next to the theme selector. **Decide later**
+uses Simple for that visit and asks again next time. Run history is available in both modes.
+
+- **Simple** has four stages: **Select files**, **Choose a preset**, **Match TMDB metadata**
+  (only for TMDB presets) and **Review and rename**, where the preview and the confirmation of
+  the prepared plan share one screen. Pick one of the built-in presets and, if you like, adjust
+  its few key options:
+  - *TV episodes (TMDB)*: names episodes from TMDB (name style for Emby, Plex or
+    Jellyfin/Kodi, and the metadata language), then tidies the spacing. Files stay in their folders.
+  - *Movies (TMDB)*: names movies `Title (Year)` in the chosen metadata language.
+  - *Clean up names*: removes release tags, turns dots and underscores into spaces, simplifies
+    ligatures and symbols, and sets the case.
+  - *Number files*: adds a running number before or after the name, with start and digits.
+
+  Run options are not shown and use the defaults: related files follow their video (as chosen
+  in the file selection), colliding names are reported rather than numbered, files are checked
+  by size and modification time, and folders left empty are removed. Built-in presets are plain
+  pipelines (`Namerre.Front/src/app/modules/renamer/simple-presets.json`), validated by the
+  server like any other request; a backend test previews each of them.
+- **Advanced** is the full wizard described below: plugin configuration with saved presets,
+  TMDB matching, a preview with every run option, and a separate confirmation.
+
+Switching from Simple to Advanced keeps everything: the steps the preset built open in the
+plugin editor with all their options, and the files, TMDB matches and any prepared plan carry
+over. Switching from Advanced to Simple keeps the steps when they are exactly what a Simple
+preset builds (or there are none); otherwise Namerre warns that the advanced steps will be
+discarded and lets you keep Advanced or start a fresh pipeline (the files stay selected).
+Queued or running jobs are never affected by the mode: it only changes the editing screens.
+
+### Files and steps
+
 Add files using the existing folder picker, optionally including subfolders.
 Hidden and system entries (names starting with `.` or `@`, such as `.DS_Store` and
 Synology's `@eaDir`, plus `Thumbs.db`, `desktop.ini` and recycle-bin folders) are

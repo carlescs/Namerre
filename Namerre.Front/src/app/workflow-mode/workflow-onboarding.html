@@ -1,0 +1,30 @@
+<dialog
+  #dialog
+  aria-labelledby="onboarding-heading"
+  aria-describedby="onboarding-description"
+  (cancel)="$event.preventDefault(); dismiss()"
+>
+  <h2 id="onboarding-heading" class="mt-0">How would you like to rename files?</h2>
+  <p id="onboarding-description" class="text-sm text-slate-500 dark:text-slate-400">
+    Pick a mode for this browser. You can switch at any time from the header.
+  </p>
+  <div class="choices">
+    <button type="button" class="choice" (click)="choose('simple')">
+      <span class="choice-title">Simple</span>
+      <span class="choice-text"
+        >Pick files, choose a ready-made preset such as TV episodes or movies, check the preview and
+        rename. Fewer steps, safe defaults.</span
+      >
+    </button>
+    <button type="button" class="choice" (click)="choose('advanced')">
+      <span class="choice-title">Advanced</span>
+      <span class="choice-text"
+        >Build your own sequence of renaming steps, set every option, save presets and choose how
+        files are checked and collisions handled.</span
+      >
+    </button>
+  </div>
+  <div class="actions mt-4 justify-end">
+    <button type="button" (click)="dismiss()">Decide later</button>
+  </div>
+</dialog>

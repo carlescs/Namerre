@@ -208,3 +208,55 @@ export const builtInCatalog: PluginDescriptor[] = [
   casePlugin,
   tmdbPlugin,
 ];
+
+export const counterPlugin: PluginDescriptor = {
+  typeId: 'counter',
+  version: 1,
+  name: 'Counter',
+  description: 'Number files in collection order',
+  defaultOptions: {
+    start: 1,
+    step: 1,
+    width: 2,
+    perFolder: false,
+    position: 'suffix',
+    separator: ' ',
+    template: '{name} {n}',
+  },
+  form: [
+    {
+      fields: [
+        { key: 'start', label: 'Start at', kind: 'number', min: 0, max: 1_000_000_000, step: 1 },
+        { key: 'step', label: 'Increment', kind: 'number', min: 1, max: 1_000_000, step: 1 },
+        { key: 'width', label: 'Width', kind: 'number', min: 1, max: 10, step: 1 },
+        { key: 'perFolder', label: 'Restart the count in each folder', kind: 'checkbox' },
+      ],
+    },
+    {
+      fields: [
+        {
+          key: 'position',
+          label: 'Position',
+          kind: 'select',
+          choices: [
+            { value: 'prefix', label: 'Before the name' },
+            { value: 'suffix', label: 'After the name' },
+            { value: 'template', label: 'Template with {n}' },
+          ],
+        },
+        {
+          key: 'separator',
+          label: 'Separator',
+          kind: 'text',
+          visibleWhen: { key: 'position', values: ['prefix', 'suffix'] },
+        },
+        {
+          key: 'template',
+          label: 'Template',
+          kind: 'text',
+          visibleWhen: { key: 'position', values: ['template'] },
+        },
+      ],
+    },
+  ],
+};
