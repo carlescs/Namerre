@@ -76,7 +76,8 @@ the `IRenameService`/`ITmdbMetadata` contracts and `RenameException(code, messag
 (which carries API error codes) stay directly in `Application/Renaming`.
 
 **Renaming pipeline.** Each plugin is an `IRenamePlugin` in `Application/Renaming/Plugins`
-(`LiteralPlugin`, `RegexPlugin`, `CasePlugin`, `AffixPlugin`, `TmdbPlugin`), usually derived from
+(`LiteralPlugin`, `RegexPlugin`, `CasePlugin`, `AffixPlugin`, `PadNumbersPlugin`, `CounterPlugin`,
+`DatePlugin`, `TmdbPlugin`; counter and date share `NameInsertion` for prefix/suffix/template placement), usually derived from
 `RenamePlugin<TOptions>` (typed options, camelCase JSON). Its `PluginDescriptor` carries the type ID,
 version, name, description, default options, the option `Form` the frontend renders and
 `SingleInstance` (at most one instance per pipeline, enforced by the engine and the editor; set

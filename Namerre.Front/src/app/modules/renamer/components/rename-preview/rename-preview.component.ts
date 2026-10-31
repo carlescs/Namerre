@@ -45,6 +45,10 @@ export class RenamePreviewComponent {
       { id: 'problem' as const, label: 'Problems', count: counts.problem },
     ];
   });
+  /** One-based position of each file in the request, which is the order counter steps number them in. */
+  protected readonly positions = computed(
+    () => new Map(this.result()?.files.map((file, index) => [file.id, index + 1]) ?? []),
+  );
   protected readonly visibleFiles = computed(() => {
     const filter = this.filter();
     const files = this.result()?.files ?? [];

@@ -65,10 +65,13 @@
     <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
       <table class="sm:min-w-xl max-sm:block">
         <caption class="sr-only">
-          Files, with their current and new names
+          Files in collection order, with their current and new names
         </caption>
         <thead class="max-sm:sr-only">
           <tr>
+            <th scope="col" class="w-12 text-right">
+              <abbr title="Position in the collection — the order counters follow">#</abbr>
+            </th>
             <th scope="col">Status</th>
             <th scope="col">Current name</th>
             <th scope="col">New name</th>
@@ -80,6 +83,11 @@
             <tr
               class="max-sm:block max-sm:border-t max-sm:border-slate-200 max-sm:p-3 dark:max-sm:border-slate-800"
             >
+              <td
+                class="w-12 align-top text-right tabular-nums text-slate-500 max-sm:block max-sm:px-0 max-sm:py-1 max-sm:text-left dark:text-slate-400"
+              >
+                <span class="sm:hidden">File </span>{{ positions().get(file.id) }}
+              </td>
               <td class="w-32 align-top max-sm:block max-sm:px-0 max-sm:py-1">
                 <span
                   class="badge"
@@ -136,7 +144,7 @@
             </tr>
             @if (file.steps.length) {
               <tr class="max-sm:block max-sm:px-3 max-sm:pb-3">
-                <td class="border-t-0 py-1 max-sm:hidden"></td>
+                <td colspan="2" class="border-t-0 py-1 max-sm:hidden"></td>
                 <td colspan="2" class="border-t-0 py-1 max-sm:block max-sm:p-0">
                   <details class="m-0 border-0 bg-transparent p-0 dark:bg-transparent">
                     <summary class="text-xs">
@@ -178,7 +186,7 @@
         } @empty {
           <tbody class="max-sm:block">
             <tr class="max-sm:block">
-              <td colspan="3" class="max-sm:block text-slate-500 dark:text-slate-400">
+              <td colspan="4" class="max-sm:block text-slate-500 dark:text-slate-400">
                 No files match this filter.
               </td>
             </tr>
