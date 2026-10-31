@@ -339,7 +339,7 @@ Synology's `@eaDir`, plus `Thumbs.db`, `desktop.ini` and recycle-bin folders) ar
 skipped unless **Show hidden files and folders** is ticked in the picker.
 The collection can contain files from multiple folders. Start with an empty plugin
 stack and add as many independently configured instances as needed: text replacement,
-regular-expression replacement, case change, prefix and suffix, or TMDB resolution. Repeated plugin
+regular-expression replacement, case change, prefix and suffix, number padding, counter, date, or TMDB resolution. Repeated plugin
 types are allowed, except TMDB: a recipe holds at most one TMDB step, since each one needs its own
 confirmed match for every file. Move instances up or down to choose the execution order; the
 catalog order does not determine execution order.
@@ -371,6 +371,19 @@ No files or directories are changed by previews.
 Each step also learns the file's zero-based position in the request and among the files
 of its source folder, the batch and folder sizes, and the file's size, last-modified and
 creation time (creation time is null or approximate on filesystems that don't record it).
+
+**Pad numbers** zero-pads every, the first or the last run of digits in the name to a
+minimum width (`Episode 3` → `Episode 03`); numbers already that wide are never shortened,
+and numbers that look like years (four digits from 1900 to 2099) can be skipped.
+**Counter** inserts `start + step × position`, zero-padded to a width, before or after the
+name with a separator, or through a template such as `{name} - {n}`; it follows the
+collection order, optionally restarting in each source folder. The preview's **#** column
+shows that order. **Date** inserts the file's last-modified or creation date with a .NET
+custom format string (`yyyy-MM-dd`, `yyyyMMdd_HHmmss`; invariant culture) in a chosen time
+zone (an IANA or Windows ID, the server's local zone when empty), the same way or through a
+`{date}` template. Invalid formats, unknown time zones and missing creation dates are
+reported per file. Prepared plans use the facts snapshot and the same order, so they
+produce the names shown by the preview.
 
 Prepare the approved configuration to hash the source files and store an immutable
 plan. Preparation reads each file's size and dates once and keeps them in the plan

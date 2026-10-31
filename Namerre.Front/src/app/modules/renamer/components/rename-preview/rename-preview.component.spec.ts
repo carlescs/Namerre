@@ -90,6 +90,7 @@ describe('RenamePreviewComponent', () => {
     expect(filterButton('All').getAttribute('aria-pressed')).toBe('false');
     expect(root.querySelectorAll('tbody').length).toBe(1);
     expect(text()).toContain('c.mkv');
+    expect(root.querySelector('tbody td')?.textContent?.trim()).toMatch(/3$/);
     expect(text()).not.toContain('b.mkv');
     filterButton('Unchanged').click();
     await fixture.whenStable();

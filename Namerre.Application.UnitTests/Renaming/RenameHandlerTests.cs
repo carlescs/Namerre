@@ -227,6 +227,6 @@ public sealed class RenameHandlerTests : IDisposable
         var result = await new GetRenamePluginsQueryHandler(engine).Handle(new GetRenamePluginsQuery(), Token);
 
         Assert.Same(engine.Catalog, result);
-        Assert.Equal(["literal", "regex", "case", "affix", "tmdb"], result.Select(p => p.TypeId));
+        Assert.Equal(["literal", "regex", "case", "affix", "pad", "counter", "date", "tmdb"], result.Select(p => p.TypeId));
     }
 }
