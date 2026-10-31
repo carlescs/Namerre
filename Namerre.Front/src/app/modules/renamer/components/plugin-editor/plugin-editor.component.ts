@@ -35,6 +35,7 @@ import {
   type PluginOptionCell,
   type PluginOptionRow,
   type PluginOptions,
+  type StepCondition,
 } from '../../rename-api';
 import { linkTmdbPreset } from '../../tmdb-presets';
 import { sampleEpisode, sampleMovie, tmdbTemplatePreview } from '../../tmdb-template-preview';
@@ -42,9 +43,18 @@ import { sampleEpisode, sampleMovie, tmdbTemplatePreview } from '../../tmdb-temp
 type OptionControl = FormControl<PluginOptionCell>;
 type OptionRows = FormArray<FormGroup<Record<string, OptionControl>>>;
 
+type ConditionForm = FormGroup<{
+  extensions: FormControl<string>;
+  pattern: FormControl<string>;
+  ignoreCase: FormControl<boolean>;
+  invert: FormControl<boolean>;
+}>;
+
 interface Card {
   plugin: PluginInstance;
   groups: OptionGroup[];
+  /** The step's "Apply to" filter; empty applies it to every file. */
+  condition: ConditionForm;
   /** One control per field; `list` fields hold a `FormArray` of row groups. */
   form: FormGroup<Record<string, OptionControl | OptionRows>>;
   values: WritableSignal<PluginOptions>;
@@ -151,6 +161,17 @@ export class PluginEditorComponent implements OnInit {
     this.focusCard(Math.min(index, this.cards().length - 1));
   }
 
+  /** Short description of a step's "Apply to" filter, or an empty string when it applies to every file. */
+  protected conditionSummary(card: Card): string {
+    const condition = conditionOf(card.condition);
+    if (!condition) return '';
+    const parts = [
+      condition.extensions?.length ? condition.extensions.map((e) => `.${e}`).join(', ') : '',
+      condition.pattern ? `names matching ${condition.pattern}` : '',
+    ].filter(Boolean);
+    return `${condition.invert ? 'all files except ' : 'only '}${parts.join(' and ')}`;
+  }
+
   protected name(typeId: string): string {
     return this.catalog().find((plugin) => plugin.typeId === typeId)?.name ?? typeId;
   }
@@ -250,10 +271,17 @@ export class PluginEditorComponent implements OnInit {
     const form = new FormGroup(controls);
     if (plugin.typeId === 'tmdb') linkTmdbPreset(form);
     const values = signal<PluginOptions>(form.getRawValue() as PluginOptions);
-    const card: Card = { plugin, groups: optionGroups, form, values };
+    const condition = conditionForm(plugin.condition);
+    const card: Card = { plugin, groups: optionGroups, condition, form, values };
     form.valueChanges.subscribe(() => {
       values.set(form.getRawValue() as PluginOptions);
       card.plugin = { ...card.plugin, options: form.getRawValue() as PluginOptions };
+      this.emit();
+    });
+    condition.valueChanges.subscribe(() => {
+      const { condition: _, ...rest } = card.plugin;
+      const value = conditionOf(condition);
+      card.plugin = value ? { ...rest, condition: value } : rest;
       this.emit();
     });
     return card;
@@ -297,6 +325,31 @@ export class PluginEditorComponent implements OnInit {
       { injector: this.injector },
     );
   }
+}
+
+function conditionForm(condition: StepCondition | null | undefined): ConditionForm {
+  return new FormGroup({
+    extensions: new FormControl((condition?.extensions ?? []).join(', '), { nonNullable: true }),
+    pattern: new FormControl(condition?.pattern ?? '', { nonNullable: true }),
+    ignoreCase: new FormControl(condition?.ignoreCase !== false, { nonNullable: true }),
+    invert: new FormControl(condition?.invert === true, { nonNullable: true }),
+  });
+}
+
+/** The condition the server receives; undefined while neither extensions nor a pattern restrict. */
+export function conditionOf(form: ConditionForm): StepCondition | undefined {
+  const value = form.getRawValue();
+  const extensions = value.extensions
+    .split(/[\s,;]+/)
+    .map((extension) => extension.replace(/^\./, ''))
+    .filter(Boolean);
+  if (!extensions.length && !value.pattern) return undefined;
+  return {
+    ...(extensions.length ? { extensions } : {}),
+    ...(value.pattern ? { pattern: value.pattern } : {}),
+    ignoreCase: value.ignoreCase,
+    invert: value.invert,
+  };
 }
 
 function optionControl(field: OptionField, value: unknown, fallback: unknown): OptionControl {

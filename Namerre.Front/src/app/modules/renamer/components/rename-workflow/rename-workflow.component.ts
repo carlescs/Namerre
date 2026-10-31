@@ -184,7 +184,9 @@ export class RenameWorkflowComponent {
             ?.files.find((entry) => entry.id === file.path)
             ?.steps.find((step) => step.instanceId === plugin.instanceId),
         })),
-      ),
+      )
+      // A step whose "Apply to" filter skips the file needs no match.
+      .filter((row) => !row.step?.skipped),
   );
   protected readonly metadataPending = computed(() => this.preview()?.files.some(awaitingMetadata));
   protected readonly unmatchedFiles = computed(

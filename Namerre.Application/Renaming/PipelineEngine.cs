@@ -208,6 +208,11 @@ public sealed class PipelineEngine
             var input = current;
             try
             {
+                if (plugin.Condition is { Restricts: true } condition && !condition.Applies(input))
+                {
+                    steps.Add(new(plugin.InstanceId, plugin.TypeId, input, input, null, Skipped: true));
+                    continue;
+                }
                 current = Apply(file, plugin, input, request.Selections ?? [], position, fileFacts!);
                 fileSystem.Validate(current);
                 steps.Add(new(plugin.InstanceId, plugin.TypeId, input, current, null));
@@ -313,6 +318,7 @@ public sealed class PipelineEngine
             if (!plugins.ContainsKey((p.TypeId, p.Version)) || p.Options.ValueKind != JsonValueKind.Object
                 || p.Options.GetRawText().Length > 8192)
                 throw new RenameException("InvalidPlugin", "Unknown plugin type, version, or invalid options.");
+            p.Condition?.Validate();
         }
         var repeated = request.Plugins.Select(p => plugins[(p.TypeId, p.Version)].Descriptor)
             .Where(d => d.SingleInstance).GroupBy(d => d.TypeId).FirstOrDefault(g => g.Count() > 1);

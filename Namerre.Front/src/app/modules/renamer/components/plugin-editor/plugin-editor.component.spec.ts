@@ -60,7 +60,7 @@ describe('PluginEditorComponent', () => {
     await add('literal');
     await add('literal');
     const inputs = fixture.nativeElement.querySelectorAll(
-      'article input[type="text"]',
+      'article .plugin-options input[type="text"]',
     ) as NodeListOf<HTMLInputElement>;
     inputs[0].value = 'first';
     inputs[0].dispatchEvent(new Event('input'));
@@ -357,9 +357,11 @@ describe('PluginEditorComponent', () => {
     expect(plugins[0].options).toMatchObject({ mode: 'title' });
     await add('regex');
     const regex = fixture.nativeElement.querySelectorAll('article')[1] as HTMLElement;
-    const texts = [...regex.querySelectorAll('input[type="text"]')] as HTMLInputElement[];
+    const texts = [
+      ...regex.querySelectorAll('.plugin-options input[type="text"]'),
+    ] as HTMLInputElement[];
     expect(texts.map((input) => input.value)).toEqual(['', '']);
-    const checkboxes = regex.querySelectorAll('input[type="checkbox"]');
+    const checkboxes = regex.querySelectorAll('.plugin-options input[type="checkbox"]');
     expect((checkboxes[checkboxes.length - 1] as HTMLInputElement).checked).toBe(false);
     texts[0].value = '(\\d+)';
     texts[0].dispatchEvent(new Event('input'));
@@ -603,6 +605,61 @@ describe('PluginEditorComponent', () => {
       ]);
       restored.destroy();
     });
+  });
+
+  it('limits a step to matching files through its "Apply to" filter', async () => {
+    await add('case');
+    const details = fixture.nativeElement.querySelector('article details') as HTMLDetailsElement;
+    expect(details.textContent).toContain('every file');
+    const [extensions, pattern] = Array.from(
+      details.querySelectorAll<HTMLInputElement>('input[type="text"]'),
+    );
+    extensions.value = '.SRT, ass';
+    extensions.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(plugins[0].condition).toEqual({
+      extensions: ['SRT', 'ass'],
+      ignoreCase: true,
+      invert: false,
+    });
+    const invert = details.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1];
+    invert.click();
+    pattern.value = '^x';
+    pattern.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(plugins[0].condition).toEqual({
+      extensions: ['SRT', 'ass'],
+      pattern: '^x',
+      ignoreCase: true,
+      invert: true,
+    });
+    expect(details.textContent).toContain('all files except .SRT, .ass and names matching ^x');
+    extensions.value = '';
+    extensions.dispatchEvent(new Event('input'));
+    pattern.value = '';
+    pattern.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(plugins[0]).not.toHaveProperty('condition');
+  });
+
+  it('restores a saved "Apply to" filter open', async () => {
+    const restored = TestBed.createComponent(PluginEditorComponent);
+    restored.componentRef.setInput('catalog', testCatalog);
+    restored.componentRef.setInput('initialPlugins', [
+      {
+        instanceId: 'saved',
+        typeId: 'case',
+        version: 1,
+        enabled: true,
+        options: { mode: 'lower' },
+        condition: { extensions: ['srt'], ignoreCase: true, invert: false },
+      },
+    ]);
+    await restored.whenStable();
+    const details = restored.nativeElement.querySelector('article details') as HTMLDetailsElement;
+    expect(details.open).toBe(true);
+    expect(details.querySelector<HTMLInputElement>('input')?.value).toBe('srt');
+    restored.destroy();
   });
 
   async function add(type: string): Promise<void> {

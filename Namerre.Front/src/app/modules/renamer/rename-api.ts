@@ -18,12 +18,25 @@ export interface PluginOptions {
   seasonFolderTemplate?: string;
   language?: string;
 }
+/**
+ * Limits a step to files whose current extension is listed and whose current name matches
+ * `pattern` (empty parts do not restrict); `invert` applies it to the other files instead.
+ */
+export interface StepCondition {
+  extensions?: string[];
+  pattern?: string;
+  /** Pattern matching ignores case unless this is false. */
+  ignoreCase?: boolean;
+  invert?: boolean;
+}
 export interface PluginInstance {
   instanceId: string;
   typeId: string;
   version: number;
   enabled: boolean;
   options: PluginOptions;
+  /** Absent or empty applies the step to every file. */
+  condition?: StepCondition | null;
 }
 export interface OptionChoice {
   value: string;
@@ -111,6 +124,8 @@ export interface StepTrace {
   inputPath: string;
   outputPath: string | null;
   error: RenameIssue | null;
+  /** The step's condition did not match, so the path passed through unchanged. */
+  skipped?: boolean;
 }
 export interface PreviewFile {
   id: string;

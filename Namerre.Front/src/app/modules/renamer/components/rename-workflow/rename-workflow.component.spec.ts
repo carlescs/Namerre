@@ -607,6 +607,50 @@ describe('RenameWorkflowComponent', () => {
     separate.flush(tmdbPreview);
   });
 
+  it('asks for no match where the TMDB step skips the file', async () => {
+    const file = (name: string): RenamerFile => ({ ...files[0], name, path: name });
+    fixture.componentRef.setInput('files', [file('Movie.mkv'), file('notes.txt')]);
+    await fixture.whenStable();
+    changePlugins([{ ...tmdb, condition: { extensions: ['mkv'] } }]);
+    await fixture.whenStable();
+    button('Next: match metadata').click();
+    const step = tmdbPreview.files[0].steps[0];
+    http.expectOne('/api/rename-previews').flush({
+      files: [
+        {
+          ...tmdbPreview.files[0],
+          id: 'Movie.mkv',
+          sourcePath: 'Movie.mkv',
+          targetPath: 'Movie.mkv',
+          steps: [{ ...step, inputPath: 'Movie.mkv' }],
+        },
+        {
+          id: 'notes.txt',
+          sourcePath: 'notes.txt',
+          targetPath: 'notes.txt',
+          unchanged: true,
+          steps: [
+            {
+              ...step,
+              inputPath: 'notes.txt',
+              outputPath: 'notes.txt',
+              error: null,
+              skipped: true,
+            },
+          ],
+          issues: [],
+        },
+      ],
+      canPrepare: false,
+    });
+    await fixture.whenStable();
+    const rows = fixture.nativeElement.querySelectorAll(
+      '[aria-labelledby="matching-heading"] article',
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('Movie.mkv');
+  });
+
   it('asks the owner to drop a file that cannot be matched', async () => {
     changePlugins([tmdb]);
     await fixture.whenStable();

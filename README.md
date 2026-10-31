@@ -349,6 +349,19 @@ types are allowed, except TMDB: a recipe holds at most one TMDB step, since each
 confirmed match for every file. Move instances up or down to choose the execution order; the
 catalog order does not determine execution order.
 
+### Applying a step to some files
+
+Every step has an **Apply to** section. List extensions (`srt, ass`, with or without the dot)
+and/or a .NET regular expression tested against the current file name, extension included; a
+file must match both to get the step, and **Apply to the files that do not match instead**
+inverts the filter. Patterns ignore case unless that box is cleared and share the 100 ms regex
+timeout. The filter looks at the step's input, so earlier steps can change which files a later
+step applies to. A step that does not apply passes the name through unchanged and shows as
+skipped in the preview trace; a TMDB step skipped this way needs no match, so the matching stage
+lists only the files it applies to. The API field is `condition` on each plugin instance
+(`{ "extensions": ["srt"], "pattern": "\\.en\\.", "ignoreCase": true, "invert": false }`);
+instances without one apply to every file, as before, and plans keep it in their snapshot.
+
 ### Related files
 
 With **Include related files** ticked (the default), files that belong to a video follow it
