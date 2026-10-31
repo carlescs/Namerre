@@ -150,18 +150,18 @@ describe('FileSelectionComponent', () => {
         expect(related().checked).toBe(true);
         expect(notes()).toEqual([
           'e1.mp4 Show/S01 With 1 related file',
-          'e2.mp4 Show/S01 With 1 related file',
-          'e3.MP4 Show/S01',
           'e1-thumb.jpg Show/S01 Follows e1.mp4',
+          'e2.mp4 Show/S01 With 1 related file',
           'e2-thumb.jpg Show/S01 Follows e2.mp4',
+          'e3.MP4 Show/S01',
         ]);
         expect(el().textContent).toContain('Related files stay with their video');
         expect(Array.from(rows()).map((row) => cellText(row.querySelector('td')))).toEqual([
           '1',
-          '2',
-          '3',
           '↳ Related to e1.mp4',
+          '2',
           '↳ Related to e2.mp4',
+          '3',
         ]);
       });
 
@@ -264,8 +264,29 @@ describe('FileSelectionComponent', () => {
             'e1-thumb.jpg',
           ]);
           expect(status()).toContain('Moved e1.mp4 to position 2 of 2.');
-          dropList().dropped.emit({ previousIndex: 2, currentIndex: 1 } as CdkDragDrop<
-            RenamerFile[]
+        });
+
+        it('drags a video and its related files as one group', () => {
+          fixture.componentRef.setInput('files', [videos[0], thumbs[0], videos[1], thumbs[1]]);
+          fixture.detectChanges();
+          const groups = Array.from(el().querySelectorAll('tbody.cdk-drag'));
+          expect(
+            groups.map((group) =>
+              Array.from(group.querySelectorAll('tr')).map(
+                (row) => cellText(row.querySelectorAll('td')[1]).split(' ')[0],
+              ),
+            ),
+          ).toEqual([
+            ['e1.mp4', 'e1-thumb.jpg'],
+            ['e2.mp4', 'e2-thumb.jpg'],
+          ]);
+          expect(el().querySelectorAll('.drag-handle')).toHaveLength(2);
+          expect(dropList().data).toEqual([
+            [videos[0], thumbs[0]],
+            [videos[1], thumbs[1]],
+          ]);
+          dropList().dropped.emit({ previousIndex: 1, currentIndex: 0 } as CdkDragDrop<
+            RenamerFile[][]
           >);
           expect(names(lastEmitted())).toEqual([
             'e2.mp4',
@@ -273,6 +294,8 @@ describe('FileSelectionComponent', () => {
             'e1.mp4',
             'e1-thumb.jpg',
           ]);
+          fixture.detectChanges();
+          expect(status()).toContain('Moved e2.mp4 to position 1 of 2.');
         });
 
         it('groups the collection again when related files are turned back on', () => {
@@ -360,7 +383,7 @@ describe('FileSelectionComponent', () => {
 
         it('reorders files dropped with drag and drop', () => {
           dropList().dropped.emit({ previousIndex: 4, currentIndex: 1 } as CdkDragDrop<
-            RenamerFile[]
+            RenamerFile[][]
           >);
           expect(changed).toHaveBeenLastCalledWith([
             videos[0],
@@ -379,7 +402,7 @@ describe('FileSelectionComponent', () => {
           expect(el().querySelector('.drag-handle')).toBeNull();
           expect(el().textContent).toContain('Clear the filter to change the order.');
           dropList().dropped.emit({ previousIndex: 0, currentIndex: 1 } as CdkDragDrop<
-            RenamerFile[]
+            RenamerFile[][]
           >);
           expect(changed).not.toHaveBeenCalled();
         });

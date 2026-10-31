@@ -119,7 +119,14 @@
       }
     </p>
     <div #table class="file-list" tabindex="0" role="region" aria-label="Files added for renaming">
-      <table id="collection-table">
+      <table
+        id="collection-table"
+        cdkDropList
+        cdkDropListLockAxis="y"
+        [cdkDropListData]="shownUnits()"
+        [cdkDropListDisabled]="filtering() || units().length < 2"
+        (cdkDropListDropped)="drop($event)"
+      >
         <caption class="sr-only">
           Files added for renaming, in renaming order
         </caption>
@@ -132,115 +139,119 @@
             <th scope="col">Actions</th>
           </tr>
         </thead>
-        <tbody
-          class="max-sm:block"
-          cdkDropList
-          cdkDropListLockAxis="y"
-          [cdkDropListData]="filteredFiles()"
-          [cdkDropListDisabled]="filtering() || files().length < 2"
-          (cdkDropListDropped)="drop($event)"
-        >
-          @for (file of filteredFiles(); track file.path) {
-            @let position = unitIndex().get(file.path);
-            <tr
-              cdkDrag
-              [cdkDragDisabled]="position === undefined"
-              [cdkDragData]="file"
-              class="max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:gap-x-4 max-sm:gap-y-1 max-sm:border-t max-sm:border-slate-200 max-sm:p-3 dark:max-sm:border-slate-800"
-            >
-              <td class="whitespace-nowrap tabular-nums max-sm:order-1 max-sm:p-0">
-                @if (!filtering() && units().length > 1 && position !== undefined) {
-                  <span
-                    cdkDragHandle
-                    class="drag-handle text-slate-400 dark:text-slate-500"
-                    title="Drag to reorder"
-                    aria-hidden="true"
-                    ><fa-icon [icon]="gripIcon"
-                  /></span>
-                }
-                @if (companions().get(file.path); as video) {
-                  <span aria-hidden="true">↳</span>
-                  <span class="sr-only">Related to {{ nameOf(video) }}</span>
-                } @else {
-                  {{ (position ?? 0) + 1 }}
-                }
-              </td>
-              <td class="max-sm:order-2 max-sm:min-w-0 max-sm:flex-[1_1_12rem] max-sm:p-0">
-                <span class="block font-medium break-all text-slate-900 dark:text-slate-100">{{
-                  file.name
-                }}</span>
-                <span class="block text-xs break-all text-slate-500 dark:text-slate-400">{{
-                  file.folderPath || 'Server root'
-                }}</span>
-                @if (companions().get(file.path); as video) {
-                  <span class="block text-xs text-indigo-700 dark:text-indigo-300"
-                    >Follows {{ nameOf(video) }}</span
-                  >
-                } @else if (relatedCounts().get(file.path); as count) {
-                  <span class="block text-xs text-indigo-700 dark:text-indigo-300"
-                    >With {{ count }} related {{ count === 1 ? 'file' : 'files' }}</span
-                  >
-                }
-              </td>
-              <td
-                class="whitespace-nowrap tabular-nums max-sm:order-3 max-sm:p-0"
-                [title]="(file.length | number) + ' bytes'"
+        @for (unit of shownUnits(); track unit[0].path) {
+          @let lead = unit[0];
+          @let related = relatedCounts().get(lead.path) ?? 0;
+          <tbody
+            class="max-sm:block"
+            cdkDrag
+            [cdkDragDisabled]="unitIndex().get(lead.path) === undefined"
+            [cdkDragData]="unit"
+          >
+            @for (file of unit; track file.path) {
+              @let position = unitIndex().get(file.path);
+              <tr
+                class="max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:gap-x-4 max-sm:gap-y-1 max-sm:border-t max-sm:border-slate-200 max-sm:p-3 dark:max-sm:border-slate-800"
               >
-                {{ formatSize(file.length) }}
-              </td>
-              <td
-                class="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400 max-sm:order-4 max-sm:p-0"
-              >
-                {{ file.lastModifiedUtc | date: 'mediumDate' }}
-              </td>
-              <td class="whitespace-nowrap max-sm:order-5 max-sm:ml-auto max-sm:p-0">
-                @if (!filtering() && position !== undefined) {
-                  <button
-                    type="button"
-                    class="icon-button"
-                    title="Move up"
-                    data-move="up"
-                    [attr.data-path]="file.path"
-                    [attr.aria-label]="'Move ' + file.path + ' up'"
-                    [disabled]="position === 0"
-                    (click)="move(file.path, -1)"
-                  >
-                    <fa-icon [icon]="upIcon" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    class="icon-button"
-                    title="Move down"
-                    data-move="down"
-                    [attr.data-path]="file.path"
-                    [attr.aria-label]="'Move ' + file.path + ' down'"
-                    [disabled]="position === units().length - 1"
-                    (click)="move(file.path, 1)"
-                  >
-                    <fa-icon [icon]="downIcon" aria-hidden="true" />
-                  </button>
-                }
-                <button
-                  type="button"
-                  class="icon-button text-slate-500 dark:text-slate-400 hover:text-rose-700 dark:hover:text-rose-400"
-                  aria-label="Remove {{ file.path }} from collection"
-                  (click)="removeFile(file.path); chooseFolder.focus()"
+                <td class="whitespace-nowrap tabular-nums max-sm:order-1 max-sm:p-0">
+                  @if (!filtering() && units().length > 1 && position !== undefined) {
+                    <span
+                      cdkDragHandle
+                      class="drag-handle text-slate-400 dark:text-slate-500"
+                      title="Drag to reorder"
+                      aria-hidden="true"
+                      ><fa-icon [icon]="gripIcon"
+                    /></span>
+                  }
+                  @if (companions().get(file.path); as video) {
+                    <span aria-hidden="true">↳</span>
+                    <span class="sr-only">Related to {{ nameOf(video) }}</span>
+                  } @else {
+                    {{ (position ?? 0) + 1 }}
+                  }
+                </td>
+                <td class="max-sm:order-2 max-sm:min-w-0 max-sm:flex-[1_1_12rem] max-sm:p-0">
+                  <span class="block font-medium break-all text-slate-900 dark:text-slate-100">{{
+                    file.name
+                  }}</span>
+                  <span class="block text-xs break-all text-slate-500 dark:text-slate-400">{{
+                    file.folderPath || 'Server root'
+                  }}</span>
+                  @if (companions().get(file.path); as video) {
+                    <span class="block text-xs text-indigo-700 dark:text-indigo-300"
+                      >Follows {{ nameOf(video) }}</span
+                    >
+                  } @else if (relatedCounts().get(file.path); as count) {
+                    <span class="block text-xs text-indigo-700 dark:text-indigo-300"
+                      >With {{ count }} related {{ count === 1 ? 'file' : 'files' }}</span
+                    >
+                  }
+                </td>
+                <td
+                  class="whitespace-nowrap tabular-nums max-sm:order-3 max-sm:p-0"
+                  [title]="(file.length | number) + ' bytes'"
                 >
-                  <fa-icon [icon]="trashIcon" aria-hidden="true" />
-                </button>
-              </td>
-              <div
-                *cdkDragPreview
-                class="drag-preview border-indigo-200 bg-white text-slate-900 dark:border-indigo-500/40 dark:bg-slate-900 dark:text-slate-100"
-              >
-                <span class="font-medium">{{ file.name }}</span>
-                <span class="text-xs text-slate-500 dark:text-slate-400">{{
-                  file.folderPath || 'Server root'
-                }}</span>
-              </div>
-            </tr>
-          }
-        </tbody>
+                  {{ formatSize(file.length) }}
+                </td>
+                <td
+                  class="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400 max-sm:order-4 max-sm:p-0"
+                >
+                  {{ file.lastModifiedUtc | date: 'mediumDate' }}
+                </td>
+                <td class="whitespace-nowrap max-sm:order-5 max-sm:ml-auto max-sm:p-0">
+                  @if (!filtering() && position !== undefined) {
+                    <button
+                      type="button"
+                      class="icon-button"
+                      title="Move up"
+                      data-move="up"
+                      [attr.data-path]="file.path"
+                      [attr.aria-label]="'Move ' + file.path + ' up'"
+                      [disabled]="position === 0"
+                      (click)="move(file.path, -1)"
+                    >
+                      <fa-icon [icon]="upIcon" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-button"
+                      title="Move down"
+                      data-move="down"
+                      [attr.data-path]="file.path"
+                      [attr.aria-label]="'Move ' + file.path + ' down'"
+                      [disabled]="position === units().length - 1"
+                      (click)="move(file.path, 1)"
+                    >
+                      <fa-icon [icon]="downIcon" aria-hidden="true" />
+                    </button>
+                  }
+                  <button
+                    type="button"
+                    class="icon-button text-slate-500 dark:text-slate-400 hover:text-rose-700 dark:hover:text-rose-400"
+                    aria-label="Remove {{ file.path }} from collection"
+                    (click)="removeFile(file.path); chooseFolder.focus()"
+                  >
+                    <fa-icon [icon]="trashIcon" aria-hidden="true" />
+                  </button>
+                </td>
+              </tr>
+            }
+            <div
+              *cdkDragPreview
+              class="drag-preview border-indigo-200 bg-white text-slate-900 dark:border-indigo-500/40 dark:bg-slate-900 dark:text-slate-100"
+            >
+              <span class="font-medium">{{ lead.name }}</span>
+              <span class="text-xs text-slate-500 dark:text-slate-400">{{
+                lead.folderPath || 'Server root'
+              }}</span>
+              @if (related) {
+                <span class="text-xs text-indigo-700 dark:text-indigo-300"
+                  >With {{ related }} related {{ related === 1 ? 'file' : 'files' }}</span
+                >
+              }
+            </div>
+          </tbody>
+        }
       </table>
     </div>
     @if (!filteredFiles().length) {

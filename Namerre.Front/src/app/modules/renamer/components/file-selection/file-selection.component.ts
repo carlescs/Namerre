@@ -141,6 +141,16 @@ export class FileSelectionComponent {
   protected readonly unitIndex = computed(
     () => new Map(this.units().map((unit, index) => [unit[0].path, index])),
   );
+  /**
+   * The units with the files the filters show; each is one draggable group, so dragging a video
+   * carries its related files along.
+   */
+  protected readonly shownUnits = computed(() => {
+    const shown = new Set(this.filteredFiles().map((file) => file.path));
+    return this.units()
+      .map((unit) => unit.filter((file) => shown.has(file.path)))
+      .filter((unit) => unit.length > 0);
+  });
   /** The sort the collection is currently in, or empty for a custom order. */
   protected readonly currentSort = computed(() => {
     const files = this.units().map((unit) => unit[0]);
@@ -211,13 +221,9 @@ export class FileSelectionComponent {
     this.moveTo(from, from + offset, offset < 0 ? 'up' : 'down');
   }
 
-  protected drop(event: CdkDragDrop<RenamerFile[]>): void {
-    const rows = this.filteredFiles();
-    const unitOf = (file: RenamerFile | undefined) =>
-      file && this.unitIndex().get(this.companions().get(file.path) ?? file.path);
-    const from = this.unitIndex().get(rows[event.previousIndex]?.path ?? '');
-    const to = unitOf(rows[event.currentIndex]);
-    if (from !== undefined && to !== undefined) this.moveTo(from, to);
+  /** Drops a unit; drag items are whole units, so the indexes are unit indexes. */
+  protected drop(event: CdkDragDrop<RenamerFile[][]>): void {
+    this.moveTo(event.previousIndex, event.currentIndex);
   }
 
   protected toggleType(type: string): void {
