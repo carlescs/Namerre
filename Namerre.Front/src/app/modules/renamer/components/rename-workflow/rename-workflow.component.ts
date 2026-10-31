@@ -534,6 +534,7 @@ export class RenameWorkflowComponent {
               ...show,
               season: inferred.season ?? show.season,
               episode: inferred.episode ?? 1,
+              episodeEnd: inferred.episodeEnd ?? null,
             }
           : {
               query: inferred.query,
@@ -541,6 +542,7 @@ export class RenameWorkflowComponent {
               language: plugin.options.language ?? 'en-US',
               season: inferred.season ?? 1,
               episode: inferred.episode ?? 1,
+              episodeEnd: inferred.episodeEnd ?? null,
               matches: [],
               selected: null,
             }),

@@ -105,4 +105,36 @@ describe('TMDB filename inference', () => {
     );
     expect(preferredTmdbMatch([base, titled], { query: 'Unrelated' })).toBe(base);
   });
+
+  it('reads multi-episode ranges in common styles', () => {
+    for (const name of [
+      'Show.S01E04-E05.mkv',
+      'Show.S01E04E05.mkv',
+      'Show S01E04-05 1080p.mkv',
+      'Show.1x04-1x05.mkv',
+      'Show.1x04-05.mkv',
+    ]) {
+      expect(tmdbFilename(name, 'tv')).toEqual({
+        query: 'Show',
+        season: 1,
+        episode: 4,
+        episodeEnd: 5,
+      });
+    }
+  });
+
+  it('does not mistake resolutions, years or backward numbers for ranges', () => {
+    for (const name of [
+      'Show.S01E04-1080p.mkv',
+      'Show.S01E04-720p.mkv',
+      'Show.S01E04-2019.mkv',
+      'Show.S01E05-E04.mkv',
+    ]) {
+      expect(tmdbFilename(name, 'tv')).toEqual({
+        query: 'Show',
+        season: 1,
+        episode: name.includes('E05-') ? 5 : 4,
+      });
+    }
+  });
 });

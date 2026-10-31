@@ -17,6 +17,8 @@ export interface PluginOptions {
   seasonFolder?: boolean;
   seasonFolderTemplate?: string;
   language?: string;
+  /** How `{episode}` writes a multi-episode match: `repeat` (01-E02), `concatenate` (01E02), `hyphen` (01-02). */
+  episodeRange?: string;
 }
 /**
  * Limits a step to files whose current extension is listed and whose current name matches
@@ -262,6 +264,8 @@ export interface TmdbRequest {
   id?: number;
   season?: number;
   episode?: number;
+  /** Last episode of a multi-episode file; consecutive with `episode`, at most 10 episodes. */
+  episodeEnd?: number;
   fileId?: string;
   instanceId?: string;
   inputPath?: string;
@@ -281,6 +285,8 @@ export interface TmdbMatch {
   originalTitle?: string | null;
   airDate?: string | null;
   showYear?: string | null;
+  /** Last episode of a confirmed multi-episode match; `episodeTitle` then joins the titles. */
+  episodeEnd?: number | null;
 }
 export interface MatchSuggestion {
   fileId: string;
@@ -310,6 +316,8 @@ export interface TmdbPickerState {
   language: string;
   season: number;
   episode: number;
+  /** Last episode of a multi-episode file, or null for one episode. */
+  episodeEnd?: number | null;
   matches: TmdbMatch[];
   selected: TmdbMatch | null;
 }

@@ -38,6 +38,25 @@
       <label class="flex flex-col gap-1 text-sm font-medium"
         >Episode <input type="number" formControlName="episode" min="1" max="9999" />
       </label>
+      <label class="flex flex-col gap-1 text-sm font-medium"
+        >Last episode (optional)
+        <input
+          type="number"
+          formControlName="episodeEnd"
+          min="1"
+          max="9999"
+          aria-describedby="tmdb-episode-end-hint"
+          [attr.aria-invalid]="!validRange()"
+        />
+      </label>
+      <p id="tmdb-episode-end-hint" class="m-0 self-end text-xs text-slate-600 dark:text-slate-400">
+        @if (validRange()) {
+          For a file that holds several consecutive episodes (up to 10), such as a double-length
+          premiere.
+        } @else {
+          Use a number from the episode up to 9 more.
+        }
+      </p>
     }
     <div class="sm:col-span-2">
       <button type="submit" class="btn-primary" [disabled]="!validSearch() || busy()">
@@ -85,7 +104,15 @@
     >
       <h3 class="mt-0">{{ match.title }} ({{ match.year }})</h3>
       @if (match.mediaType === 'tv') {
-        <p>Season {{ match.season }}, episode {{ match.episode }}: {{ match.episodeTitle }}</p>
+        <p>
+          Season {{ match.season }},
+          @if (match.episodeEnd) {
+            episodes {{ match.episode }}–{{ match.episodeEnd }}:
+          } @else {
+            episode {{ match.episode }}:
+          }
+          {{ match.episodeTitle }}
+        </p>
       }
       <p class="text-sm">This match applies to this file only.</p>
       <button type="button" class="btn-primary" (click)="confirm()" [disabled]="busy()">

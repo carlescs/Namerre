@@ -260,7 +260,8 @@
           >, <code>{{ '{seasonNumber}' }}</code
           >, <code>{{ '{episode}' }}</code
           >, <code>{{ '{episodeTitle}' }}</code
-          >. Season and episode need a TV match.
+          >. Season and episode need a TV match; a multi-episode match writes
+          <code>{{ '{episode}' }}</code> as a range and joins the episode titles.
         </p>
       </details>
       <section
@@ -284,7 +285,8 @@
               <dt class="text-slate-500 dark:text-slate-400">
                 {{ sample.label }}: {{ sample.match.title }} ({{ sample.match.year }})
                 @if (sample.match.season !== null) {
-                  S{{ sample.match.season }}E{{ sample.match.episode }} &ldquo;{{
+                  S{{ sample.match.season }}E{{ sample.match.episode
+                  }}{{ sample.match.episodeEnd ? '–' + sample.match.episodeEnd : '' }} &ldquo;{{
                     sample.match.episodeTitle
                   }}&rdquo;
                 }

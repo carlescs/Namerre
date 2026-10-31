@@ -28,6 +28,14 @@ export const sampleEpisode: TmdbMatch = {
   showYear: '2019',
 };
 
+export const sampleDoubleEpisode: TmdbMatch = {
+  ...sampleEpisode,
+  episode: 9,
+  episodeEnd: 10,
+  episodeTitle: 'The Long Goodbye',
+  airDate: '2021-12-03',
+};
+
 export type TemplatePreview = { path: string; error?: never } | { path?: never; error: string };
 
 // Mirrors PipelineEngine's TMDB rendering so the editor can show what a template produces.
@@ -42,17 +50,18 @@ export function tmdbTemplatePreview(
         ? '{title} - S{season}E{episode} - {episodeTitle}'
         : '{title} ({year})';
     const nameTemplate = options.nameTemplate ?? '';
-    const stem = render(nameTemplate.trim() ? nameTemplate : defaultTemplate, match);
+    const range = options.episodeRange ?? 'repeat';
+    const stem = render(nameTemplate.trim() ? nameTemplate : defaultTemplate, match, range);
     if (!stem) throw new Error('The plugin produced an empty name.');
     let folder = '';
     if (options.changeFolder) {
       const baseFolder = options.baseFolder ?? '';
       folder =
         (baseFolder ? `${baseFolder}/` : '') +
-        render(options.folderTemplate ?? '{title} ({year})', match) +
+        render(options.folderTemplate ?? '{title} ({year})', match, range) +
         '/';
       if (options.seasonFolder && match.season !== null) {
-        folder += `${render(options.seasonFolderTemplate ?? 'Season {season}', match)}/`;
+        folder += `${render(options.seasonFolderTemplate ?? 'Season {season}', match, range)}/`;
       }
     }
     return { path: folder + stem + extension };
@@ -62,7 +71,7 @@ export function tmdbTemplatePreview(
 }
 
 // `{{` and `}}` are literal braces (Plex reads ids such as `{tmdb-603}`), like TmdbPlugin.Render.
-function render(template: string, match: TmdbMatch): string {
+function render(template: string, match: TmdbMatch, range: string): string {
   if (template.length > 1000) throw new Error('Template is too long.');
   let result = '';
   for (let i = 0; i < template.length; i++) {
@@ -78,7 +87,7 @@ function render(template: string, match: TmdbMatch): string {
       if (end < 0 || (open >= 0 && open < end) || end === i + 1) {
         throw new Error('Close each field with }, or write {{ for a literal brace.');
       }
-      result += field(template.slice(i + 1, end), match);
+      result += field(template.slice(i + 1, end), match, range);
       i = end;
     } else {
       result += c;
@@ -88,7 +97,7 @@ function render(template: string, match: TmdbMatch): string {
   return result;
 }
 
-function field(token: string, match: TmdbMatch): string {
+function field(token: string, match: TmdbMatch, range: string): string {
   const colon = token.indexOf(':');
   const name = colon < 0 ? token : token.slice(0, colon);
   const format = colon < 0 ? undefined : token.slice(colon + 1);
@@ -98,7 +107,7 @@ function field(token: string, match: TmdbMatch): string {
     case 'seasonNumber':
       return formatNumber(available(match.season, 'Season'), format, '0');
     case 'episode':
-      return formatNumber(available(match.episode, 'Episode'), format, '00');
+      return episodes(match, format, range);
     case 'tmdbId':
       return formatNumber(match.id, format, '0');
   }
@@ -118,6 +127,25 @@ function field(token: string, match: TmdbMatch): string {
       return metadataText(available(match.episodeTitle, 'Episode title'));
     default:
       throw new Error(`Unknown template field {${name}}.`);
+  }
+}
+
+// Mirrors TmdbPlugin.Episodes: a multi-episode match writes both ends in the chosen style.
+function episodes(match: TmdbMatch, format: string | undefined, range: string): string {
+  const episode = available(match.episode, 'Episode');
+  const first = formatNumber(episode, format, '00');
+  const end = match.episodeEnd;
+  if (end === null || end === undefined || end === episode) return first;
+  const last = formatNumber(end, format, '00');
+  switch (range) {
+    case 'concatenate':
+      return `${first}E${last}`;
+    case 'hyphen':
+      return `${first}-${last}`;
+    case 'repeat':
+      return `${first}-E${last}`;
+    default:
+      throw new Error('Choose how multi-episode numbers are written.');
   }
 }
 

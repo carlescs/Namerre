@@ -15,8 +15,12 @@ public sealed class TmdbMetadata(ITmdbClient client, IOptions<NamerreOptions> op
     {
         if (request.MediaType is not ("movie" or "tv") || (request.Query?.Length ?? 0) > 200
             || request.Id is <= 0 || request.ShowId is <= 0 || request.Season is < 0 or > 999
-            || request.Episode is < 1 or > 9999)
+            || request.Episode is < 1 or > 9999 || request.EpisodeEnd is < 1 or > 9999)
             throw new RenameException("InvalidMetadataQuery", "Specify movie or tv, a short search, and valid identifiers.");
+        if (request.EpisodeEnd is int last && (request.MediaType != "tv" || request.Episode is not int firstEpisode
+                || last < firstEpisode || last - firstEpisode >= TmdbSearchRequest.MaxEpisodesPerFile))
+            throw new RenameException("InvalidEpisodeRange",
+                $"A multi-episode file holds 2–{TmdbSearchRequest.MaxEpisodesPerFile} consecutive episodes of one season, from the first to the last.");
         var language = string.IsNullOrWhiteSpace(request.Language)
             ? options.Value.Tmdb.Language ?? "en" : request.Language;
         if (language.Length > 20 || language.Any(c => !char.IsAsciiLetter(c) && c != '-'))
@@ -35,23 +39,33 @@ public sealed class TmdbMetadata(ITmdbClient client, IOptions<NamerreOptions> op
             var originalTitle = Text(details, request.MediaType == "movie" ? "original_title" : "original_name");
             var airDate = request.MediaType == "movie" ? date : "";
             string? episodeTitle = null;
+            int? episodeEnd = request.EpisodeEnd == request.Episode ? null : request.EpisodeEnd;
             if (request.MediaType == "tv")
             {
                 if (request.Season is null || request.Episode is null)
                     throw new RenameException("EpisodeRequired", "Confirm a TV show with explicit season and episode numbers.");
-                var episode = await client.Get($"tv/{chosen}/season/{request.Season}/episode/{request.Episode}?language={Uri.EscapeDataString(language)}",
-                    cancellationToken);
-                episodeTitle = Text(episode, "name");
-                airDate = Text(episode, "air_date");
+                // Each episode of a range is looked up, so a range past the season's end fails as not found.
+                var titles = new List<string>();
+                for (var number = request.Episode.Value; number <= (episodeEnd ?? request.Episode.Value); number++)
+                {
+                    var episode = await client.Get($"tv/{chosen}/season/{request.Season}/episode/{number}?language={Uri.EscapeDataString(language)}",
+                        cancellationToken);
+                    var name = Text(episode, "name");
+                    if (string.IsNullOrWhiteSpace(name))
+                        throw new RenameException("MetadataIncomplete", "TMDB did not return the required title fields.", 502);
+                    titles.Add(name);
+                    if (number == request.Episode) airDate = Text(episode, "air_date");
+                }
+                episodeTitle = EpisodeTitles.Join(titles);
             }
-            if (string.IsNullOrWhiteSpace(title) || (request.MediaType == "tv" && string.IsNullOrWhiteSpace(episodeTitle)))
+            if (string.IsNullOrWhiteSpace(title))
                 throw new RenameException("MetadataIncomplete", "TMDB did not return the required title fields.", 502);
             var token = Guid.NewGuid().ToString("N");
             var year = date.Length >= 4 ? date[..4] : null;
             var match = new TmdbMatch(chosen, request.MediaType, title, year,
                 request.Season, request.Episode, episodeTitle, token,
                 string.IsNullOrWhiteSpace(originalTitle) ? null : originalTitle,
-                IsoDate(airDate), request.MediaType == "tv" ? year : null);
+                IsoDate(airDate), request.MediaType == "tv" ? year : null, episodeEnd);
             var selection = new MetadataSelection(request.FileId, request.InstanceId, request.InputPath,
                 request.OptionsHash, token);
             store.Save(token, "Confirmation", "Confirmed", new Confirmation(selection, match));

@@ -701,6 +701,19 @@ metadata language for confirmation, so editing them never invalidates confirmed 
 Confirmed metadata is snapshotted for the run so a
 later TMDB change or outage does not alter an approved execution or rollback.
 
+**Multi-episode files** (double-length premieres and finales) take a **Last episode** in the
+picker: the file is confirmed for every episode from the first to the last (consecutive, one
+season, at most 10), and each one is looked up, so a range past the season's end is refused. The
+range is part of the confirmation, so it cannot change without confirming again. `{episode}`
+then writes the range in the step's **Multi-episode numbers** style — `S01E01-E02` (default),
+`S01E01E02` or `S01E01-02`, with any number format applied to both ends — and `{episodeTitle}`
+joins the titles: identical titles stay one, titles that differ only by a part suffix
+(`The End (1)` / `The End (2)`, `Exodus, Part 1` / `Exodus, Part 2`, `Part One`, `Pt. II`) give the
+common name (`The End`), and others are joined with ` + ` (`Title A + Title B`). `{airDate}` is the
+first episode's. The picker and automatic suggestions read ranges such as `S01E01-E02`,
+`S01E01E02`, `S01E01-02` and `1x01-1x02` from file names. Single-episode matches and existing
+drafts are unchanged; the API field is `episodeEnd` on the confirmation request and the match.
+
 **Naming preset** fills in the filename, folder and season folder templates (and turns on
 folder changes, plus season folders for TV) with a media server's recommended layout; it
 leaves the base folder and language alone. Editing any filled-in option afterwards switches

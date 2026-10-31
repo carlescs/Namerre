@@ -38,7 +38,12 @@ import {
   type StepCondition,
 } from '../../rename-api';
 import { linkTmdbPreset } from '../../tmdb-presets';
-import { sampleEpisode, sampleMovie, tmdbTemplatePreview } from '../../tmdb-template-preview';
+import {
+  sampleDoubleEpisode,
+  sampleEpisode,
+  sampleMovie,
+  tmdbTemplatePreview,
+} from '../../tmdb-template-preview';
 
 type OptionControl = FormControl<PluginOptionCell>;
 type OptionRows = FormArray<FormGroup<Record<string, OptionControl>>>;
@@ -88,6 +93,7 @@ export class PluginEditorComponent implements OnInit {
   protected readonly samples = [
     { label: 'Movie', match: sampleMovie },
     { label: 'Episode', match: sampleEpisode },
+    { label: 'Double episode', match: sampleDoubleEpisode },
   ];
   protected readonly preview = tmdbTemplatePreview;
   private readonly injector = inject(Injector);

@@ -133,7 +133,8 @@ export class TmdbMatchingComponent {
     const title = match.year ? `${match.title} (${match.year})` : match.title;
     if (match.mediaType !== 'tv') return `${title} · Movie`;
     const pad = (value: number | null) => String(value ?? 0).padStart(2, '0');
-    return [title, `S${pad(match.season)}E${pad(match.episode)}`, match.episodeTitle]
+    const range = match.episodeEnd ? `-E${pad(match.episodeEnd)}` : '';
+    return [title, `S${pad(match.season)}E${pad(match.episode)}${range}`, match.episodeTitle]
       .filter(Boolean)
       .join(' · ');
   }
