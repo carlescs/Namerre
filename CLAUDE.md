@@ -87,7 +87,10 @@ field) and rejects forms the editor can't render when the engine is built. Plugi
 catalog order); `PipelineEngine` takes them via DI, keys them by `(TypeId, Version)`, and applies
 enabled plugin instances in the request's order — catalog order never determines execution order.
 Plugins return `PathParts`; the engine rejects changed extensions, empty stems and separators,
-then validates the path. Steps also get a `FilePosition` (request and source-folder index and counts) and
+then validates the path. With `PipelineRequest.IncludeCompanions`, `CompanionFiles` pairs subtitles, `.nfo` and
+artwork with a video in the same folder; those skip the steps and take the video's final folder and stem plus
+their suffix (`PreviewFile`/`PlanFile`/`RunFile.CompanionOf`), and the frontend mirrors the rules in
+`companions.ts` to group the collection — keep both in sync. Steps also get a `FilePosition` (request and source-folder index and counts) and
 `FileFacts` (size, modified and creation time via `IRenameFileSystem.Facts`); `PrepareJob` snapshots the
 facts into `PlanView.Facts` once and previews with them, so a plan never re-reads them. Tests build
 the engine with the built-in plugins through `TestPipeline.Create`. Lifecycle:

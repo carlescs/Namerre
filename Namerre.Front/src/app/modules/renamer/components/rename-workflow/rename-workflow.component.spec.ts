@@ -524,6 +524,51 @@ describe('RenameWorkflowComponent', () => {
     expect(text()).toContain('1 file needs a TMDB match');
   });
 
+  it('matches only the video of a group and renames its related files with it', async () => {
+    const file = (name: string): RenamerFile => ({ ...files[0], name, path: `Films/${name}` });
+    fixture.componentRef.setInput('files', [file('Movie.mkv'), file('Movie.en.srt')]);
+    await fixture.whenStable();
+    changePlugins([tmdb]);
+    await fixture.whenStable();
+    button('Next: match metadata').click();
+    const request = http.expectOne('/api/rename-previews');
+    expect(request.request.body.includeCompanions).toBe(true);
+    const step = { ...tmdbPreview.files[0].steps[0], inputPath: 'Films/Movie.mkv' };
+    request.flush({
+      files: [
+        {
+          ...tmdbPreview.files[0],
+          id: 'Films/Movie.mkv',
+          sourcePath: 'Films/Movie.mkv',
+          targetPath: 'Films/Movie.mkv',
+          steps: [step],
+        },
+        {
+          id: 'Films/Movie.en.srt',
+          sourcePath: 'Films/Movie.en.srt',
+          targetPath: 'Films/Movie.en.srt',
+          unchanged: true,
+          steps: [],
+          issues: [{ code: 'CompanionBlocked', message: 'Follows Movie.mkv.' }],
+          companionOf: 'Films/Movie.mkv',
+        },
+      ],
+      canPrepare: false,
+    });
+    await fixture.whenStable();
+    const rows = fixture.nativeElement.querySelectorAll('article[data-unmatched]');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('Movie.mkv');
+    expect(text()).toContain('1 file still needs a confirmed TMDB match');
+
+    fixture.componentRef.setInput('includeRelated', false);
+    await fixture.whenStable();
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const separate = http.expectOne('/api/rename-previews');
+    expect(separate.request.body.includeCompanions).toBe(false);
+    separate.flush(tmdbPreview);
+  });
+
   it('asks the owner to drop a file that cannot be matched', async () => {
     changePlugins([tmdb]);
     await fixture.whenStable();

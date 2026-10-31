@@ -251,11 +251,19 @@ export class RunHistoryComponent {
     this.refresh();
   }
 
+  /** Selecting a video for undo selects its related files too; they can still be toggled alone. */
   protected toggle(id: string): void {
+    const selectable = new Set(this.selectableIds());
+    const related = (this.run()?.files ?? [])
+      .filter((file) => file.companionOf === id && selectable.has(file.id))
+      .map((file) => file.id);
     this.selected.update((selection) => {
       const next = new Set(selection);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      const select = !next.has(id);
+      for (const entry of [id, ...related]) {
+        if (select) next.add(entry);
+        else next.delete(entry);
+      }
       return next;
     });
     this.invalidateApproval();

@@ -95,6 +95,8 @@ export interface PipelineRequest {
   deleteEmptyFolders?: boolean;
   /** Manual target paths applied after the plugins; they may change any part of the path. */
   overrides?: TargetOverride[];
+  /** True renames subtitles, .nfo files and artwork together with the video they belong to. */
+  includeCompanions?: boolean;
 }
 export interface RenameIssue {
   code: string;
@@ -114,6 +116,8 @@ export interface PreviewFile {
   unchanged: boolean;
   steps: StepTrace[];
   issues: RenameIssue[];
+  /** ID of the video this related file follows. */
+  companionOf?: string | null;
 }
 export interface PreviewResult {
   files: PreviewFile[];
@@ -130,7 +134,14 @@ export interface PlanView {
   status: string;
   completedFiles: number;
   pipeline: PipelineRequest;
-  files: { id: string; sourcePath: string; targetPath: string; hash: string; size: number }[];
+  files: {
+    id: string;
+    sourcePath: string;
+    targetPath: string;
+    hash: string;
+    size: number;
+    companionOf?: string | null;
+  }[];
   issues: RenameIssue[];
   createdAt: string;
   /** Source file facts by file ID, read once when preparation starts; absent on older plans. */
@@ -150,6 +161,8 @@ export interface RunFile {
   status: string;
   error: string | null;
   errorCode?: string | null;
+  /** ID of the video this related file followed. */
+  companionOf?: string | null;
 }
 export interface RunView {
   id: string;

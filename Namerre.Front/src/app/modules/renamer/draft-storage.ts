@@ -5,6 +5,7 @@ import type { RenamerFile } from './renamer-file';
 // their tokens are bound to a preview, so matching is simply redone.
 const filesKey = 'namerre.draft.files.v1';
 const pipelineKey = 'namerre.draft.pipeline.v1';
+const relatedKey = 'namerre.draft.related.v1';
 
 export interface PipelineDraft {
   plugins: PluginInstance[];
@@ -19,6 +20,15 @@ export function loadFilesDraft(): RenamerFile[] {
 
 export function saveFilesDraft(files: RenamerFile[]): void {
   write(filesKey, files.length ? files : null);
+}
+
+/** Whether related files (subtitles, .nfo, artwork) follow their video; on unless turned off. */
+export function loadIncludeRelatedDraft(): boolean {
+  return read(relatedKey) !== false;
+}
+
+export function saveIncludeRelatedDraft(includeRelated: boolean): void {
+  write(relatedKey, includeRelated ? null : false);
 }
 
 export function loadPipelineDraft(): PipelineDraft | null {

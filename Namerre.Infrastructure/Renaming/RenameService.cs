@@ -67,7 +67,8 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             if (plan.Status != "Ready")
                 throw new RenameException("PlanNotReady", "The plan is not ready for execution.", 409);
             var run = CreateRun(plan.Id, null, "Rename", plan.Files.Select(f =>
-                new RunFile(f.Id, f.SourcePath, f.TargetPath, Staging(f.SourcePath), f.Hash, "Pending")).ToArray(),
+                new RunFile(f.Id, f.SourcePath, f.TargetPath, Staging(f.SourcePath), f.Hash, "Pending",
+                    CompanionOf: f.CompanionOf)).ToArray(),
                 plan.Pipeline.DeleteEmptyFolders);
             store.Enqueue(run.Id, "Run", run.Status, run, "Execute", operation);
             Notify("Run", run.Id, run.Status);
@@ -167,7 +168,8 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             if (safe.Count == 0)
                 throw new RenameException("RollbackBlocked", "No selected files can safely be rolled back. Inspect the rollback preview.", 409);
             var files = parent.Files.Where(f => safe.Contains(f.Id)).Select(f =>
-                new RunFile(f.Id, f.TargetPath, f.SourcePath, Staging(f.TargetPath), f.Hash, "Pending")).ToArray();
+                new RunFile(f.Id, f.TargetPath, f.SourcePath, Staging(f.TargetPath), f.Hash, "Pending",
+                    CompanionOf: f.CompanionOf)).ToArray();
             // Unless the request decides, a rollback inherits the cleanup choice, so folders the rename created and
             // filled are removed again.
             var run = CreateRun(parent.PlanId, parent.Id, "Rollback", files,
@@ -287,7 +289,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             // Quick-check plans record size and modification time instead of reading every file.
             var snapshot = plan.Pipeline.VerifyContent
                 ? await fileSystem.Hash(file.SourcePath, cancellationToken) : fileSystem.Stamp(file.SourcePath);
-            files.Add(new(file.Id, file.SourcePath, file.TargetPath, snapshot.Hash, snapshot.Size));
+            files.Add(new(file.Id, file.SourcePath, file.TargetPath, snapshot.Hash, snapshot.Size, file.CompanionOf));
             plan = plan with { Files = files.ToArray(), CompletedFiles = files.Count };
             Save(plan);
         }

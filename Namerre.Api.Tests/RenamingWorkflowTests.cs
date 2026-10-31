@@ -421,6 +421,46 @@ public sealed class RenamingWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task RelatedFilesFollowTheirVideoAndRollBackAsAGroup()
+    {
+        Write("Films/Movie.mkv", "video");
+        Write("Films/Movie.en.srt", "subtitle");
+        Write("Films/Movie.nfo", "info");
+        Write("Films/Movie-poster.jpg", "poster");
+        Write("Films/Movie 2.mkv", "other video");
+        using var harness = Harness();
+        var plan = await Prepare(harness, Request(
+            ["Films/Movie.mkv", "Films/Movie.en.srt", "Films/Movie.nfo", "Films/Movie-poster.jpg", "Films/Movie 2.mkv"],
+            [Plugin("move", "regex", new { pattern = "^Movie", replacement = "Film" })]) with { IncludeCompanions = true });
+        Assert.Equal([null, "0", "0", "0", null], plan.Files.Select(f => f.CompanionOf));
+        var rename = await harness.Service.Execute(plan.Id, new(1, Guid.NewGuid().ToString()), default);
+        await harness.Service.ProcessNext(default);
+        var run = await harness.Service.GetRun(rename.Id, default);
+        Assert.Equal("Completed", run.Status);
+        Assert.Equal("0", run.Files[1].CompanionOf);
+        Assert.Equal("subtitle", Read("Films/Film.en.srt"));
+        Assert.Equal("info", Read("Films/Film.nfo"));
+        Assert.Equal("poster", Read("Films/Film-poster.jpg"));
+        Assert.Equal("other video", Read("Films/Film 2.mkv"));
+
+        var group = new SelectionRequest(["0", "1", "2", "3"], Guid.NewGuid().ToString());
+        Assert.All((await harness.Service.RollbackPreview(run.Id, group, default)).Files, f => Assert.True(f.Safe));
+        var rollback = await harness.Service.Rollback(run.Id, group, default);
+        await harness.Service.ProcessNext(default);
+
+        var reversed = await harness.Service.GetRun(rollback.Id, default);
+        Assert.Equal("Completed", reversed.Status);
+        Assert.Equal([null, "0", "0", "0"], reversed.Files.Select(f => f.CompanionOf));
+        Assert.Equal("video", Read("Films/Movie.mkv"));
+        Assert.Equal("subtitle", Read("Films/Movie.en.srt"));
+        Assert.Equal("info", Read("Films/Movie.nfo"));
+        Assert.Equal("poster", Read("Films/Movie-poster.jpg"));
+        Assert.Equal("other video", Read("Films/Film 2.mkv"));
+        Assert.Equal(["Completed", "RolledBack", "RolledBack", "RolledBack", "RolledBack"],
+            (await harness.Service.GetRun(run.Id, default)).Files.Select(f => f.Status).OrderBy(s => s));
+    }
+
+    [Fact]
     public async Task ChangedHashBlocksThatRollbackButSafeSelectedFileStillRuns()
     {
         Write("alpha.txt", "AAAA");
