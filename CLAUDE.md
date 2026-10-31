@@ -104,7 +104,11 @@ preview (no mutation) → prepare (hash every source file, persist an immutable 
 execute (queued job) → optional rollback of selected files / explicit recovery. Run state changes
 must satisfy `Domain/Renaming/RunTransitions.Allows`; naming rules are in `Domain/Renaming/NamingRules.cs`.
 `RenameWorker` (hosted service) polls `RenameService.ProcessNext`, so jobs run independently of
-the browser. Runs are journaled (with staging paths), not atomic; interrupted mutations are never
+the browser. `WatchFolderWorker` runs `Infrastructure/WatchFolders/WatchFolderService.Scan` every few seconds:
+configured `Namerre:WatchFolders` (validated by `WatchFolderOptions.Problem`) are listed through `IFolderBrowser`,
+stable files previewed with their preset and prepared through `RenameService.Prepare(request, origin, …)`
+(`origin` = `watch:<name>` on `PlanView`/`RunView`), then executed; per-file state with back-off lives in the
+`WatchedFiles` table and pausing in `Settings`. TMDB steps need the folder's `TmdbAutoConfirm` threshold. Runs are journaled (with staging paths), not atomic; interrupted mutations are never
 blindly resumed.
 
 **Live updates.** After each durable plan/run write, `RenameService` calls `IRenameNotifier`

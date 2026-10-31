@@ -23,6 +23,9 @@
       Try again
     </button>
   }
+  @if (!runId()) {
+    <app-watch-folders />
+  }
   @if (history(); as list) {
     @if (!list.items.length) {
       <div class="surface my-6 p-10 text-center">
@@ -173,6 +176,11 @@
                   Undo of {{ entry.parentTitle || 'an earlier rename' }}
                 </p>
               }
+              @if (watchFolderOrigin(entry.run.origin); as folder) {
+                <p class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
+                  Started by watch folder {{ folder }}
+                </p>
+              }
             </div>
             <ng-container *ngTemplateOutlet="deleteButton; context: { $implicit: entry.run }" />
           </div>
@@ -203,6 +211,11 @@
           {{ kindLabel(current.kind) }}
         </p>
         <h2 class="mt-0">{{ runTitle(current) }}</h2>
+        @if (watchFolderOrigin(current.origin); as folder) {
+          <p class="mt-0 text-sm text-slate-500 dark:text-slate-400">
+            Started by watch folder {{ folder }}
+          </p>
+        }
       </div>
       <ng-container *ngTemplateOutlet="deleteButton; context: { $implicit: current }" />
     </div>

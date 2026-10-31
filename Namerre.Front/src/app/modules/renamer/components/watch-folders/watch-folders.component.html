@@ -1,0 +1,89 @@
+@if (folders().length) {
+  <section aria-labelledby="watch-folders-heading" class="surface my-6 p-4 sm:p-5">
+    <h2 id="watch-folders-heading" class="mt-0 text-lg">Watch folders</h2>
+    <p class="mt-0 text-sm text-slate-500 dark:text-slate-400">
+      New files in these folders are renamed automatically with their preset once they stop
+      changing. Their runs appear below like any other and can be undone.
+    </p>
+    @if (error()) {
+      <p class="error" role="alert">{{ error() }}</p>
+    }
+    @for (folder of folders(); track folder.name) {
+      <article [attr.aria-labelledby]="'watch-' + $index" class="mt-4">
+        <header class="flex flex-wrap items-center gap-2">
+          <h3 class="m-0 mr-auto text-base" [id]="'watch-' + $index">
+            {{ folder.name }}
+            <span class="text-sm font-normal text-slate-500 dark:text-slate-400">
+              · <code>{{ folder.path }}</code> · preset {{ folder.preset }}
+            </span>
+          </h3>
+          <span
+            class="rounded-full px-2.5 py-0.5 text-xs font-medium"
+            [class]="
+              folder.paused
+                ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                : folder.error
+                  ? 'bg-rose-100 text-rose-900 dark:bg-rose-500/15 dark:text-rose-200'
+                  : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-200'
+            "
+            >{{ folder.paused ? 'Paused' : folder.error ? 'Needs attention' : 'Watching' }}</span
+          >
+          <button
+            type="button"
+            (click)="togglePause(folder)"
+            [disabled]="busy()"
+            [attr.aria-label]="(folder.paused ? 'Resume ' : 'Pause ') + folder.name"
+          >
+            {{ folder.paused ? 'Resume' : 'Pause' }}
+          </button>
+        </header>
+        <p class="m-0 mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {{ folder.completed }} renamed · {{ folder.inFlight }} in progress
+          @if (folder.lastScanAt) {
+            · last checked {{ folder.lastScanAt | date: 'medium' }}
+          }
+          @if (folder.tmdbAutoConfirm !== null) {
+            · accepts TMDB suggestions from {{ folder.tmdbAutoConfirm | percent }}
+          }
+        </p>
+        @if (folder.error) {
+          <p class="error my-2 px-3 py-2 text-sm" role="alert">{{ folder.error }}</p>
+        }
+        @if (folder.problems.length) {
+          <details class="mt-2">
+            <summary class="text-sm">
+              {{ folder.problems.length }}
+              {{ folder.problems.length === 1 ? 'file was' : 'files were' }} not renamed
+            </summary>
+            <ul class="mt-2 space-y-2 text-sm">
+              @for (problem of folder.problems; track problem.path) {
+                <li class="flex flex-wrap items-start gap-2">
+                  <div class="min-w-0 flex-1">
+                    <code>{{ problem.path }}</code>
+                    <p class="m-0 text-xs text-slate-500 dark:text-slate-400">
+                      {{ problem.error }}
+                      @if (problem.status === 'Ignored') {
+                        Ignored after {{ problem.attempts }} attempts until the file changes.
+                      } @else if (problem.nextAttemptAt) {
+                        Tries again after {{ problem.nextAttemptAt | date: 'medium' }}.
+                      }
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="!min-h-8 !px-2.5 !py-1"
+                    (click)="retry(folder, problem.path)"
+                    [disabled]="busy()"
+                    [attr.aria-label]="'Retry ' + problem.path"
+                  >
+                    Retry now
+                  </button>
+                </li>
+              }
+            </ul>
+          </details>
+        }
+      </article>
+    }
+  </section>
+}

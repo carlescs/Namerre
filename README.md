@@ -611,6 +611,62 @@ or in recorded temporary staging paths. Inspect the run and use explicit recover
 Interrupted mutations are not blindly resumed after a restart. Do not delete staging
 files or history to clear an error; that can destroy recovery evidence.
 
+## Watch folders (optional)
+
+Watch folders rename new files automatically with a saved [preset](#presets). Configure them under
+`Namerre:WatchFolders` (they are off while the list is empty):
+
+```json
+"WatchFolders": [
+  {
+    "Name": "Downloads",
+    "Path": "downloads/tv",
+    "Preset": "TV for Jellyfin",
+    "Recursive": false,
+    "IntervalSeconds": 60,
+    "StableSeconds": 60,
+    "IncludeCompanions": true,
+    "TmdbMediaType": "tv",
+    "TmdbAutoConfirm": 0.9,
+    "MaxAttempts": 5
+  }
+]
+```
+
+Every `IntervalSeconds` (10–86400) the server lists the folder (with subfolders when `Recursive`),
+skipping hidden and system entries, links and Namerre's staging files, which is more reliable than
+filesystem events on network shares. A file is taken once its size and modification time have not
+changed for `StableSeconds` (0–86400, measured between scans, so a file is always seen at least
+twice). Stable files — up to the per-run file limit — are previewed with the preset's steps and run
+options, and the ones that can be renamed become a normal plan and run, prepared and executed
+by the same durable job queue, journal and history; such runs say **Started by watch folder …** in
+the history and can be undone like any other (`origin` is `watch:<name>` on the plan and run). A
+folder runs one batch at a time. Renamed files are recorded under their new name, so a file renamed
+inside the watched folder is not taken again; a file whose name the preset leaves unchanged is
+recorded as done without a run. With `IncludeCompanions` (the default), related files follow their
+video, and a video and its related files only go together.
+
+A file that cannot be renamed (an occupied destination, a failing step, a TMDB match below the
+threshold) is retried after the interval, then after twice that, and so on up to a day; after
+`MaxAttempts` (1–20) failures it is ignored until its size or modification time changes. TMDB being
+busy or rate-limited, a full job queue or pending recovery only postpones the batch to the next
+scan without counting against the files. The history page lists the configured folders with their
+state, the files that were not renamed and why, a **Retry now** button per file, and
+**Pause**/**Resume** (kept in the database across restarts). The API is `GET /api/watch-folders`,
+`POST /api/watch-folders/{name}/pause`, `…/resume` and `…/retry` with `{ "path": … }`.
+
+**TMDB.** Matches normally need a person's explicit confirmation, so a preset with an enabled TMDB
+step is refused unless the folder sets `TmdbMediaType` (`movie` or `tv`) and `TmdbAutoConfirm`, a
+confidence from 0.5 to 1 above which the [automatic suggestion](#tmdb-metadata) is accepted on the
+person's behalf (0.85 is the interactive "high confidence" mark; higher is stricter). A suggestion
+below it fails the file with its confidence, so it can be renamed by hand. The accepted match is
+confirmed and snapshotted into the plan exactly like a manual one.
+
+Folder names are 1–50 letters, digits, spaces, `-` or `_` and unique; paths are root-relative with
+forward slashes and may not overlap (the same folder twice, or a folder inside a recursive one).
+Invalid entries fail startup. A missing preset, or one with steps this server no longer knows, is
+reported on the folder until fixed.
+
 ## Server folder browsing
 
 Set `Namerre:RootPath` in the server configuration, or use the environment

@@ -14,6 +14,8 @@ public sealed class NamerreOptions
     public TelemetryOptions Telemetry { get; set; } = new();
     public LimitsOptions Limits { get; set; } = new();
     public IntegrationsOptions Integrations { get; set; } = new();
+    /// <summary>Folders whose new files are renamed automatically with a saved preset.</summary>
+    public List<WatchFolderOptions> WatchFolders { get; set; } = [];
 }
 
 /// <summary>Workload limits; values outside 1 to the ceilings of <see cref="RenameLimits"/> fail startup.</summary>

@@ -30,7 +30,11 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         finally { previews.Release(); }
     }
 
-    public async Task<JobAccepted> Prepare(PipelineRequest request, CancellationToken cancellationToken)
+    public Task<JobAccepted> Prepare(PipelineRequest request, CancellationToken cancellationToken)
+        => Prepare(request, null, cancellationToken);
+
+    /// <param name="origin">Recorded on the plan and its run, e.g. <c>watch:Downloads</c>; null for a person.</param>
+    public async Task<JobAccepted> Prepare(PipelineRequest request, string? origin, CancellationToken cancellationToken)
     {
         pipeline.ValidateRequest(request);
         await gate.WaitAsync(cancellationToken);
@@ -40,7 +44,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             var id = NewId();
             var snapshot = System.Text.Json.JsonSerializer.Deserialize<PipelineRequest>(
                 System.Text.Json.JsonSerializer.Serialize(request, RenameStore.Json), RenameStore.Json)!;
-            var plan = new PlanView(id, 1, "Preparing", 0, snapshot, [], [], DateTimeOffset.UtcNow);
+            var plan = new PlanView(id, 1, "Preparing", 0, snapshot, [], [], DateTimeOffset.UtcNow, Origin: origin);
             store.Enqueue(id, "Plan", plan.Status, plan, "Prepare");
             Notify("Plan", id, plan.Status);
             return Accepted(id, plan.Status, true);
@@ -70,7 +74,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             var run = CreateRun(plan.Id, null, "Rename", plan.Files.Select(f =>
                 new RunFile(f.Id, f.SourcePath, f.TargetPath, Staging(f.SourcePath), f.Hash, "Pending",
                     CompanionOf: f.CompanionOf)).ToArray(),
-                plan.Pipeline.DeleteEmptyFolders);
+                plan.Pipeline.DeleteEmptyFolders) with { Origin = plan.Origin };
             store.Enqueue(run.Id, "Run", run.Status, run, "Execute", operation);
             Notify("Run", run.Id, run.Status);
             return Accepted(run.Id, run.Status);

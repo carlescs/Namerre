@@ -6,6 +6,7 @@ using Namerre.Application;
 using Namerre.Application.Folders;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Presets;
+using Namerre.Application.WatchFolders;
 using Namerre.Infrastructure.Folders;
 using Namerre.Infrastructure.Configuration;
 using Xunit;
@@ -75,6 +76,25 @@ public sealed class ApplicationRegistrationTests
     }
 
     [Fact]
+    public void InvalidWatchFoldersFailStartup()
+    {
+        using var factory = new AuthWebApplicationFactory().WithWebHostBuilder(builder =>
+            builder.ConfigureAppConfiguration((_, configuration) =>
+                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Namerre:WatchFolders:0:Name"] = "Downloads",
+                    ["Namerre:WatchFolders:0:Path"] = "downloads",
+                    ["Namerre:WatchFolders:0:Preset"] = "TV",
+                    ["Namerre:WatchFolders:0:TmdbAutoConfirm"] = "0.9"
+                })));
+
+        var exception = Assert.ThrowsAny<Exception>(() => factory.Services);
+        var failure = exception as OptionsValidationException ?? exception.InnerException as OptionsValidationException;
+        Assert.NotNull(failure);
+        Assert.Contains("TmdbAutoConfirm is 0.5–1 and needs TmdbMediaType", failure.Message);
+    }
+
+    [Fact]
     public void AddApplicationRegistersAScopedSender()
     {
         var services = new ServiceCollection();
@@ -84,6 +104,7 @@ public sealed class ApplicationRegistrationTests
         services.AddSingleton<ITmdbMetadata>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddSingleton<IRenameFileSystem>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddSingleton<IPresetStore>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
+        services.AddSingleton<IWatchFolders>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         using var provider = services.BuildServiceProvider(
             new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
         using var scope = provider.CreateScope();

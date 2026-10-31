@@ -168,6 +168,8 @@ export interface PlanView {
   createdAt: string;
   /** Source file facts by file ID, read once when preparation starts; absent on older plans. */
   facts?: Record<string, FileFacts>;
+  /** What started the plan: absent for a person, `watch:<name>` for a watch folder. */
+  origin?: string | null;
 }
 export interface FileFacts {
   size: number;
@@ -207,6 +209,8 @@ export interface RunView {
   deleteEmptyFolders?: boolean;
   /** Rollback runs created from this run; only present on single-run reads. */
   rollbackRuns?: RunReference[];
+  /** What started the run: absent for a person, `watch:<name>` for a watch folder. */
+  origin?: string | null;
 }
 export interface RunReference {
   id: string;
@@ -380,6 +384,35 @@ export interface PresetView {
   unknownSteps: string[];
 }
 
+export interface WatchedFileProblem {
+  path: string;
+  /** `Failed` is retried at `nextAttemptAt`; `Ignored` waits until the file changes. */
+  status: 'Failed' | 'Ignored';
+  attempts: number;
+  error: string | null;
+  nextAttemptAt: string | null;
+  updatedAt: string;
+}
+export interface WatchFolderStatus {
+  name: string;
+  path: string;
+  preset: string;
+  paused: boolean;
+  lastScanAt: string | null;
+  inFlight: number;
+  completed: number;
+  /** Why the folder cannot run, e.g. a missing preset. */
+  error: string | null;
+  problems: WatchedFileProblem[];
+  /** TMDB suggestions at or above this confidence are accepted without a person. */
+  tmdbAutoConfirm: number | null;
+}
+
+/** The watch folder name of a run or plan started by one, or null. */
+export function watchFolderOrigin(origin: string | null | undefined): string | null {
+  return origin?.startsWith('watch:') ? origin.slice('watch:'.length) : null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class RenameApi {
   private readonly http = inject(HttpClient);
@@ -470,6 +503,21 @@ export class RenameApi {
   }
   deletePreset(id: string) {
     return this.http.delete<void>(`/api/rename-presets/${encodeURIComponent(id)}`);
+  }
+  watchFolders() {
+    return this.http.get<WatchFolderStatus[]>('/api/watch-folders');
+  }
+  setWatchFolderPaused(name: string, paused: boolean) {
+    return this.http.post<WatchFolderStatus>(
+      `/api/watch-folders/${encodeURIComponent(name)}/${paused ? 'pause' : 'resume'}`,
+      {},
+    );
+  }
+  retryWatchedFile(name: string, path: string) {
+    return this.http.post<WatchFolderStatus>(
+      `/api/watch-folders/${encodeURIComponent(name)}/retry`,
+      { path },
+    );
   }
   /** Proposes a verified match from the step input's file name; nothing is accepted automatically. */
   suggestTmdb(request: TmdbSuggestionRequest) {

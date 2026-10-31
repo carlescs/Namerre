@@ -11,6 +11,8 @@ using Namerre.Infrastructure.Configuration;
 using Namerre.Infrastructure.Folders;
 using Namerre.Infrastructure.Integrations;
 using Namerre.Infrastructure.Renaming;
+using Namerre.Infrastructure.WatchFolders;
+using Namerre.Application.WatchFolders;
 
 namespace Namerre.Infrastructure;
 
@@ -34,6 +36,7 @@ public static class DependencyInjection
         services.AddSingleton(provider =>
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.Limits.ToLimits());
         services.AddSingleton<IValidateOptions<NamerreOptions>, NamerreOptionsValidator>();
+        services.AddSingleton<IValidateOptions<NamerreOptions>, WatchFolderOptionsValidator>();
         services.AddSingleton(provider => new BoundedFileSystem(
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.RootPath,
             provider.GetRequiredService<IHostEnvironment>().ContentRootPath));
@@ -59,6 +62,9 @@ public static class DependencyInjection
         services.AddSingleton<RenameService>();
         services.AddSingleton<IRenameService>(provider => provider.GetRequiredService<RenameService>());
         services.AddHostedService<RenameWorker>();
+        services.AddSingleton<WatchFolderService>();
+        services.AddSingleton<IWatchFolders>(provider => provider.GetRequiredService<WatchFolderService>());
+        services.AddHostedService<WatchFolderWorker>();
         services.AddSingleton<IFolderBrowser>(provider => new ServerFolderBrowser(
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.RootPath,
             provider.GetRequiredService<IHostEnvironment>().ContentRootPath,

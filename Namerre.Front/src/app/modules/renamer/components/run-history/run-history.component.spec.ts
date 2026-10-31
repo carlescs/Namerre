@@ -68,6 +68,8 @@ describe('RunHistoryComponent', () => {
   });
 
   afterEach(() => {
+    // The watch folder panel loads on its own; its spec covers it.
+    for (const request of http?.match('/api/watch-folders') ?? []) request.flush([]);
     fixture.destroy();
     http.verify();
   });
@@ -439,6 +441,39 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     expect(deleteButton().disabled).toBe(true);
     expect(deleteButton().title).toBe('Only completed or recovered runs can be deleted');
+  });
+
+  it('names the watch folder that started a run and shows the folders on the history page', async () => {
+    http.expectOne('/api/rename-runs/run-1').flush({ ...run, origin: 'watch:Downloads' });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Started by watch folder Downloads');
+    params.next(convertToParamMap({}));
+    const page = {
+      items: [{ ...run, origin: 'watch:Downloads' }],
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    };
+    http.expectOne('/api/rename-runs?page=1&pageSize=20').flush(page);
+    await fixture.whenStable();
+    http.expectOne('/api/watch-folders').flush([
+      {
+        name: 'Downloads',
+        path: 'downloads',
+        preset: 'TV',
+        paused: false,
+        lastScanAt: null,
+        inFlight: 0,
+        completed: 1,
+        error: null,
+        problems: [],
+        tmdbAutoConfirm: null,
+      },
+    ]);
+    await fixture.whenStable();
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Watch folders');
+    expect(text).toContain('Started by watch folder Downloads');
   });
 
   it('reports a refused deletion from the history list and refreshes after success', async () => {

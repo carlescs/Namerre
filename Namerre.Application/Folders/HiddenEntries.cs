@@ -5,7 +5,7 @@ namespace Namerre.Application.Folders;
 /// Synology metadata (@eaDir) and the usual Windows and recycle-bin entries. Keep in sync with
 /// <c>Namerre.Front/src/app/modules/renamer/hidden-entries.ts</c>.
 /// </summary>
-internal static class HiddenEntries
+public static class HiddenEntries
 {
     private static readonly HashSet<string> SystemNames = new(StringComparer.OrdinalIgnoreCase)
     {

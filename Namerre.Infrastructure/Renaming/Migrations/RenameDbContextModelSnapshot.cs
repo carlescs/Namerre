@@ -180,6 +180,55 @@ namespace Namerre.Infrastructure.Renaming.Migrations
                     b.ToTable("Settings");
                 });
 
+            modelBuilder.Entity("Namerre.Infrastructure.Renaming.WatchedFileRow", b =>
+                {
+                    b.Property<string>("Folder")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Path")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ModifiedTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PlanId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RunId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Folder", "Path");
+
+                    b.HasIndex("Folder", "Status");
+
+                    b.ToTable("WatchedFiles");
+                });
+
             modelBuilder.Entity("Namerre.Infrastructure.Renaming.DurableRenameJob", b =>
                 {
                     b.HasOne("Namerre.Infrastructure.Renaming.RenameDocument", null)
