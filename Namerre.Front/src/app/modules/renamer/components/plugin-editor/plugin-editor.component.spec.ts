@@ -429,6 +429,64 @@ describe('PluginEditorComponent', () => {
     expect(plugins[0].options).toEqual({ prefix: 'old-', position: 'start', trim: true });
   });
 
+  it('shows a field only while its select condition holds and keeps its hidden value', async () => {
+    fixture.componentRef.setInput('catalog', [
+      {
+        typeId: 'counter',
+        version: 1,
+        name: 'Counter',
+        description: 'Number files',
+        defaultOptions: { position: 'suffix', separator: ' ', template: '{name} {n}' },
+        form: [
+          {
+            fields: [
+              {
+                key: 'position',
+                label: 'Position',
+                kind: 'select',
+                choices: [
+                  { value: 'prefix', label: 'Before' },
+                  { value: 'suffix', label: 'After' },
+                  { value: 'template', label: 'Custom' },
+                ],
+              },
+              {
+                key: 'separator',
+                label: 'Separator',
+                kind: 'text',
+                visibleWhen: { key: 'position', values: ['prefix', 'suffix'] },
+              },
+              {
+                key: 'template',
+                label: 'Template',
+                kind: 'text',
+                visibleWhen: { key: 'position', values: ['template'] },
+              },
+            ],
+          },
+        ],
+      },
+    ] satisfies PluginDescriptor[]);
+    await fixture.whenStable();
+    await add('counter');
+    const card = fixture.nativeElement.querySelector('article') as HTMLElement;
+    const labels = () =>
+      ['Separator', 'Template'].filter((name) =>
+        [...card.querySelectorAll('label')].some((label) => label.textContent?.includes(name)),
+      );
+    expect(labels()).toEqual(['Separator']);
+    const select = card.querySelector('select') as HTMLSelectElement;
+    select.value = 'template';
+    select.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    expect(labels()).toEqual(['Template']);
+    expect(plugins[0].options).toEqual({
+      position: 'template',
+      separator: ' ',
+      template: '{name} {n}',
+    });
+  });
+
   describe('number, textarea, list and multi-select fields', () => {
     const kindsPlugin: PluginDescriptor = {
       typeId: 'kinds',

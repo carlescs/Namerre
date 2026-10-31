@@ -9,11 +9,11 @@ internal static class NameInsertion
         [new("prefix", "Before the name"), new("suffix", "After the name"), new("template", $"Template with {placeholder}")]);
 
     public static OptionField SeparatorField() => new("separator", "Separator",
-        Hint: "Placed between the name and the value when adding before or after");
+        Hint: "Placed between the name and the value", VisibleWhen: new("position", ["prefix", "suffix"]));
 
     public static OptionField TemplateField(string placeholder, string example) => new("template", "Template",
-        Hint: $"Used when Position is Template; {placeholder} is the value and {NamePlaceholder} the current name",
-        Placeholder: example);
+        Hint: $"{placeholder} is the value and {NamePlaceholder} the current name", Placeholder: example,
+        VisibleWhen: new("position", ["template"]));
 
     /// <exception cref="RenameException"><c>InvalidConfiguration</c> for a template without the placeholder.</exception>
     public static string Insert(string stem, string value, string position, string separator, string template,

@@ -98,6 +98,26 @@ public sealed class OptionBindingTests
             [new FormPlugin([new("n", "N", OptionFieldKind.Number, Min: 2, Max: 1)])])).Message);
     }
 
+    [Fact]
+    public void VisibilityConditionsSerializeAndMustNameChoicesOfAnotherSelect()
+    {
+        Assert.Equal("""{"key":"t","label":"T","kind":"text","visibleWhen":{"key":"mode","values":["a"]}}""",
+            JsonSerializer.Serialize(new OptionField("t", "T", VisibleWhen: new("mode", ["a"])), Web));
+        OptionField mode = new("mode", "Mode", OptionFieldKind.Select, [new("a", "A"), new("b", "B")]);
+        _ = new PipelineEngine(fileSystem, [new FormPlugin([mode, new("t", "T", VisibleWhen: new("mode", ["b"]))])]);
+
+        foreach (var condition in new OptionCondition[]
+                 { new("missing", ["a"]), new("mode", []), new("mode", ["z"]), new("flag", ["a"]), new("t", ["a"]) })
+        {
+            Assert.Contains("needs a condition", Assert.Throws<InvalidOperationException>(() => new PipelineEngine(
+                fileSystem, [new FormPlugin([mode, new("flag", "Flag", OptionFieldKind.Checkbox),
+                    new("t", "T", VisibleWhen: condition)])])).Message);
+        }
+        Assert.Contains("conditional column", Assert.Throws<InvalidOperationException>(() => new PipelineEngine(
+            fileSystem, [new FormPlugin([mode, new("rows", "Rows", OptionFieldKind.List,
+                Fields: [new("c", "C", VisibleWhen: new("mode", ["a"]))])])])).Message);
+    }
+
     private async Task<PreviewFile> Preview(string options)
     {
         var engine = new PipelineEngine(fileSystem, [new KindsPlugin()]);

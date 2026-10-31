@@ -85,7 +85,8 @@ placement, insert/remove/truncate count grapheme clusters through `TextElements`
 version, name, description, default options, the option `Form` the frontend renders and
 `SingleInstance` (at most one instance per pipeline, enforced by the engine and the editor; set
 for TMDB). Form fields are `OptionFieldKind`s (`text`, `textarea`, `checkbox`, `select`, `multiSelect`,
-`number` with optional min/max/step, and `list` of non-nested row columns); `OptionBinding` checks
+`number` with optional min/max/step, and `list` of non-nested row columns); groups can require checkboxes (`Requires`) and fields can show only while a select holds given values
+(`VisibleWhen`, e.g. counter/date templates via `NameInsertion`); hidden values are still sent; `OptionBinding` checks
 options against the form before typed binding (malformed values → `InvalidConfiguration` naming the
 field) and rejects forms the editor can't render when the engine is built. Plugins are registered as singletons in `AddApplication()` (registration order =
 catalog order); `PipelineEngine` takes them via DI, keys them by `(TypeId, Version)`, and applies
