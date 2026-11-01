@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, type OnInit, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { firstValueFrom, type Observable } from 'rxjs';
 import { Auth, type LinkedLogin, minimumPasswordLength, type UserRole } from '../auth/auth';
 import { type MoveSource, UsersApi, type UserView } from './users-api';
@@ -20,7 +21,7 @@ const optionalPassword = [Validators.minLength(minimumPasswordLength), Validator
  * own account, last sign-in method); this page shows its explanations.
  */
 @Component({
-  imports: [DatePipe, ReactiveFormsModule],
+  imports: [DatePipe, ReactiveFormsModule, RouterLink],
   selector: 'app-users',
   styleUrl: './users.scss',
   templateUrl: './users.html',
@@ -79,6 +80,13 @@ export class Users implements OnInit {
 
   protected isSelf(user: UserView): boolean {
     return user.id === this.auth.userId();
+  }
+
+  /** Labels for the password form: resetting an existing password or setting a first one. */
+  protected passwordLabels(user: UserView): { field: string; action: string } {
+    return user.hasPassword
+      ? { field: 'New password', action: 'Reset password' }
+      : { field: 'Set a password', action: 'Set password' };
   }
 
   protected methods(user: UserView): number {

@@ -400,7 +400,9 @@ Every single sign-on resolves to a local user, keyed on the provider's issuer an
 - **First sign-in.** With `AutoProvision` on (the default), an identity that is not linked yet
   gets a new local user with the `User` role, named after `UsernameClaim` (with a `-2`, `-3`, …
   suffix if the name is taken). An administrator promotes it if needed. With `AutoProvision`
-  off, unlinked identities are refused until someone links them.
+  off, unlinked identities are refused until someone links them. Until the first administrator is
+  installed with the setup token (or configured), no users are provisioned, so single sign-on
+  cannot end installation without an administrator.
 - **No automatic linking.** An identity whose username matches an existing local user is never
   attached to it silently: that would let anyone controlling the identity provider take over
   local accounts. Linking is always explicit.
@@ -416,7 +418,9 @@ Every single sign-on resolves to a local user, keyed on the provider's issuer an
   yourself, not the last administrator).
 - **Passwords for single sign-on users.** A user who only signs in with single sign-on can set a
   password on **Account** after a recent single sign-on (there is no current password to
-  confirm). Users can also unlink identities or remove their password, but never their last
+  confirm). "Recent" is the provider's authentication time (`auth_time`), not the callback's, and
+  **Sign in again** asks the provider to authenticate afresh (`prompt=login`, `max_age=0`), so a
+  provider session left open in a browser is not enough. Users can also unlink identities or remove their password, but never their last
   sign-in method.
 - A disabled local user cannot sign in through single sign-on either.
 

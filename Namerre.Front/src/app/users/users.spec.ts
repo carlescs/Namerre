@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { Auth } from '../auth/auth';
 import { Users } from './users';
 import type { UserView } from './users-api';
@@ -38,7 +39,7 @@ describe('Users', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [Users],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     }).compileComponents();
     http = TestBed.inject(HttpTestingController);
     const auth = TestBed.inject(Auth);
@@ -115,6 +116,9 @@ describe('Users', () => {
     expect((element.querySelector('#user-role') as HTMLSelectElement).disabled).toBe(true);
     expect(buttonNamed(element, 'Disable').disabled).toBe(true);
     expect(buttonNamed(element, 'Delete user').disabled).toBe(true);
+    // Their own password needs the Account page's confirmation.
+    expect(element.querySelector('#user-password')).toBeNull();
+    expect(element.querySelector('a[href="/account"]')).not.toBeNull();
   });
 
   it('promotes a user and shows refusals from the server', async () => {

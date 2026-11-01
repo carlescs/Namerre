@@ -136,42 +136,49 @@
           }
 
           <h3 class="mt-6 text-base">Password</h3>
-          <form [formGroup]="passwordGroup" (ngSubmit)="resetPassword(user)">
-            <label for="user-password">
-              {{ user.hasPassword ? 'New password' : 'Set a password' }}
-            </label>
-            <input
-              id="user-password"
-              type="password"
-              formControlName="password"
-              autocomplete="new-password"
-              [attr.minlength]="minimumPasswordLength"
-              maxlength="1024"
-              required
-            />
-            <p class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
-              At least {{ minimumPasswordLength }} characters. Ends the user's sessions.
+          @if (isSelf(user)) {
+            <p class="text-slate-500 dark:text-slate-400">
+              Change your own password on your <a routerLink="/account">Account</a> page, which
+              confirms it is you.
             </p>
-            <div class="actions mt-3">
-              <button type="submit" [disabled]="busy() || passwordForm.invalid">
-                {{ user.hasPassword ? 'Reset password' : 'Set password' }}
-              </button>
-              @if (user.hasPassword) {
-                <button
-                  type="button"
-                  (click)="removePassword(user)"
-                  [disabled]="busy() || (!user.disabled && methods(user) <= 1)"
-                  [title]="
-                    !user.disabled && methods(user) <= 1
-                      ? 'This is the only way this user can sign in'
-                      : 'Remove the password'
-                  "
-                >
-                  Remove password
+          } @else {
+            <form [formGroup]="passwordGroup" (ngSubmit)="resetPassword(user)">
+              <label for="user-password">
+                {{ passwordLabels(user).field }}
+              </label>
+              <input
+                id="user-password"
+                type="password"
+                formControlName="password"
+                autocomplete="new-password"
+                [attr.minlength]="minimumPasswordLength"
+                maxlength="1024"
+                required
+              />
+              <p class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
+                At least {{ minimumPasswordLength }} characters. Ends the user's sessions.
+              </p>
+              <div class="actions mt-3">
+                <button type="submit" [disabled]="busy() || passwordForm.invalid">
+                  {{ passwordLabels(user).action }}
                 </button>
-              }
-            </div>
-          </form>
+                @if (user.hasPassword) {
+                  <button
+                    type="button"
+                    (click)="removePassword(user)"
+                    [disabled]="busy() || (!user.disabled && methods(user) <= 1)"
+                    [title]="
+                      !user.disabled && methods(user) <= 1
+                        ? 'This is the only way this user can sign in'
+                        : 'Remove the password'
+                    "
+                  >
+                    Remove password
+                  </button>
+                }
+              </div>
+            </form>
+          }
         </div>
 
         @if (auth.singleSignOn(); as provider) {

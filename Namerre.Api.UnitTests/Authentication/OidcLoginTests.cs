@@ -99,8 +99,10 @@ public sealed class OidcLoginTests
     {
         var oidc = Create(Valid());
         var store = new InMemoryUserStore();
-        var accounts = new UserAccounts(Options.Create(new NamerreOptions()), store,
-            NullLogger<UserAccounts>.Instance);
+        var accounts = new UserAccounts(Options.Create(new NamerreOptions
+        {
+            Authentication = new AuthenticationOptions { Username = "root", PasswordHash = Passwords.HashPassword("a long password") }
+        }), store, NullLogger<UserAccounts>.Instance);
         var (user, _, _) = accounts.SignInExternal(new ExternalIdentity(oidc.Issuer, "1", "alice"), true);
         var principal = UserSession.Create(user!, UserSession.SingleSignOnMethod, oidc.Stamp, DateTimeOffset.UtcNow);
         var local = UserSession.Create(user!, UserSession.PasswordMethod, null, DateTimeOffset.UtcNow);
@@ -115,6 +117,21 @@ public sealed class OidcLoginTests
 
         Assert.False(AuthenticationSetup.IsValidSession(principal, accounts, oidc));
         Assert.False(AuthenticationSetup.IsValidSession(local, accounts, oidc));
+    }
+
+    [Fact]
+    public void ARecentSignInIsTheProvidersAuthenticationTime()
+    {
+        var now = new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero);
+        var earlier = now.AddHours(-3);
+
+        Assert.Equal(earlier, AuthenticationSetup.AuthenticatedAt(
+            External(("auth_time", earlier.ToUnixTimeSeconds().ToString())), now));
+        // Missing, malformed or future times count as now.
+        Assert.Equal(now, AuthenticationSetup.AuthenticatedAt(External(("sub", "1")), now));
+        Assert.Equal(now, AuthenticationSetup.AuthenticatedAt(External(("auth_time", "soon")), now));
+        Assert.Equal(now, AuthenticationSetup.AuthenticatedAt(
+            External(("auth_time", now.AddHours(1).ToUnixTimeSeconds().ToString())), now));
     }
 
     private static OidcLogin Create(OidcOptions options) => new(Options.Create(new NamerreOptions

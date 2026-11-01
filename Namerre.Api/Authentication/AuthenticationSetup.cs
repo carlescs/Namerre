@@ -170,6 +170,18 @@ public static class AuthenticationSetup
     }
 
     /// <summary>
+    /// When the provider authenticated the user (the ID token's <c>auth_time</c>), never later than now; now when
+    /// the provider does not say. Challenges that need a fresh sign-in request <c>max_age=0</c>, which makes
+    /// providers include it.
+    /// </summary>
+    internal static DateTimeOffset AuthenticatedAt(System.Security.Claims.ClaimsPrincipal? principal, DateTimeOffset now)
+        => long.TryParse(principal?.FindFirst("auth_time")?.Value, System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out var seconds) &&
+            seconds <= now.ToUnixTimeSeconds()
+            ? DateTimeOffset.FromUnixTimeSeconds(seconds)
+            : now;
+
+    /// <summary>
     /// Turns a validated single sign-on into a session of the linked local user, or links the identity when the
     /// challenge was started by <c>AuthController.LinkSingleSignOn</c>. Failing here would still sign in, so every
     /// refusal ends the request with a redirect.
@@ -238,6 +250,7 @@ public static class AuthenticationSetup
                 return Refuse(failure switch
                 {
                     ExternalSignInFailure.NotLinked => "/?signInError=not-linked",
+                    ExternalSignInFailure.SetupRequired => "/?signInError=setup-required",
                     ExternalSignInFailure.Unavailable => "/?signInError=unavailable",
                     _ => "/?signInError=access-denied"
                 }, failure == ExternalSignInFailure.Unavailable ? "failure" : "denied");
@@ -251,7 +264,10 @@ public static class AuthenticationSetup
         accounts.RecordSignIn(user, loginId);
         NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "oidc"), new("namerre.auth.outcome", "success"));
         logger.LogInformation("User {UserId} ({Username}) signed in with single sign-on.", user.Id, user.Username);
-        context.Principal = UserSession.Create(user, UserSession.SingleSignOnMethod, oidc.Stamp, now);
+        // The provider's authentication time, not the callback's, decides whether the sign-in counts as recent:
+        // a provider session reused without signing in again must not unlock sensitive changes.
+        context.Principal = UserSession.Create(user, UserSession.SingleSignOnMethod, oidc.Stamp,
+            AuthenticatedAt(context.Principal, now));
         properties.IsPersistent = false;
         properties.Items.Remove(OidcLogin.LinkUserItem);
         properties.Items.Remove(OidcLogin.LinkStampItem);

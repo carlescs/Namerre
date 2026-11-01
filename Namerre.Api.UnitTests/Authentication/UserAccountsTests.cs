@@ -283,6 +283,19 @@ public sealed class UserAccountsTests
     }
 
     [Fact]
+    public void ProvisioningWaitsUntilTheFirstAdministratorIsInstalled()
+    {
+        var accounts = Accounts();
+
+        Assert.Equal(ExternalSignInFailure.SetupRequired,
+            accounts.SignInExternal(new(Issuer, "sub-1", "alice"), autoProvision: true).Failure);
+        Assert.True(accounts.RequiresSetup);
+        Assert.Equal(SetupResult.Completed, accounts.CompleteSetup(accounts.SetupToken!, "admin", Password));
+        Assert.Equal(ExternalSignInFailure.None,
+            accounts.SignInExternal(new(Issuer, "sub-1", "alice"), autoProvision: true).Failure);
+    }
+
+    [Fact]
     public void DisabledUsersCannotSignInWithSingleSignOn()
     {
         var accounts = Accounts("root", Hash);

@@ -62,13 +62,22 @@ public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
         });
     }
 
-    /// <param name="returnTo"><c>account</c> returns to the account page (to confirm a sensitive change); anything
-    /// else returns to the app. Fixed addresses avoid open redirects.</param>
+    /// <param name="returnTo"><c>account</c> confirms a sensitive change: the provider must authenticate the user
+    /// again (<c>prompt=login</c>, <c>max_age=0</c>) and the flow returns to the account page. Anything else is a
+    /// normal sign-in that returns to the app. Fixed addresses avoid open redirects.</param>
     [AllowAnonymous]
     [HttpGet("oidc/login")]
     public Task<IActionResult> OidcLogin(CancellationToken cancellationToken, string? returnTo = null)
-        => Challenge(new AuthenticationProperties { RedirectUri = returnTo == "account" ? "/account" : "/" },
+        => Challenge(returnTo == "account" ? FreshSignIn("/account") : new AuthenticationProperties { RedirectUri = "/" },
             "/?signInError=unavailable", cancellationToken);
+
+    /// <summary>A challenge that makes the provider authenticate again and report when (<c>auth_time</c>).</summary>
+    private static OpenIdConnectChallengeProperties FreshSignIn(string redirectUri) => new()
+    {
+        RedirectUri = redirectUri,
+        Prompt = OpenIdConnectPrompt.Login,
+        MaxAge = TimeSpan.Zero
+    };
 
     /// <summary>
     /// Starts linking a single sign-on identity to the signed-in user. Linking is sensitive, so it needs a recent
@@ -109,12 +118,8 @@ public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
             parts[1] != user.Stamp)
             return Redirect("/account?linkError=expired");
         // The challenge properties are protected, so the callback can trust which user to link to.
-        var properties = new OpenIdConnectChallengeProperties
-        {
-            RedirectUri = "/account",
-            // Ask the provider to sign in again rather than silently reusing whatever session the browser holds.
-            Prompt = OpenIdConnectPrompt.Login
-        };
+        // Ask the provider to sign in again rather than silently reusing whatever session the browser holds.
+        var properties = FreshSignIn("/account");
         properties.Items[Authentication.OidcLogin.LinkUserItem] = parts[0];
         properties.Items[Authentication.OidcLogin.LinkStampItem] = parts[1];
         return await Challenge(properties, "/account?linkError=unavailable", cancellationToken);

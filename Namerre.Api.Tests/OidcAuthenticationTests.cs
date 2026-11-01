@@ -330,6 +330,49 @@ public sealed class OidcAuthenticationTests
         Assert.Equal(HttpStatusCode.NoContent, unlinked.StatusCode);
     }
 
+    [Fact]
+    public async Task ConfirmingWithSingleSignOnNeedsTheProviderToAuthenticateAgain()
+    {
+        using var provider = new FakeProvider([Role]) { AuthTime = DateTimeOffset.UtcNow.AddHours(-2) };
+        using var factory = provider.Factory();
+        using var client = Client(factory);
+
+        // A provider session reused from two hours ago signs in, but is not a recent sign-in.
+        using (await provider.SignIn(client)) { }
+        await AuthWebApplicationFactory.RefreshCsrf(client);
+        Assert.False((await client.GetFromJsonAsync<JsonElement>("/api/auth/session"))
+            .GetProperty("recentSignIn").GetBoolean());
+        using var refused = await client.PostAsJsonAsync("/api/auth/password",
+            new { newPassword = "alice-new-password" }); // betterleaks:allow
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+
+        // Signing in again from the account page asks for a fresh authentication.
+        provider.AuthTime = DateTimeOffset.UtcNow;
+        using var again = await provider.SignIn(client, "/api/auth/oidc/login?returnTo=account");
+        Assert.Equal("/account", again.Headers.Location!.OriginalString);
+        Assert.Equal(("login", "0"), (provider.AuthorizationQuery!["prompt"], provider.AuthorizationQuery["max_age"]));
+        await AuthWebApplicationFactory.RefreshCsrf(client);
+        using var accepted = await client.PostAsJsonAsync("/api/auth/password",
+            new { newPassword = "alice-new-password" }); // betterleaks:allow
+        Assert.Equal(HttpStatusCode.NoContent, accepted.StatusCode);
+    }
+
+    [Fact]
+    public async Task SingleSignOnCannotProvisionUsersBeforeInstallation()
+    {
+        using var provider = new FakeProvider([Role]);
+        provider.Settings["Namerre:Authentication:Username"] = "";
+        provider.Settings["Namerre:Authentication:PasswordHash"] = "";
+        using var factory = provider.Factory();
+        using var client = Client(factory);
+
+        using var refused = await provider.SignIn(client);
+
+        Assert.Equal("/?signInError=setup-required", refused.Headers.Location!.OriginalString);
+        Assert.True((await client.GetFromJsonAsync<JsonElement>("/api/auth/session"))
+            .GetProperty("requiresSetup").GetBoolean());
+    }
+
     private static async Task<string> LinkUrl(HttpClient client)
     {
         using var start = await client.PostAsJsonAsync("/api/auth/oidc/link", new { });
@@ -402,6 +445,10 @@ public sealed class OidcAuthenticationTests
         public string? IdToken { get; private set; }
         public bool PushedAuthorizationFails { get; init; }
         public bool HasEndSessionEndpoint { get; init; }
+        /// <summary>The <c>auth_time</c> claim to issue, when set.</summary>
+        public DateTimeOffset? AuthTime { get; set; }
+        /// <summary>The query of the last authorization request.</summary>
+        public System.Collections.Specialized.NameValueCollection? AuthorizationQuery { get; private set; }
 
         public WebApplicationFactory<Program> Factory() => new AuthWebApplicationFactory().WithWebHostBuilder(builder =>
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
@@ -446,6 +493,7 @@ public sealed class OidcAuthenticationTests
             Assert.Equal("S256", query["code_challenge_method"]);
             Assert.Equal("https://localhost" + OidcLogin.CallbackPath, query["redirect_uri"]);
             nonce = query["nonce"];
+            AuthorizationQuery = query;
             return await client.PostAsync(OidcLogin.CallbackPath, new FormUrlEncodedContent(
                 new Dictionary<string, string> { ["code"] = "authorization-code", ["state"] = query["state"]! }));
         }
@@ -466,7 +514,9 @@ public sealed class OidcAuthenticationTests
                     ["preferred_username"] = Username,
                     ["nonce"] = nonce!,
                     ["realm_access"] = new Dictionary<string, object> { ["roles"] = roles }
-                },
+                }.Concat(AuthTime is { } authTime
+                    ? [new KeyValuePair<string, object>("auth_time", authTime.ToUnixTimeSeconds())]
+                    : []).ToDictionary(),
                 SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256)
             });
             return new HttpResponseMessage(HttpStatusCode.OK)

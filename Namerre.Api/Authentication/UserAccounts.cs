@@ -20,6 +20,8 @@ public enum ExternalSignInFailure
     None,
     Disabled,
     NotLinked,
+    /// <summary>No administrator exists yet; the installation token must create one first.</summary>
+    SetupRequired,
     Unavailable
 }
 
@@ -150,6 +152,9 @@ public sealed class UserAccounts
             // Never attach an identity to an existing user by username or email: linking is always explicit.
             if (!autoProvision)
                 return (null, null, ExternalSignInFailure.NotLinked);
+            // A provisioned user would end installation, leaving no way to create the first administrator.
+            if (RequiresSetup)
+                return (null, null, ExternalSignInFailure.SetupRequired);
             try
             {
                 var now = time.GetUtcNow();
