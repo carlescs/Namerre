@@ -9,6 +9,7 @@ import {
   Router,
 } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
+import { Auth } from '../../../../auth/auth';
 import type { RunView } from '../../rename-api';
 import { RenameEvents } from '../../rename-events';
 import { FakeRenameEvents } from '../../rename-events.testing';
@@ -62,6 +63,8 @@ describe('RunHistoryComponent', () => {
       ],
     }).compileComponents();
     http = TestBed.inject(HttpTestingController);
+    // Deleting runs and watch folders are for administrators; one test covers the user's view.
+    TestBed.inject(Auth).role.set('Admin');
     fixture = TestBed.createComponent(RunHistoryComponent);
     await fixture.whenStable();
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -474,6 +477,26 @@ describe('RunHistoryComponent', () => {
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Watch folders');
     expect(text).toContain('Started by watch folder Downloads');
+  });
+
+  it('shows users who started runs but hides administrator controls from users', async () => {
+    TestBed.inject(Auth).role.set('User');
+    params.next(convertToParamMap({}));
+    http.expectOne('/api/rename-runs/run-1');
+    const page = {
+      items: [{ ...run, createdBy: { id: 2, username: 'frank' } }],
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    };
+    http.expectOne('/api/rename-runs?page=1&pageSize=20').flush(page);
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.textContent).toContain('Started by frank');
+    expect(element.textContent).not.toContain('Watch folders');
+    expect(element.querySelector('[aria-label="Bulk actions"]')).toBeNull();
+    expect(element.querySelector('button[aria-label^="Delete"]')).toBeNull();
+    http.expectNone('/api/watch-folders');
   });
 
   it('reports a refused deletion from the history list and refreshes after success', async () => {

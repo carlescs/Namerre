@@ -43,3 +43,9 @@ section {
   font-weight: 600;
   color: var(--app-muted);
 }
+
+.admin-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}

@@ -7,14 +7,19 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
-import { faSliders } from '@fortawesome/free-solid-svg-icons';
+import { faSliders, faUsers } from '@fortawesome/free-solid-svg-icons';
+import { Auth } from '../auth/auth';
 import { ThemePicker } from '../theme/theme-picker';
 import { WorkflowModePicker } from '../workflow-mode/workflow-mode-picker';
 
-/** Header popover holding the per-browser preferences: workflow mode and color theme. */
+/**
+ * Header popover holding the per-browser preferences (workflow mode and color theme) and, for
+ * administrators, the link to user management.
+ */
 @Component({
-  imports: [FaIconComponent, ThemePicker, WorkflowModePicker],
+  imports: [FaIconComponent, RouterLink, ThemePicker, WorkflowModePicker],
   selector: 'app-settings-menu',
   styleUrl: './settings-menu.scss',
   templateUrl: './settings-menu.html',
@@ -27,7 +32,9 @@ export class SettingsMenu {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
   protected readonly open = signal(false);
+  protected readonly auth = inject(Auth);
   protected readonly optionsIcon = faSliders;
+  protected readonly usersIcon = faUsers;
   private readonly trigger = viewChild.required<ElementRef<HTMLButtonElement>>('trigger');
   private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
 

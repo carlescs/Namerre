@@ -4,6 +4,8 @@ import { Auth } from '../auth';
 const errors: Record<string, string> = {
   'access-denied':
     'Your account is not allowed to use Namerre. Ask your identity provider administrator for access.',
+  'not-linked':
+    'Your single sign-on identity is not linked to a Namerre user yet. Ask a Namerre administrator to link it.',
   unavailable: 'The identity provider is unavailable. Try again later.',
 };
 

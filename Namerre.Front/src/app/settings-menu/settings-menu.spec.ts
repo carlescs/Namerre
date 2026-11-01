@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { Auth } from '../auth/auth';
 import { SettingsMenu } from './settings-menu';
 
 describe('SettingsMenu', () => {
@@ -60,5 +62,19 @@ describe('SettingsMenu', () => {
     document.body.click();
     await fixture.whenStable();
     expect(element.querySelector('#settings-menu')).toBeNull();
+  });
+
+  it('links administrators, and only them, to user management', async () => {
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    const auth = TestBed.inject(Auth);
+    auth.role.set('User');
+    const { fixture, element, trigger } = await render();
+    trigger.click();
+    await fixture.whenStable();
+    expect(element.querySelector('a[href="/users"]')).toBeNull();
+
+    auth.role.set('Admin');
+    await fixture.whenStable();
+    expect(element.querySelector('a[href="/users"]')?.textContent).toContain('Users');
   });
 });

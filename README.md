@@ -50,7 +50,7 @@ server. Keep this terminal open.
    execution. TMDB credentials are optional and are not needed for local
    text-replacement, regex, or case-change steps.
 
-The administrator account and renaming history are saved in the data directory.
+User accounts and renaming history are saved in the data directory.
 Keep that directory and the media-root mapping unchanged across restarts, and
 back them up together while the app is stopped. The environment variables above
 apply to the current terminal; configure the same paths for subsequent runs.
@@ -76,6 +76,7 @@ Application settings live in one `Namerre` section in `Namerre.Api\appsettings.j
         "DisplayName": "Single sign-on",
         "RoleClaim": "realm_access.roles",
         "UsernameClaim": "preferred_username",
+        "AutoProvision": true,
         "Scopes": [],
         "RequireHttpsMetadata": true
       }
@@ -218,10 +219,11 @@ $env:Namerre__Integrations__Jellyfin__ApiKey = '<api-key>'
 
 ## Authentication (required)
 
-Namerre has one administrator account, no registration, and no default credentials.
-When no account has been configured, the browser displays an installation assistant.
-First configure `Namerre:RootPath` and `Namerre:DataPath`: the administrator is
-stored in the **existing SQLite renaming/history database**, not a credentials file.
+Namerre has local user accounts, no self-registration, and no default credentials.
+When no account has been configured, the browser displays an installation assistant
+that creates the first administrator. First configure `Namerre:RootPath` and
+`Namerre:DataPath`: users are stored in the **existing SQLite renaming/history
+database**, not a credentials file.
 For example, with an existing media folder:
 
 ```powershell
@@ -233,14 +235,13 @@ dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https
 Open `https://localhost:7151`, copy the one-time setup token printed in the server
 console, and choose an administrator username and a password of at least 12
 characters. Confirm the password and select **Create administrator**, then sign in.
-Only the username and salted password hash are saved in the database's
-`Administrators` table. The database enforces a single administrator. Setup cannot
-replace an existing account, requires HTTPS and CSRF protection, and shares the
+Only the username, role and salted password hash are saved in the database's
+`Users` table. Setup only runs while there are no users, cannot replace an existing account, requires HTTPS and CSRF protection, and shares the
 login attempt limit. Protect console/log access: the token authorizes first-time
 installation. It changes on each restart until setup succeeds, is never returned
 by the API, and becomes unusable after the account is created.
 
-To change the password of an installed administrator, sign in and open **Account**.
+To change your password, sign in and open **Account** from the menu under your username.
 Enter the current password and the new password twice, then select **Change password**.
 The new hash replaces the stored one; your current browser session stays signed in and
 every other session is signed out. Password changes require the current password, CSRF
@@ -248,11 +249,13 @@ protection, and a new password of at least 12 characters, and share the login at
 An existing shorter password keeps working until it is changed.
 
 Keep `Namerre:DataPath` persistent across restarts and container replacement; changing
-or deleting this database also loses the administrator account and renaming history.
+or deleting this database also loses the user accounts and renaming history.
 Corrupt or inaccessible stored credentials fail startup rather than reopening setup.
 The media root and database must be available for database-backed sign-in.
 
-Existing server-configured credentials also remain supported and skip the assistant.
+Server-configured credentials also remain supported as a **break-glass administrator**
+and skip the assistant. That account is never stored, always has the `Admin` role, is listed
+read-only on the **Users** page, and works alongside the users in the database.
 Both `Namerre:Authentication:Username` and `Namerre:Authentication:PasswordHash` must be set together;
 a partial or invalid configuration fails startup. To generate a hash manually,
 use the API's interactive command (the password is hidden and is not passed as a
@@ -274,11 +277,62 @@ dotnet run --project .\Namerre.Api\Namerre.Api.csproj --launch-profile https
 
 For deployment, supply `Namerre__Authentication__Username` and `Namerre__Authentication__PasswordHash`
 through the server's secret/configuration mechanism if you want to bypass browser
-installation. These settings take precedence over a saved administrator. Never commit
+installation, or to keep a way in if every stored administrator is locked out. Never commit
 credentials or include them in Angular assets or Docker build arguments. Changing either setting
-and restarting the app invalidates existing sessions. To recover access, generate a
+and restarting the app invalidates its existing sessions. To recover access, generate a
 new hash, update the server configuration, and restart. Server-configured passwords cannot be
 changed from the **Account** page.
+
+### Users and roles
+
+Every person signs in as a local user. A password and single sign-on are only ways of
+signing in to that user, and a user can have either or both. Roles are managed in Namerre
+only; an identity provider never sets or changes them.
+
+| Role | Can |
+| --- | --- |
+| `User` | Rename files, manage presets, and see every run (runs show who started them). |
+| `Admin` | Everything a user can, plus manage users, see and control watch folders, and delete runs. |
+
+Administrators manage users from **Options** (the sliders button in the header) → **Users**:
+create users with a password, a single sign-on identity, or both; change roles; disable or
+enable users; set, reset or remove passwords; link, unlink or move single sign-on identities;
+and delete users. The server keeps every account usable:
+
+- At least one enabled administrator remains (the break-glass administrator counts).
+  Administrators cannot remove their own `Admin` role, disable themselves or delete themselves.
+- An enabled user always keeps at least one sign-in method: the last password or linked
+  identity cannot be removed, and a disabled user without one cannot be enabled.
+- Disabling a user, resetting or removing their password, changing their role, and linking or
+  unlinking an identity replace that user's credential stamp, which ends their existing sessions
+  (and live updates) right away.
+- Usernames are unique ignoring case. A user without a password fails password sign-in exactly
+  like a wrong password, without revealing that the account exists.
+
+Run history and presets are shared: everyone sees every run, attributed to the user who
+prepared, executed, undid or recovered it (watch-folder runs show the folder instead). Run
+exports include `runCreatedBy` and `runOrigin` columns. Deleting a user keeps their runs, still
+showing their name. User management and linking actions are logged with who did what to which
+user (never passwords, tokens or claims).
+
+The user management API is `api/users` (administrators only): `GET` lists users with their
+sign-in methods, `POST` creates one (`username`, `role`, and a `password`, a single sign-on
+`subject`, or both), `PATCH /{id}` changes `role` or `disabled`, `PUT`/`DELETE /{id}/password`
+sets or removes the password, `POST /{id}/logins` links an identity (`subject`) or moves one
+(`loginId`, optional `deleteSource`), `DELETE /{id}/logins/{loginId}` unlinks it and
+`DELETE /{id}` deletes the user. Users manage their own account under `api/auth`: `POST password`
+(`currentPassword` may be omitted only by a user without a password, after a recent sign-in),
+`DELETE password`, `POST reauthenticate`, `POST oidc/link` (returns the address that starts linking),
+`GET logins` and `DELETE logins/{id}`. `GET api/auth/session` reports the user's `role`,
+`hasPassword` and linked `logins`, so the app hides what the user cannot use. Refusals return
+`{ "code", "message" }`, e.g. `LastAdmin`, `OwnAccount`, `LastSignInMethod`, `LoginTaken` or
+`RecentSignInRequired`.
+
+**Upgrading from a single administrator.** The `AddUsers` migration runs on the first start
+after upgrading: the existing administrator becomes the first `Admin` user and keeps its
+username and password. Sessions from before the upgrade sign in again. Single sign-on users
+get a local `User` the first time they sign in after the upgrade (when provisioning is on);
+promote them on the **Users** page if they need administrator rights.
 
 **Browser-facing HTTPS is required**, but Traefik can terminate TLS and forward
 requests to Namerre over **HTTP on port 8080**. No backend certificate is needed.
@@ -315,10 +369,11 @@ discovery, first-time setup, login, and the single sign-on redirect and callback
 information.
 API responses are not cached. State-changing requests (including login and logout)
 require an antiforgery cookie and `X-XSRF-TOKEN` header; the Angular client manages
-these automatically. Login, setup and password changes are limited to five attempts
+these automatically. Login, setup, password changes, re-confirming the password and starting a
+single sign-on link are limited to five attempts
 per minute for each client address (IPv6 clients are grouped by their /64 network) and
-60 attempts per minute across all clients. One noisy client therefore cannot lock the
-administrator out, while guessing from many addresses stays bounded. Behind a reverse
+60 attempts per minute across all clients. One noisy client therefore cannot lock
+everyone out, while guessing from many addresses stays bounded. Behind a reverse
 proxy, configure trusted proxies (see below) so the limit applies to real client
 addresses rather than the proxy. Even so, keep network access restricted to trusted
 users or a VPN rather than exposing the app directly to the public internet.
@@ -335,9 +390,32 @@ restricts connections, images and fonts to the app's own origin; plus
 Namerre can also sign users in through an OpenID Connect provider such as Keycloak.
 It is off while `Namerre:Authentication:Oidc:Authority` is empty. When enabled, the
 login (and installation) page shows a **Sign in with _DisplayName_** button next to
-the local administrator form; the local account keeps working. Every user who holds
-`RequiredRole` acts as the administrator, so the role is mandatory: grant it only to
-people you would give the administrator password.
+the password form; local passwords keep working. `RequiredRole` decides who may sign in
+through single sign-on and is checked on every sign-in, also for linked users; it does not
+decide what they can do in Namerre, which is the local user's role.
+
+Every single sign-on resolves to a local user, keyed on the provider's issuer and stable
+`sub` claim (never on `preferred_username` or email, which can change or be reused):
+
+- **First sign-in.** With `AutoProvision` on (the default), an identity that is not linked yet
+  gets a new local user with the `User` role, named after `UsernameClaim` (with a `-2`, `-3`, …
+  suffix if the name is taken). An administrator promotes it if needed. With `AutoProvision`
+  off, unlinked identities are refused until someone links them.
+- **No automatic linking.** An identity whose username matches an existing local user is never
+  attached to it silently: that would let anyone controlling the identity provider take over
+  local accounts. Linking is always explicit.
+- **Linking yourself.** A signed-in user opens **Account** and selects **Link _DisplayName_**.
+  Linking needs a sign-in within the last ten minutes or the user's password; Namerre then asks
+  the provider to sign in again and attaches the returned identity. An identity that already
+  belongs to another user is refused.
+- **Linking by an administrator.** On the **Users** page, link an identity by its subject (the
+  `sub` claim, e.g. the Keycloak user ID), or move an identity from another user, optionally
+  deleting that user (for example one created automatically before the link).
+- **Passwords for single sign-on users.** A user who only signs in with single sign-on can set a
+  password on **Account** after a recent single sign-on (there is no current password to
+  confirm). Users can also unlink identities or remove their password, but never their last
+  sign-in method.
+- A disabled local user cannot sign in through single sign-on either.
 
 | Setting | Default | Description |
 | --- | --- | --- |
@@ -346,7 +424,8 @@ people you would give the administrator password.
 | `ClientSecret` | empty | Secret of a confidential client (recommended). Treat as a secret. Omit for a public client; PKCE is always used. |
 | `RequiredRole` | empty | Required. Role (or group) the ID token must contain. |
 | `RoleClaim` | `realm_access.roles` | ID token claim holding the roles. Dots navigate nested JSON, e.g. `resource_access.namerre.roles` for client roles, or a flat claim such as `groups`. |
-| `UsernameClaim` | `preferred_username` | Claim shown as the signed-in user; falls back to `sub`. |
+| `UsernameClaim` | `preferred_username` | Claim that names users created on first sign-in and linked identities; falls back to `sub`. |
+| `AutoProvision` | `true` | Create a local `User` on an identity's first sign-in. When `false`, identities must be linked first. |
 | `DisplayName` | `Single sign-on` | Button label (1-64 characters). |
 | `Scopes` | `[]` | Scopes requested in addition to `openid` and `profile`. |
 | `RequireHttpsMetadata` | `true` | Set to `false` only for a development provider on plain HTTP. |
@@ -358,8 +437,8 @@ Keycloak setup:
    **Valid redirect URIs** to `https://<namerre-host>/api/auth/oidc/callback` and
    **Web origins** to `https://<namerre-host>`, and **Valid post logout redirect URIs** to
    `https://<namerre-host>/`. Copy the client secret from **Credentials**.
-2. Create a realm role (for example `namerre-admin`) and assign it to the allowed users
-   or a group.
+2. Create a realm role (for example `namerre-user`) and assign it to the users or group
+   allowed to sign in to Namerre. Their rights in Namerre come from their local role.
 3. Keycloak does not put roles in the ID token by default. Under **Client scopes** →
    `roles` → **Mappers** → **realm roles**, enable **Add to ID token** (or add a
    dedicated "User Realm Role" mapper to the client's dedicated scope with that option).
@@ -369,22 +448,22 @@ Keycloak setup:
 $env:Namerre__Authentication__Oidc__Authority = 'https://keycloak.example.com/realms/media'
 $env:Namerre__Authentication__Oidc__ClientId = 'namerre'
 $env:Namerre__Authentication__Oidc__ClientSecret = '<client-secret>'
-$env:Namerre__Authentication__Oidc__RequiredRole = 'namerre-admin'
+$env:Namerre__Authentication__Oidc__RequiredRole = 'namerre-user'
 $env:Namerre__Authentication__Oidc__DisplayName = 'Keycloak'
 ```
 
 Namerre uses the authorization code flow with PKCE, validates the ID token and
-discards the access and refresh tokens after sign-in: it keeps the subject, username
-and ID token (used only as the sign-out hint) in the same encrypted eight-hour,
-SameSite=Strict session cookie as local sign-in. Users without
-the role are rejected. Changing `Authority`, `ClientId`, `RequiredRole`, `RoleClaim` or
+discards the access and refresh tokens after sign-in. The session is built from the local
+user (ID, username, role and credential stamp), not from the provider's claims, and keeps the
+ID token only as the sign-out hint, in the same encrypted eight-hour, SameSite=Strict session
+cookie as local sign-in. Users without the role are rejected. Changing `Authority`, `ClientId`, `RequiredRole`, `RoleClaim` or
 `UsernameClaim` invalidates existing single sign-on sessions after a restart; removing
 the role in Keycloak takes effect at the next sign-in. **Sign out** of a single sign-on
 session also ends the Keycloak session: Namerre ends its own session, then sends the
 browser to the provider's `end_session_endpoint`, which returns to Namerre afterwards.
 If the provider advertises no such endpoint or is unreachable, only the Namerre session
-ends, and the button may sign straight back in while Keycloak still remembers the user. **Change password** applies to the local administrator only and is
-not offered in single sign-on sessions. Behind a reverse proxy, configure trusted proxies
+ends, and the button may sign straight back in while Keycloak still remembers the user.
+Behind a reverse proxy, configure trusted proxies
 (see above) so the callback URL uses the public `https` host. Incomplete settings fail
 startup; an unreachable provider shows an error on the login page.
 
@@ -653,7 +732,7 @@ and a cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return is prefi
 `'` so it is never evaluated as a formula. Like every API response, exports require a
 signed-in session and are sent with `Cache-Control: no-store`.
 
-Settled runs (completed or recovered) can be deleted from history, either from the
+Administrators can delete settled runs (completed or recovered) from history, either from the
 list or the run details, after an inline confirmation (`DELETE /api/rename-runs/{id}`).
 Deleting a rename run also deletes its rollback runs and its prepared plan; deleting a
 rollback run keeps the original run. Files on disk are never touched, but deleted
@@ -717,8 +796,9 @@ threshold) is retried after the interval, then after twice that, and so on up to
 busy or rate-limited, a full job queue or pending recovery only postpones the batch to the next
 scan without counting against the files. The history page lists the configured folders with their
 state, the files that were not renamed and why, a **Retry now** button per file, and
-**Pause**/**Resume** (kept in the database across restarts). The API is `GET /api/watch-folders`,
-`POST /api/watch-folders/{name}/pause`, `…/resume` and `…/retry` with `{ "path": … }`.
+**Pause**/**Resume** (kept in the database across restarts); only administrators see the panel. The
+API (administrators only) is `GET /api/watch-folders`, `POST /api/watch-folders/{name}/pause`,
+`…/resume` and `…/retry` with `{ "path": … }`. Watch-folder runs have no user.
 
 **TMDB.** Matches normally need a person's explicit confirmation, so a preset with an enabled TMDB
 step is refused unless the folder sets `TmdbMediaType` (`movie` or `tv`) and `TmdbAutoConfirm`, a
@@ -764,7 +844,7 @@ not file contents.
 
 For browsing only, Docker can mount the desired server folder read-only and set
 `Namerre__RootPath` to its path **inside the container**. Expose only folders
-you intend the administrator to see, and restrict network access to trusted users.
+you intend signed-in users to see, and restrict network access to trusted users.
 Renaming requires a writable media mount.
 The configured folder tree must not be writable by untrusted processes while
 browsing or renaming.
@@ -844,15 +924,15 @@ docker run --rm --name namerre --network traefik `
 Open `https://namerre.example.com` through Traefik. The backend HTTP port is not
 published to the host. Docker environment values are visible to host administrators; use
 your platform's protected runtime configuration when that is not acceptable.
-Complete installation using the token in `docker logs <container>`; the administrator
-is saved alongside history in the mounted `/data` database. To skip installation,
+Complete installation using the token in `docker logs <container>`; the first administrator
+and later users are saved alongside history in the mounted `/data` database. To skip installation,
 also pass your protected `Namerre__Authentication__Username` and `Namerre__Authentication__PasswordHash`
 environment values.
 
 The host-bind example requires a supported underlying filesystem; on Docker Desktop,
 use a native Linux filesystem/volume when the Windows host mount is rejected.
 Use a disposable media directory first. Removing the container must not remove
-its data volume. Authentication does not sandbox an administrator or replace network
+its data volume. Authentication does not sandbox signed-in users or replace network
 restrictions; exposing this mutation-capable API to an untrusted network is unsafe.
 
 ## TMDB metadata

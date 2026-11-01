@@ -20,5 +20,13 @@
       <h2 class="section-title">Theme</h2>
       <app-theme-picker />
     </section>
+    @if (auth.isAdmin()) {
+      <section>
+        <h2 class="section-title">Administration</h2>
+        <a class="admin-link" routerLink="/users" (click)="close()">
+          <fa-icon [icon]="usersIcon" aria-hidden="true" /> Users
+        </a>
+      </section>
+    }
   </div>
 }

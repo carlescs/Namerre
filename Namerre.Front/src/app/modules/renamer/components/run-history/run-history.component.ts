@@ -15,6 +15,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import { BehaviorSubject, catchError, EMPTY, exhaustMap, type Subscription, timer } from 'rxjs';
+import { Auth } from '../../../../auth/auth';
 import {
   type DeletableRuns,
   isSettledRun,
@@ -59,6 +60,7 @@ import {
   templateUrl: './run-history.component.html',
 })
 export class RunHistoryComponent {
+  protected readonly auth = inject(Auth);
   private readonly api = inject(RenameApi);
   private readonly events = inject(RenameEvents);
   private readonly route = inject(ActivatedRoute);

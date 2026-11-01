@@ -163,7 +163,69 @@ describe('Auth', () => {
       newPassword: 'new-password',
     });
     request.flush(null);
+    (await vi.waitFor(() => http.expectOne('/api/auth/session'))).flush({
+      username: 'admin',
+      requiresSetup: false,
+      canChangePassword: true,
+      role: 'Admin',
+      userId: 1,
+      hasPassword: true,
+      logins: [],
+    });
     await change;
     expect(auth.username()).toBe('admin');
+    expect(auth.isAdmin()).toBe(true);
+  });
+
+  it('sets a first password without a current one and reads the sign-in methods', async () => {
+    const change = auth.changePassword(null, 'a-first-password');
+    http.expectOne('/api/auth/session').flush({ username: 'sso', requiresSetup: false });
+    const request = await vi.waitFor(() => http.expectOne('/api/auth/password'));
+    expect(request.request.body).toEqual({
+      currentPassword: null,
+      newPassword: 'a-first-password',
+    });
+    request.flush(null);
+    const login = {
+      id: 3,
+      issuer: 'https://idp',
+      displayName: 'sso',
+      linkedAt: '2026-11-01T00:00:00Z',
+      lastUsedAt: null,
+    };
+    (await vi.waitFor(() => http.expectOne('/api/auth/session'))).flush({
+      username: 'sso',
+      requiresSetup: false,
+      role: 'User',
+      hasPassword: true,
+      recentSignIn: true,
+      logins: [login],
+    });
+    await change;
+    expect(auth.isAdmin()).toBe(false);
+    expect(auth.hasPassword()).toBe(true);
+    expect(auth.recentSignIn()).toBe(true);
+    expect(auth.logins()).toEqual([login]);
+  });
+
+  it('starts linking single sign-on at the address the server returns', async () => {
+    const assign = vi.fn();
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(withInterceptors([authenticationInterceptor])),
+        provideHttpClientTesting(),
+        { provide: DOCUMENT, useValue: { cookie: '', location: { assign } } },
+      ],
+    });
+    auth = TestBed.inject(Auth);
+    http = TestBed.inject(HttpTestingController);
+    const link = auth.linkSingleSignOn('my-password');
+    http.expectOne('/api/auth/session').flush({ username: 'bob', requiresSetup: false });
+    const request = await vi.waitFor(() => http.expectOne('/api/auth/oidc/link'));
+    expect(request.request.body).toEqual({ password: 'my-password' });
+    request.flush({ url: '/api/auth/oidc/link?ticket=abc' });
+    await link;
+    expect(assign).toHaveBeenCalledWith('/api/auth/oidc/link?ticket=abc');
   });
 });
