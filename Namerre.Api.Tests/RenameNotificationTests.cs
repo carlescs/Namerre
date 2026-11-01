@@ -217,7 +217,7 @@ public sealed class RenameNotificationTests : IDisposable
         using (var setup = await admin.PostAsJsonAsync("/api/auth/setup", new
         {
             token = factory.Services.GetRequiredService<UserAccounts>().SetupToken,
-            username = "installed-admin", password = "installed-admin-password"
+            username = "installed-admin", password = "installed-admin-password" // betterleaks:allow
         }))
             setup.EnsureSuccessStatusCode();
         await SignIn(admin, "installed-admin", "installed-admin-password");
