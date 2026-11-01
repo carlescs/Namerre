@@ -27,7 +27,26 @@
     }
   </div>
 </div>
-@if (!cards().length) {
+@if (cards().length) {
+  <div class="mt-5 flex flex-wrap items-center justify-end gap-2">
+    @if (confirmingClear()) {
+      <span class="mr-auto text-sm text-slate-600 dark:text-slate-300" role="status"
+        >{{
+          cards().length === 1
+            ? 'Remove the only step?'
+            : 'Remove all ' + cards().length + ' steps?'
+        }}
+        This cannot be undone.</span
+      >
+      <button type="button" class="btn-danger" (click)="clear()">Confirm remove all</button>
+      <button type="button" (click)="cancelClear()">Keep steps</button>
+    } @else {
+      <button type="button" (click)="clear()">
+        <fa-icon [icon]="trashIcon" aria-hidden="true" /> Remove all steps
+      </button>
+    }
+  </div>
+} @else {
   <div
     class="mt-5 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-8 text-center"
   >

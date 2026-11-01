@@ -114,6 +114,8 @@ export class PluginEditorComponent implements OnInit {
   protected readonly trashIcon = faTrashCan;
   protected readonly gripIcon = faGripVertical;
   protected readonly cards = signal<Card[]>([]);
+  /** Whether "Remove all steps" is waiting for confirmation. */
+  protected readonly confirmingClear = signal(false);
   protected readonly samples = [
     { label: 'Movie', match: sampleMovie },
     { label: 'Episode', match: sampleEpisode },
@@ -134,6 +136,7 @@ export class PluginEditorComponent implements OnInit {
   }
 
   private restore(plugins: PluginInstance[], replace: boolean): void {
+    this.confirmingClear.set(false);
     const single = new Set<string>();
     const restored = plugins.filter((plugin) => {
       const descriptor = this.descriptor(plugin);
@@ -206,6 +209,23 @@ export class PluginEditorComponent implements OnInit {
     this.cards.set(cards);
     this.emit();
     return true;
+  }
+
+  /** Removes every step after a confirmation click; the first click only asks. */
+  protected clear(): void {
+    if (!this.cards().length) return;
+    if (!this.confirmingClear()) {
+      this.confirmingClear.set(true);
+      return;
+    }
+    this.confirmingClear.set(false);
+    this.cards.set([]);
+    this.emit();
+    this.focusCard(0);
+  }
+
+  protected cancelClear(): void {
+    this.confirmingClear.set(false);
   }
 
   protected remove(index: number): void {
