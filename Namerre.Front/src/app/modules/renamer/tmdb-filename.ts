@@ -13,7 +13,10 @@ export interface TmdbFilename {
  */
 export function tmdbFilename(path: string, mediaType: string): TmdbFilename {
   const parts = path.split('/');
-  const name = (parts.pop() ?? '').replace(/\.[^.]+$/, '');
+  const file = parts.pop() ?? '';
+  // Like the server, a leading dot does not start an extension (`.hidden` keeps its name).
+  const dot = file.lastIndexOf('.');
+  const name = dot > 0 ? file.slice(0, dot) : file;
   const episode =
     mediaType === 'tv'
       ? /s(\d{1,3})e(\d{1,4})(?:-?e(\d{1,4})|-(\d{1,4})(?![\dp]))?|(\d{1,3})x(\d{1,4})(?:-(?:\d{1,3}x)?(\d{1,4})(?![\dp]))?/i.exec(

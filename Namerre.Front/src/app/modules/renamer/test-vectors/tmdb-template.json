@@ -1,0 +1,459 @@
+{
+  "matches": {
+    "movie": {
+      "id": 12345,
+      "mediaType": "movie",
+      "title": "Sample Movie",
+      "year": "2024",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null,
+      "episodeTitle": null,
+      "originalTitle": "Sample Movie",
+      "airDate": "2024-03-15",
+      "showYear": null
+    },
+    "noYear": {
+      "id": 7,
+      "mediaType": "movie",
+      "title": "No Year",
+      "year": null,
+      "season": null,
+      "episode": null,
+      "episodeEnd": null,
+      "episodeTitle": null,
+      "originalTitle": null,
+      "airDate": null,
+      "showYear": null
+    },
+    "episode": {
+      "id": 67890,
+      "mediaType": "tv",
+      "title": "Sample Show",
+      "year": "2019",
+      "season": 2,
+      "episode": 5,
+      "episodeEnd": null,
+      "episodeTitle": "The Example Episode",
+      "originalTitle": "Sample Show",
+      "airDate": "2021-10-08",
+      "showYear": "2019"
+    },
+    "double": {
+      "id": 67890,
+      "mediaType": "tv",
+      "title": "Sample Show",
+      "year": "2019",
+      "season": 2,
+      "episode": 9,
+      "episodeEnd": 10,
+      "episodeTitle": "The Long Goodbye",
+      "originalTitle": "Sample Show",
+      "airDate": "2021-12-03",
+      "showYear": "2019"
+    },
+    "sameEnd": {
+      "id": 1,
+      "mediaType": "tv",
+      "title": "Show",
+      "year": "2019",
+      "season": 1,
+      "episode": 3,
+      "episodeEnd": 3,
+      "episodeTitle": "Three",
+      "originalTitle": "Show",
+      "airDate": "2020-01-01",
+      "showYear": "2019"
+    },
+    "illegal": {
+      "id": 2,
+      "mediaType": "movie",
+      "title": "What If...? A/B: \"C\" <D> | E\\F *",
+      "year": "2021",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null,
+      "episodeTitle": null,
+      "originalTitle": null,
+      "airDate": null,
+      "showYear": null
+    },
+    "dots": {
+      "id": 3,
+      "mediaType": "movie",
+      "title": "Trailing dots... ",
+      "year": "2021",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null,
+      "episodeTitle": null,
+      "originalTitle": null,
+      "airDate": null,
+      "showYear": null
+    },
+    "braces": {
+      "id": 4,
+      "mediaType": "movie",
+      "title": "{Braces}",
+      "year": "2021",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null,
+      "episodeTitle": null,
+      "originalTitle": null,
+      "airDate": null,
+      "showYear": null
+    },
+    "reserved": {
+      "id": 5,
+      "mediaType": "movie",
+      "title": "Aux.txt",
+      "year": "2021",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null,
+      "episodeTitle": null,
+      "originalTitle": null,
+      "airDate": null,
+      "showYear": null
+    },
+    "con": {
+      "id": 5,
+      "mediaType": "movie",
+      "title": "con",
+      "year": "2021",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null,
+      "episodeTitle": null,
+      "originalTitle": null,
+      "airDate": null,
+      "showYear": null
+    },
+    "conman": {
+      "id": 5,
+      "mediaType": "movie",
+      "title": "Conman",
+      "year": "2021",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null,
+      "episodeTitle": null,
+      "originalTitle": null,
+      "airDate": null,
+      "showYear": null
+    },
+    "internal": {
+      "id": 5,
+      "mediaType": "movie",
+      "title": ".namerre-x",
+      "year": "2021",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null,
+      "episodeTitle": null,
+      "originalTitle": null,
+      "airDate": null,
+      "showYear": null
+    },
+    "blank": {
+      "id": 6,
+      "mediaType": "movie",
+      "title": "...",
+      "year": "2021",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null,
+      "episodeTitle": null,
+      "originalTitle": null,
+      "airDate": null,
+      "showYear": null
+    },
+    "unicode": {
+      "id": 8,
+      "mediaType": "movie",
+      "title": "Amélie 😀",
+      "year": "2001",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null,
+      "episodeTitle": null,
+      "originalTitle": null,
+      "airDate": null,
+      "showYear": null
+    }
+  },
+  "cases": [
+    {
+      "name": "movie default",
+      "match": "movie",
+      "template": "{title} ({year})",
+      "expected": "Sample Movie (2024)"
+    },
+    {
+      "name": "episode default",
+      "match": "episode",
+      "template": "{title} - S{season}E{episode} - {episodeTitle}",
+      "expected": "Sample Show - S02E05 - The Example Episode"
+    },
+    {
+      "name": "plain text only",
+      "match": "movie",
+      "template": "Static name",
+      "expected": "Static name"
+    },
+    {
+      "name": "range repeat",
+      "match": "double",
+      "template": "{title} - S{season}E{episode} - {episodeTitle}",
+      "episodeRange": "repeat",
+      "expected": "Sample Show - S02E09-E10 - The Long Goodbye"
+    },
+    {
+      "name": "range concatenate",
+      "match": "double",
+      "template": "S{season}E{episode}",
+      "episodeRange": "concatenate",
+      "expected": "S02E09E10"
+    },
+    {
+      "name": "range hyphen",
+      "match": "double",
+      "template": "S{season}E{episode}",
+      "episodeRange": "hyphen",
+      "expected": "S02E09-10"
+    },
+    {
+      "name": "range repeat with padded format",
+      "match": "double",
+      "template": "{episode:000}",
+      "episodeRange": "repeat",
+      "expected": "009-E010"
+    },
+    {
+      "name": "range ignored for a single episode",
+      "match": "episode",
+      "template": "{episode}",
+      "episodeRange": "hyphen",
+      "expected": "05"
+    },
+    {
+      "name": "unknown range style ignored for a single episode",
+      "match": "episode",
+      "template": "{episode}",
+      "episodeRange": "bogus",
+      "expected": "05"
+    },
+    {
+      "name": "end equal to episode is a single episode",
+      "match": "sameEnd",
+      "template": "{episode}",
+      "episodeRange": "repeat",
+      "expected": "03"
+    },
+    {
+      "name": "unknown range style fails for a multi-episode match",
+      "match": "double",
+      "template": "{episode}",
+      "episodeRange": "bogus",
+      "error": true
+    },
+    {
+      "name": "season number formats",
+      "match": "episode",
+      "template": "{season:0}x{episode:0}",
+      "expected": "2x5"
+    },
+    {
+      "name": "seasonNumber is unpadded",
+      "match": "episode",
+      "template": "{seasonNumber}",
+      "expected": "2"
+    },
+    {
+      "name": "seasonNumber with format",
+      "match": "episode",
+      "template": "{seasonNumber:000}",
+      "expected": "002"
+    },
+    {
+      "name": "tmdbId is unpadded by default",
+      "match": "movie",
+      "template": "{tmdbId}",
+      "expected": "12345"
+    },
+    {
+      "name": "tmdbId wider than the format",
+      "match": "movie",
+      "template": "{tmdbId:00}",
+      "expected": "12345"
+    },
+    {
+      "name": "tmdbId padded to six",
+      "match": "movie",
+      "template": "{tmdbId:000000}",
+      "expected": "012345"
+    },
+    {
+      "name": "format of seven zeros fails",
+      "match": "episode",
+      "template": "{episode:0000000}",
+      "error": true
+    },
+    { "name": "empty format fails", "match": "episode", "template": "{episode:}", "error": true },
+    {
+      "name": "non-zero format fails",
+      "match": "episode",
+      "template": "{episode:ab}",
+      "error": true
+    },
+    {
+      "name": "text fields take no format",
+      "match": "movie",
+      "template": "{title:00}",
+      "error": true
+    },
+    {
+      "name": "other fields",
+      "match": "episode",
+      "template": "{airDate} {originalTitle} {showYear}",
+      "expected": "2021-10-08 Sample Show 2019"
+    },
+    {
+      "name": "literal braces around a field",
+      "match": "movie",
+      "template": "{{{title}}}",
+      "expected": "{Sample Movie}"
+    },
+    {
+      "name": "Plex id suffix",
+      "match": "movie",
+      "template": "{title} ({year}) {{tmdb-{tmdbId}}}",
+      "expected": "Sample Movie (2024) {tmdb-12345}"
+    },
+    {
+      "name": "doubled closing then opening brace",
+      "match": "movie",
+      "template": "}}{{",
+      "expected": "}{"
+    },
+    { "name": "only literal braces", "match": "movie", "template": "{{}}", "expected": "{}" },
+    {
+      "name": "three opening braces",
+      "match": "movie",
+      "template": "{{{{title}}}}",
+      "expected": "{{title}}"
+    },
+    { "name": "unclosed field", "match": "movie", "template": "{title", "error": true },
+    { "name": "single closing brace", "match": "movie", "template": "a}b", "error": true },
+    { "name": "empty field", "match": "movie", "template": "{}", "error": true },
+    { "name": "nested field", "match": "movie", "template": "{title{year}}", "error": true },
+    { "name": "unknown field", "match": "movie", "template": "{unknown}", "error": true },
+    {
+      "name": "field names are case sensitive",
+      "match": "movie",
+      "template": "{Title}",
+      "error": true
+    },
+    { "name": "season of a movie", "match": "movie", "template": "{season}", "error": true },
+    { "name": "episode of a movie", "match": "movie", "template": "{episode}", "error": true },
+    {
+      "name": "episode title of a movie",
+      "match": "movie",
+      "template": "{episodeTitle}",
+      "error": true
+    },
+    { "name": "show year of a movie", "match": "movie", "template": "{showYear}", "error": true },
+    {
+      "name": "original title unavailable",
+      "match": "noYear",
+      "template": "{originalTitle}",
+      "error": true
+    },
+    { "name": "air date unavailable", "match": "noYear", "template": "{airDate}", "error": true },
+    {
+      "name": "missing year renders empty",
+      "match": "noYear",
+      "template": "{title}[{year}]",
+      "expected": "No Year[]"
+    },
+    {
+      "name": "slash in the template",
+      "match": "movie",
+      "template": "{title}/{year}",
+      "error": true
+    },
+    {
+      "name": "backslash in the template",
+      "match": "movie",
+      "template": "{title}\\{year}",
+      "error": true
+    },
+    {
+      "name": "template over 1000 characters",
+      "match": "movie",
+      "templateRepeat": { "text": "a", "count": 1001 },
+      "error": true
+    },
+    {
+      "name": "template of exactly 1000 characters",
+      "match": "movie",
+      "templateRepeat": { "text": "a", "count": 1000 },
+      "expectedRepeat": { "text": "a", "count": 1000 }
+    },
+    {
+      "name": "illegal characters become hyphens",
+      "match": "illegal",
+      "template": "{title}",
+      "expected": "What If...- A-B- -C- -D- - E-F -"
+    },
+    {
+      "name": "trailing dots and spaces are trimmed",
+      "match": "dots",
+      "template": "{title}",
+      "expected": "Trailing dots"
+    },
+    {
+      "name": "braces in metadata become parentheses",
+      "match": "braces",
+      "template": "{title}",
+      "expected": "(Braces)"
+    },
+    {
+      "name": "reserved device name with extension",
+      "match": "reserved",
+      "template": "{title}",
+      "expected": "_Aux.txt"
+    },
+    {
+      "name": "reserved device name is case insensitive",
+      "match": "con",
+      "template": "{title}",
+      "expected": "_con"
+    },
+    {
+      "name": "names merely starting with a device name stay",
+      "match": "conman",
+      "template": "{title}",
+      "expected": "Conman"
+    },
+    {
+      "name": "internal prefix is protected",
+      "match": "internal",
+      "template": "{title}",
+      "expected": "_.namerre-x"
+    },
+    {
+      "name": "title that cannot form a name",
+      "match": "blank",
+      "template": "{title}",
+      "error": true
+    },
+    {
+      "name": "non-ASCII and astral characters are kept",
+      "match": "unicode",
+      "template": "{title} ({year})",
+      "expected": "Amélie 😀 (2001)"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "high": 0.85,
+  "cases": [
+    {
+      "score": 0.85,
+      "isHigh": true
+    },
+    {
+      "score": 0.86,
+      "isHigh": true
+    },
+    {
+      "score": 1,
+      "isHigh": true
+    },
+    {
+      "score": 0.84,
+      "isHigh": false
+    },
+    {
+      "score": 0.5,
+      "isHigh": false
+    },
+    {
+      "score": 0,
+      "isHigh": false
+    }
+  ]
+}

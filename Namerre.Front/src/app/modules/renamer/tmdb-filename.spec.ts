@@ -1,3 +1,4 @@
+import vectors from './test-vectors/tmdb-filename.json';
 import { tmdbFilename } from './tmdb-filename';
 
 describe('TMDB filename inference', () => {
@@ -99,5 +100,19 @@ describe('TMDB filename inference', () => {
         episode: name.includes('E05-') ? 5 : 4,
       });
     }
+  });
+});
+
+describe('TMDB filename shared test vectors', () => {
+  // The same vectors run against the server's TmdbFileName.Parse (MirroredLogicTests).
+  it.each(vectors)('parses $path as $mediaType', ({ path, mediaType, expected }) => {
+    const parsed = tmdbFilename(path, mediaType);
+    expect({
+      query: parsed.query,
+      year: parsed.year ?? null,
+      season: parsed.season ?? null,
+      episode: parsed.episode ?? null,
+      episodeEnd: parsed.episodeEnd ?? null,
+    }).toEqual(expected);
   });
 });

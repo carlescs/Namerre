@@ -1,3 +1,5 @@
+import type { TmdbMatch } from './rename-api';
+import vectors from './test-vectors/tmdb-template.json';
 import { sampleEpisode, sampleMovie, tmdbTemplatePreview } from './tmdb-template-preview';
 
 describe('TMDB template preview', () => {
@@ -122,5 +124,45 @@ describe('TMDB template preview', () => {
     expect(tmdbTemplatePreview({ episodeRange: 'other' }, match).error).toBe(
       'Choose how multi-episode numbers are written.',
     );
+  });
+});
+
+describe('TMDB template shared test vectors', () => {
+  // The same vectors run against the server's TmdbPlugin.Render (MirroredLogicTests).
+  const matches = vectors.matches as Record<string, Omit<TmdbMatch, 'confirmationToken'>>;
+  interface Repeat {
+    text: string;
+    count: number;
+  }
+  interface Vector {
+    name: string;
+    match: string;
+    template?: string;
+    templateRepeat?: Repeat;
+    episodeRange?: string;
+    expected?: string;
+    expectedRepeat?: Repeat;
+    error?: boolean;
+  }
+  const repeated = (spec: Repeat) => spec.text.repeat(spec.count);
+  const cases: Vector[] = vectors.cases;
+
+  it.each(cases)('renders: $name', (vector) => {
+    const template = vector.template ?? repeated(vector.templateRepeat as Repeat);
+    const options = {
+      nameTemplate: template,
+      ...(vector.episodeRange ? { episodeRange: vector.episodeRange } : {}),
+    };
+    const preview = tmdbTemplatePreview(
+      options,
+      { ...matches[vector.match], confirmationToken: null },
+      '',
+    );
+    if (vector.error) {
+      expect(preview.error).toBeDefined();
+      return;
+    }
+    const expected = vector.expected ?? repeated(vector.expectedRepeat as Repeat);
+    expect(preview).toEqual({ path: expected });
   });
 });

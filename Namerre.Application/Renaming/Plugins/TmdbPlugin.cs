@@ -120,7 +120,7 @@ public sealed class TmdbPlugin(ITmdbMetadata metadata, IRenameFileSystem fileSys
     /// (Plex reads ids such as <c>{tmdb-603}</c>). <c>{episode}</c> of a multi-episode match writes the range in
     /// <paramref name="episodeRange"/> style. The frontend mirrors this in <c>tmdb-template-preview.ts</c>.
     /// </summary>
-    private static string Render(string template, TmdbMatch match, string episodeRange)
+    internal static string Render(string template, TmdbMatch match, string episodeRange)
     {
         if (template.Length > 1000) throw new RenameException("InvalidTemplate", "Template is too long.");
         var result = new StringBuilder();

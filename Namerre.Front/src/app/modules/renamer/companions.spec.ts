@@ -1,4 +1,5 @@
 import { companionSuffix, detectCompanions, isVideo } from './companions';
+import vectors from './test-vectors/companions.json';
 
 describe('Related files', () => {
   it.each([
@@ -49,5 +50,23 @@ describe('Related files', () => {
     expect([...detectCompanions(['Show.mkv', 'Show.en.mkv', 'Show.en.srt'])]).toEqual([
       ['Show.en.srt', 'Show.en.mkv'],
     ]);
+  });
+});
+
+describe('Related files shared test vectors', () => {
+  // The same vectors run against the server's CompanionFiles (MirroredLogicTests).
+  it.each(vectors.isVideo)('isVideo($name) is $expected', ({ name, expected }) => {
+    expect(isVideo(name)).toBe(expected);
+  });
+
+  it.each(vectors.suffix)(
+    'companionSuffix("$videoStem", "$name") is $expected',
+    ({ videoStem, name, expected }) => {
+      expect(companionSuffix(videoStem, name)).toBe(expected);
+    },
+  );
+
+  it.each(vectors.detect)('detects companions: $name', ({ files, expected }) => {
+    expect(Object.fromEntries(detectCompanions(files))).toEqual(expected);
   });
 });
