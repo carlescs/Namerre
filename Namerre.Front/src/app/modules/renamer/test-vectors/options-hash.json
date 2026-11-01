@@ -1,0 +1,74 @@
+[
+  {
+    "name": "no options defaults to en-US",
+    "options": {},
+    "expected": "5c49f88dafe66e0ecdca8f682ae0b38c38ccd3ad464e3358e899beca88c18560"
+  },
+  {
+    "name": "explicit en-US",
+    "options": {
+      "language": "en-US"
+    },
+    "expected": "5c49f88dafe66e0ecdca8f682ae0b38c38ccd3ad464e3358e899beca88c18560"
+  },
+  {
+    "name": "null language defaults to en-US",
+    "options": {
+      "language": null
+    },
+    "expected": "5c49f88dafe66e0ecdca8f682ae0b38c38ccd3ad464e3358e899beca88c18560"
+  },
+  {
+    "name": "other language fr-FR",
+    "options": {
+      "language": "fr-FR"
+    },
+    "expected": "f360adab92f1c4a4eb2c4831d9e241af7dc51957eb02f8ef1202265496172d22"
+  },
+  {
+    "name": "templates, folders and preset are ignored",
+    "options": {
+      "language": "ja-JP",
+      "nameTemplate": "{title}",
+      "changeFolder": true,
+      "folderTemplate": "{title} ({year})",
+      "preset": "plex"
+    },
+    "expected": "415d46e6e579187113b6af90ae382d64452a32c115d8826019a5d0c291f772d6"
+  },
+  {
+    "name": "empty language",
+    "options": {
+      "language": ""
+    },
+    "expected": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "non-ASCII language is hashed as UTF-8",
+    "options": {
+      "language": "é-É"
+    },
+    "expected": "704cd24b8451254de2f255cf106faa02f9f0bc9c004d2223183c150955f3efb4"
+  },
+  {
+    "name": "55 bytes fit one block",
+    "options": {
+      "language": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "expected": "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318"
+  },
+  {
+    "name": "56 bytes need a second block",
+    "options": {
+      "language": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "expected": "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a"
+  },
+  {
+    "name": "64 bytes",
+    "options": {
+      "language": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "expected": "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb"
+  }
+]

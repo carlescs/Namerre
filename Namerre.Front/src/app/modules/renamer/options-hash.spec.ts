@@ -1,5 +1,6 @@
 import { optionsHash, tmdbOptionsHash } from './options-hash';
-import { operationId } from './rename-api';
+import { operationId, type PluginOptions } from './rename-api';
+import vectors from './test-vectors/options-hash.json';
 
 describe('Metadata option binding', () => {
   it('uses standard lowercase SHA256 including padding across multiple blocks', () => {
@@ -41,5 +42,12 @@ describe('Metadata option binding', () => {
       if (descriptor) Object.defineProperty(crypto, 'randomUUID', descriptor);
       else Reflect.deleteProperty(crypto, 'randomUUID');
     }
+  });
+});
+
+describe('Metadata option binding shared test vectors', () => {
+  // The same vectors run against the server's TmdbPlugin.OptionsHash (MirroredLogicTests).
+  it.each(vectors)('$name', ({ options, expected }) => {
+    expect(tmdbOptionsHash(options as PluginOptions)).toBe(expected);
   });
 });

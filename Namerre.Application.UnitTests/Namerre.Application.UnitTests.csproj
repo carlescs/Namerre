@@ -23,6 +23,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Logic mirrored in the frontend is checked against the same input/output vectors there and here (MirroredLogicTests). -->
+    <None Include="..\Namerre.Front\src\app\modules\renamer\test-vectors\*.json"
+          Link="test-vectors\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- TestPipeline (Renaming/TestPipeline.cs) lives in Namerre.Testing and is also linked into Namerre.Api.Tests. -->
     <Using Include="Namerre.Testing" />
   </ItemGroup>

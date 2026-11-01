@@ -127,6 +127,7 @@ Changing one side requires changing the other (details in `docs/architecture.md`
   that compilation); registration comes from `AddApplication()` — no manual handler registration
   or assembly scanning. `MED001/002/003/005` are build errors. Pass the request
   `CancellationToken` through `ISender.Send`.
+- Logic mirrored in C# and TypeScript (companions, options hash, TMDB file name parsing, template rendering, confidence threshold) is pinned by shared JSON vectors in `Namerre.Front/src/app/modules/renamer/test-vectors/`, run by Vitest specs and by `Namerre.Application.UnitTests/Renaming/MirroredLogicTests` (linked into the test output); change both sides and add a vector together.
 - Don't make handlers public for tests; `InternalsVisibleTo` exposes them to
   `Namerre.Application.UnitTests`. API and Application unit tests use xUnit + NSubstitute
   (substitute collaborators, not the class under test). Other test projects are described in
