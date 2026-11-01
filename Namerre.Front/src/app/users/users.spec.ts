@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { Auth } from '../auth/auth';
+import { stubDialogsThatToggle } from '../dialogs.testing';
 import { Users } from './users';
 import type { UserView } from './users-api';
 
@@ -36,7 +37,10 @@ describe('Users', () => {
     ],
   };
 
+  let restoreDialogs: () => void;
+
   beforeEach(async () => {
+    restoreDialogs = stubDialogsThatToggle();
     await TestBed.configureTestingModule({
       imports: [Users],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
@@ -48,7 +52,10 @@ describe('Users', () => {
     auth.singleSignOn.set({ displayName: 'Keycloak' });
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    restoreDialogs();
+    http.verify();
+  });
 
   async function settle(fixture: { whenStable(): Promise<unknown> }): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve));
@@ -80,7 +87,7 @@ describe('Users', () => {
     const rows = [...element.querySelectorAll('tbody tr')].map((row) =>
       row.textContent?.replace(/\s+/g, ' ').trim(),
     );
-    expect(rows[0]).toContain('admin (you)');
+    expect(rows[0]).toMatch(/admin\s*\(you\)/);
     expect(rows[0]).toContain('Administrator');
     expect(rows[0]).toContain('Password');
     expect(rows[1]).toContain('alice');
@@ -89,10 +96,15 @@ describe('Users', () => {
 
   it('creates a user with a password and reloads the list', async () => {
     const { fixture, element } = await render();
+    const dialog = element.querySelector('dialog') as HTMLDialogElement;
+    expect(dialog.hasAttribute('open')).toBe(false);
+    buttonNamed(element, 'Add user').click();
+    await fixture.whenStable();
+    expect(dialog.hasAttribute('open')).toBe(true);
     fill(element, '#new-username', 'bob');
     fill(element, '#new-user-password', 'bob-long-password');
     await fixture.whenStable();
-    buttonNamed(element, 'Add user').click();
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit'));
     const request = http.expectOne('/api/users');
     expect(request.request.method).toBe('POST');
     expect(request.request.body).toEqual({
@@ -107,6 +119,40 @@ describe('Users', () => {
     http.expectOne('/api/users').flush([admin, alice]);
     await settle(fixture);
     expect(element.querySelector('[role="status"]')?.textContent).toContain('Created bob');
+    expect(dialog.hasAttribute('open')).toBe(false);
+  });
+
+  it('keeps the dialog open and explains a refused new user inside it', async () => {
+    const { fixture, element } = await render();
+    const dialog = element.querySelector('dialog') as HTMLDialogElement;
+    buttonNamed(element, 'Add user').click();
+    fill(element, '#new-username', 'alice');
+    fill(element, '#new-user-password', 'alice-long-password');
+    await fixture.whenStable();
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit'));
+    http
+      .expectOne('/api/users')
+      .flush(
+        { code: 'UsernameTaken', message: 'That username is already taken.' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    await settle(fixture);
+    http.expectOne('/api/users').flush([admin, alice]);
+    await settle(fixture);
+    expect(dialog.hasAttribute('open')).toBe(true);
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('already taken');
+
+    buttonNamed(element, 'Cancel').click();
+    await fixture.whenStable();
+    expect(dialog.hasAttribute('open')).toBe(false);
+  });
+
+  it('keeps each user on one line on small screens', async () => {
+    const { element } = await render();
+    const [adminRow] = element.querySelectorAll('tbody tr');
+    expect(adminRow.querySelector('td strong')?.classList).toContain('truncate');
+    expect(adminRow.querySelector('.badge')?.textContent).toBe('Admin');
+    expect(adminRow.textContent).toContain('Password');
   });
 
   it('keeps administrators from changing their own role or deleting themselves', async () => {

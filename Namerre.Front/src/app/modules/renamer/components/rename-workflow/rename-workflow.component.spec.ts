@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
+import { stubDialogs } from '../../../../dialogs.testing';
 import { workflowModeStorageKey } from '../../../../workflow-mode/workflow-mode';
 import { defaultLimits, WorkloadLimits } from '../../../../workload-limits';
 import { tmdbOptionsHash } from '../../options-hash';
@@ -123,6 +124,8 @@ describe('RenameWorkflowComponent', () => {
     canPrepare: true,
   };
 
+  let restoreDialogs: () => void;
+
   beforeEach(async () => {
     localStorage.clear();
     // These specs cover the Advanced stages; Simple mode has its own.
@@ -138,8 +141,7 @@ describe('RenameWorkflowComponent', () => {
       ],
     }).compileComponents();
     http = TestBed.inject(HttpTestingController);
-    HTMLDialogElement.prototype.showModal = vi.fn();
-    HTMLDialogElement.prototype.close = vi.fn();
+    restoreDialogs = stubDialogs(vi.fn(), vi.fn());
     fixture = TestBed.createComponent(RenameWorkflowComponent);
     fixture.componentRef.setInput('files', files);
     await fixture.whenStable();
@@ -154,6 +156,7 @@ describe('RenameWorkflowComponent', () => {
   });
 
   afterEach(() => {
+    restoreDialogs();
     fixture.destroy();
     localStorage.clear();
     http.verify();
