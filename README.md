@@ -1087,7 +1087,9 @@ is unrelated to execution order: requests carry the user's ordered plugin instan
 and approved plans retain that exact sequence and metadata snapshot.
 
 Organize future commands and queries by feature in
-Application; keep HTTP concerns in the API.
+Application; keep HTTP concerns in the API. Type-level internals (request flow, plugin model,
+TMDB, users and authentication, frontend structure) are described in
+[docs/architecture.md](docs/architecture.md).
 
 ## CMediator conventions and automation
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Namerre is a self-hosted web file renamer: an ASP.NET Core (.NET 10) API that hosts an Angular 22
 SPA, with user-ordered rename pipelines, previews, durable journaled execution, persistent history
-(SQLite), selective rollback and recovery. `README.md` is the authoritative user/operator doc.
+(SQLite), selective rollback and recovery. `README.md` is the authoritative user/operator doc; `docs/architecture.md` describes the internals.
 
 ## Commands
 
@@ -54,168 +54,69 @@ asserting on rendered content.
 which serves Angular same-origin. Browser checks should target the API URL; `.mcp.json` configures
 a headless, isolated Playwright MCP server for that.
 
-## Architecture
+## Where things are
 
-Clean architecture, dependencies point inward:
-`Domain` ← `Application` ← `Infrastructure` ← `Api` (composition root; also references Application).
-Application must not reference Infrastructure or ASP.NET Core; define interfaces in Application,
-implement in Infrastructure. Each project registers its own services through a `DependencyInjection`
-extension — `AddApplication()`, `AddInfrastructure(configuration)` and the Api's `AddApi()` (web host
-services, incl. the `IRenameNotifier` implementation) — and `Namerre.Api/Program.cs` only calls them.
+Architecture and behaviour are described in [`docs/architecture.md`](docs/architecture.md): layers,
+request flow, plugin catalog and form model, engine, lifecycle, workers, live updates, TMDB,
+configuration, users/auth, hosting, frontend, CI/release. `README.md` is the authoritative
+user/operator doc (setup, configuration, security, deployment, telemetry). Read the relevant section
+before changing a feature, and update it with the change.
 
-**Request flow.** Controllers (`Namerre.Api/Controllers`, namespace `Namerre.Controllers`,
-routes always start with `api/` — `RenamingController` uses per-action routes like
-`api/rename-plans/{id}`) send CMediator requests via `ISender`. Each request and its handler
-live in separate files (`XQuery.cs` + `XQueryHandler.cs`), grouped by feature folder with a
-matching namespace (`Application/Renaming/{Plugins,Previews,Plans,Runs,Rollback,Recovery,Metadata}`).
-Renaming handlers are thin pass-throughs to `IRenameService` (the run export handler also formats
-through `Runs/RunExportWriter`: RFC 4180 CSV with BOM and formula-injection guard, or JSON); the real
-logic lives in `Namerre.Infrastructure/Renaming/RenameService.cs` (a singleton). DTOs are one
-type per file: feature-specific ones (e.g. `RunView`, `PlanView`, `TmdbMatch`) sit in their
-feature folder; shared ones (`PipelineRequest`, `PluginInstance`, `RenameIssue`, `JobAccepted`, …),
-the `IRenameService`/`ITmdbMetadata` contracts and `RenameException(code, message, status, fileId)`
-(which carries API error codes) stay directly in `Application/Renaming`.
+## Architecture rules
 
-**Renaming pipeline.** Each plugin is an `IRenamePlugin` in `Application/Renaming/Plugins`
-(`LiteralPlugin`, `ReplacementTablePlugin`, `RegexPlugin`, `CasePlugin`, `ExtensionCasePlugin`, `AffixPlugin`, `SeparatorsPlugin`,
-`ReleaseTagsPlugin`, `CharactersPlugin`, `InsertPlugin`, `RemovePlugin`, `TruncatePlugin`, `PadNumbersPlugin`,
-`CounterPlugin`, `DatePlugin`, `TmdbPlugin`; counter and date share `NameInsertion` for prefix/suffix/template
-placement, insert/remove/truncate count grapheme clusters through `TextElements`), usually derived from
-`RenamePlugin<TOptions>` (typed options, camelCase JSON). Its `PluginDescriptor` carries the type ID,
-version, name, description, default options, the option `Form` the frontend renders and
-`SingleInstance` (at most one instance per pipeline, enforced by the engine and the editor; set
-for TMDB). Form fields are `OptionFieldKind`s (`text`, `textarea`, `checkbox`, `select`, `multiSelect`,
-`number` with optional min/max/step, and `list` of non-nested row columns); groups can require checkboxes (`Requires`) and fields can show only while a select holds (or a multi-select includes) given values
-(`VisibleWhen`, e.g. counter/date templates via `NameInsertion`, case short words, separators' short numbers); hidden values are still sent; `OptionBinding` checks
-options against the form before typed binding (malformed values → `InvalidConfiguration` naming the
-field) and rejects forms the editor can't render when the engine is built. Plugins are registered as singletons in `AddApplication()` (registration order =
-catalog order); `PipelineEngine` takes them via DI, keys them by `(TypeId, Version)`, and applies
-enabled plugin instances in the request's order — catalog order never determines execution order.
-Plugins return `PathParts`; the engine rejects extension changes other than case (only
-`ExtensionCasePlugin` makes those), empty stems and separators, then validates the path. With
-`PipelineRequest.OnCollision = "AddNumber"` the engine gives taken targets a ` (n)` suffix
-(`PreviewFile.Numbered`, `collision` trace step) before related files are named; prepare stores the result. With `PipelineRequest.IncludeCompanions`, `CompanionFiles` pairs subtitles, `.nfo` and
-artwork with a video in the same folder; those skip the steps and take the video's final folder and stem plus
-their suffix (`PreviewFile`/`PlanFile`/`RunFile.CompanionOf`), and the frontend mirrors the rules in
-`companions.ts` to group the collection — keep both in sync. Steps also get a `FilePosition` (request and source-folder index and counts) and
-`FileFacts` (size, modified and creation time via `IRenameFileSystem.Facts`); `PrepareJob` snapshots the
-facts into `PlanView.Facts` once and previews with them, so a plan never re-reads them. Tests build
-the engine with the built-in plugins through `TestPipeline.Create`. Lifecycle:
-preview (no mutation) → prepare (hash every source file, persist an immutable plan) →
-execute (queued job) → optional rollback of selected files / explicit recovery. Run state changes
-must satisfy `Domain/Renaming/RunTransitions.Allows`; naming rules are in `Domain/Renaming/NamingRules.cs`.
-`RenameWorker` (hosted service) polls `RenameService.ProcessNext`, so jobs run independently of
-the browser. `WatchFolderWorker` runs `Infrastructure/WatchFolders/WatchFolderService.Scan` every few seconds:
-configured `Namerre:WatchFolders` (validated by `WatchFolderOptions.Problem`) are listed through `IFolderBrowser`,
-stable files previewed with their preset and prepared through `RenameService.Prepare(request, origin, …)`
-(`origin` = `watch:<name>` on `PlanView`/`RunView`), then executed; per-file state with back-off lives in the
-`WatchedFiles` table and pausing in `Settings`. TMDB steps need the folder's `TmdbAutoConfirm` threshold. Runs are journaled (with staging paths), not atomic; interrupted mutations are never
-blindly resumed.
+- Dependencies point inward: `Domain` ← `Application` ← `Infrastructure` ← `Api` (composition root).
+  Application must not reference Infrastructure or ASP.NET Core; define interfaces in Application,
+  implement in Infrastructure.
+- Each project registers its services in its own `DependencyInjection` extension
+  (`AddApplication()`, `AddInfrastructure(configuration)`, `AddApi()`); `Namerre.Api/Program.cs`
+  only calls them.
+- Controllers (`Namerre.Api/Controllers`, namespace `Namerre.Controllers`) use routes starting with
+  `api/` and send CMediator requests via `ISender`. Request and handler live in separate files
+  (`XQuery.cs` + `XQueryHandler.cs`) in a feature folder with a matching namespace. Renaming handlers
+  stay thin; logic belongs in `Namerre.Infrastructure/Renaming/RenameService.cs`.
+- DTOs: one type per file in the feature folder; only shared ones and the `IRenameService` /
+  `ITmdbMetadata` contracts stay in `Application/Renaming`.
+- Execution order is the request's plugin order, never catalog order. Run state changes must satisfy
+  `Domain/Renaming/RunTransitions.Allows`.
+- A new plugin needs no frontend change unless it has extra UI (`plugin-editor` renders the
+  descriptor's `form`).
+- Add EF migrations with `dotnet ef migrations add <Name> -o Renaming/Migrations` from
+  `Namerre.Infrastructure`.
+- Angular builds into `Namerre.Api/wwwroot` (generated); put static assets in `Namerre.Front/public`.
+  Use same-origin `/api/...` URLs. `@angular/service-worker` pins `@angular/core` exactly: upgrade
+  them together.
 
-**Live updates.** After each durable plan/run write, `RenameService` calls `IRenameNotifier`
-(Application contract, best effort, never throws into the job). `HubRenameNotifier`
-(`Namerre.Api/Notifications`) broadcasts a `RenameChange` nudge as `renameChanged` on the
-authorized `RenameHub` (`/api/hubs/rename`). In the frontend, `rename-events.ts` (`RenameEvents.watch`
-and `refreshOn`) re-reads records over REST on each nudge, falling back to polling while
-disconnected; specs substitute `FakeRenameEvents` from `rename-events.testing.ts`.
+## Safety invariants
 
-**Filesystem safety.** All path access goes through `BoundedFileSystem` (`IRenameFileSystem`) and
-`ServerFolderBrowser` (`IFolderBrowser`), rooted at `Namerre:RootPath`. Never allow escape from
-the root or traversal via symlinks/junctions; unsupported filesystems fail closed; no overwrites
-and no cross-device copy fallback. The data directory and media root must not contain each other.
+- **Filesystem:** all path access goes through `BoundedFileSystem` (`IRenameFileSystem`) and
+  `ServerFolderBrowser` (`IFolderBrowser`), rooted at `Namerre:RootPath`. Never allow escape from the
+  root or traversal via symlinks/junctions; unsupported filesystems fail closed; no overwrites, no
+  cross-device copy fallback. Data directory and media root must not contain each other.
+- **Journaling:** runs are journaled, not atomic; interrupted mutations are never blindly resumed.
+- **TMDB:** `Namerre:Tmdb:ReadAccessToken` stays server-side; never put it in frontend config, plan
+  snapshots, build args or committed files.
+- **Integrations:** tokens only in request headers, never logged.
+- **Service worker:** caches only the app shell; never add `/api` to its asset or data groups.
+- **Telemetry:** keep metric tags low-cardinality (never paths or IDs); mark requests whose URL may
+  hold a secret with `NamerreTelemetry.Untraced`.
+- **History scoping:** every plan/run read in `RenameService` goes through `Viewer`, so another
+  user's record is `NotFound`; `HubRenameNotifier` only nudges administrators and the owner. Every
+  access change must replace the user's credential stamp so sessions end at once.
+- **Secrets:** never commit real credentials; mark test fixtures with `betterleaks:allow` or add
+  them to `.betterleaksignore`.
 
-**Persistence.** `RenameStore` wraps EF Core SQLite (`RenameDbContext`) in `Namerre:DataPath`; it
-runs `Migrate()` on startup and refuses unknown applied migrations. Migrations live in
-`Namerre.Infrastructure/Renaming/Migrations`. Local users are stored in the same database (`Users` and
-`UserLogins` tables, `UserStore` behind the Application `IUserStore`), and so are pipeline presets (`Presets` table, `PresetStore` behind the
-Application `IPresetStore`; `PresetService` validates through `PipelineEngine.ValidatePlugins`, served by
-`RenamePresetsController` at `api/rename-presets`). Add migrations with `dotnet ef migrations add <Name>
--o Renaming/Migrations` from `Namerre.Infrastructure`.
+## Keep in sync
 
-**TMDB.** `TmdbMetadata` calls TMDB server-side through `CachedTmdbClient` (singleton holding a
-private 256-entry, 10-minute `MemoryCache`), which takes a fresh typed `TmdbClient` per lookup. The client's
-Polly pipeline (`TmdbResilience`: four-lookup concurrency limiter, 15 s total / 5 s attempt timeouts, retries
-that skip 429, circuit breaker) sits in front of it, and `TmdbClient` maps its rejections to API errors; requests carry
-`Namerre:Tmdb:ReadAccessToken` (never put the token in frontend config, plan snapshots or build args). Matches must be confirmed with a
-`ConfirmationToken` bound to `TmdbPlugin.OptionsHash` — SHA-256 of the plugin's `language` only (the `preset` option, which the
-frontend's `tmdb-presets.ts` uses to fill templates, is ignored by rendering and the hash). Templates
-write literal braces as `{{`/`}}`; `TmdbPlugin.Render` and `tmdb-template-preview.ts` must agree. The frontend
-reimplements this in `Namerre.Front/src/app/modules/renamer/options-hash.ts` (pure-JS SHA-256 so it
-works on plain-HTTP origins); keep both sides in sync. Confirmed metadata is snapshotted into the plan.
-Automatic suggestions run server-side in `Application/Renaming/Metadata/TmdbSuggester` (parse with `TmdbFileName`,
-score with `MatchConfidence`, verify the best candidate); the frontend's `tmdb-filename.ts` mirrors the parser
-to prefill the picker and `HIGH_CONFIDENCE` mirrors `MatchConfidence.High` — keep them in sync. A multi-episode
-match carries `EpisodeEnd` (titles joined by `EpisodeTitles.Join`); `{episode}` renders the range in the step's
-`episodeRange` style on both sides.
+Changing one side requires changing the other (details in `docs/architecture.md`):
 
-**Configuration.** Everything app-specific is under the `Namerre` section, bound to
-`NamerreOptions` (`Infrastructure/Configuration`) and consumed via `IOptions<NamerreOptions>`:
-`RootPath`, `DataPath`, `Limits` (bound to the Application `RenameLimits` singleton; out-of-range
-values fail startup; signed-in `GET api/auth/session` reports them to the frontend's `WorkloadLimits`), `Authentication` (incl. optional `Oidc` single sign-on, e.g. Keycloak — see
-`Namerre.Api/Authentication/OidcLogin.cs`; the OIDC scheme is hidden by `OidcAwareSchemeProvider` unless
-`Authority` is set), `Tmdb`, `ReverseProxy`, `Telemetry` (optional OTLP
-export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless `OtlpEndpoint` is set; Namerre's own
-`ActivitySource`/`Meter` and instruments live in `Infrastructure/Diagnostics/NamerreTelemetry`, backlog gauges in
-`RenameStateMetrics`; keep metric tags low-cardinality — never paths or IDs — and mark requests whose URL may hold a
-secret with `NamerreTelemetry.Untraced`; README lists every span and metric, keep it in sync). `Integrations`
-(optional Jellyfin/Emby/Plex library refresh and webhook after a `Completed`/`Recovered` run: `RenameService.Complete`
-calls `ILibraryNotifier.RunFinished`, implemented by `Infrastructure/Integrations/LibraryNotifier`, a bounded channel
-drained by a hosted service; best effort, tokens only in request headers and never logged;
-`NamerreOptionsValidator` fails startup on bad URLs or missing/orphaned keys).
-
-**Users and authentication.** Every session belongs to a local user (`Application/Authentication`:
-`UserRecord`, `UserLoginRecord`, `UserRole` `Admin`/`User`, `IUserStore`, `ICurrentUser`). The account rules live in
-`Namerre.Api/Authentication/UserAccounts` (a singleton caching users in memory, mutations under one lock, compare-and-swap
-on each user's random credential stamp): unique NOCASE usernames, `Passwords` policy, at least one enabled admin, no
-self-demotion/disable/delete, and an enabled user always keeps a password or a linked identity. Every access change
-(role, disabled, password, link) replaces the stamp, which `AuthenticationSetup.IsValidSession` checks on each request,
-so sessions end at once. `UserSession` builds the cookie principal from the local user (ID, name, role claim, stamp,
-method, sign-in time; SSO sessions add the `OidcLogin.Stamp`) and defines the live-update group. A configured
-`Namerre:Authentication` account is a never-stored break-glass `Admin` with ID 0. SSO identities are keyed on
-(issuer = configured authority, `sub`); `OidcLogin.Read` checks `RequiredRole`, then `AuthenticationSetup.OnTicketReceived`
-resolves the linked user, provisions a `User` when `Oidc:AutoProvision` allows (never matching by username), or links
-the identity when the challenge carries the protected link items from `AuthController.LinkSingleSignOn` (needs a recent
-sign-in or the password). Moving a link can merge its user into the target (`UserAccounts.Merge`, then
-`IUserHistory.Reattribute`, implemented by `RenameService` under its job gate, rewrites `CreatedBy`/`RecoveredBy`).
-History is per user: `RenameDocument.OwnerId` (the plan's `CreatedBy`; a run, rollbacks included, takes its plan's owner;
-null for watch folders and pre-user history) scopes every plan/run read in `RenameService` through `Viewer` (null for
-administrators and background work, from `ICurrentUser.IsAdmin`), so someone else's record is `NotFound`, and
-`HubRenameNotifier` only nudges administrators and the owner (`RenameChange.OwnerId`, never serialized).
-`AuthenticationSetup.AdminPolicy` (`RequireAdmin`) guards `api/users`, watch folders and run
-deletion; `AccountException` maps refusals to `{ code, message }`. `HttpCurrentUser` feeds `RenameService`, which records
-`CreatedBy` on plans/runs and `RecoveredBy` on recoveries.
-
-**Hosting.** `Program.cs` requires HTTPS for `/api` (400 otherwise), sets `no-store` on API
-responses, requires authorization on all controllers, returns 404 for unmatched `/api/*`, and
-falls back to `index.html` otherwise. OpenAPI is exposed only in Development. Static files go through
-`Hosting/StaticFileCaching` (`no-cache` for unhashed shell files: `index.html`, the manifest and the service worker).
-
-**Frontend.** Standalone Angular app (signals, explicit component imports, external templates +
-`styleUrl`, `app` selector prefix, SCSS component styles, Tailwind CSS v4 via PostCSS in
-`src/styles.css`). `src/main.ts` bootstraps `App` with `appConfig`; app-wide providers go in
-`src/app/app.config.ts`, routes in `src/app/app.routes.ts`. Use same-origin `/api/...` URLs.
-`Auth` (`src/app/auth/auth.ts`) holds the session (`role`/`isAdmin`, `hasPassword`, `logins`, `recentSignIn`);
-`auth/account` manages the user's own password and SSO links; `users/` is the admin-only user management page (route
-guarded by `isAdmin`, linked from `settings-menu`); admin-only controls (watch folders, run deletion) are hidden for users.
-The root route lazy-loads `modules/renamer`; `rename-api.ts` is the HTTP client for the
-resource-style renaming endpoints (`/api/rename-plugins`, `/api/rename-previews`,
-`/api/rename-plans`, …). The workflow is a staged wizard (`rename-workflow` component) across file
-selection, plugin configuration, TMDB matching, preview, confirmation and run history. It has two
-modes, chosen per browser through the `WorkflowMode` service (`src/app/workflow-mode`, `localStorage`
-like `Theme`; switch in the header options menu (`settings-menu`), first-run onboarding, and a warning before a switch to Simple discards
-steps): **Advanced** is that full wizard; **Simple** runs files → preset (`preset-picker`) → [matching]
-→ review (preview and confirmation on one screen) with fixed `simpleRunOptions`. Simple's built-in presets
-are data in `modules/renamer/simple-presets.json` (`simple-presets.ts` builds and recognises them);
-`Namerre.Application.UnitTests/Renaming/SimplePresetTests` links that file and previews every preset
-and select choice against the built-in catalog, so keep the JSON in sync with plugin options. The
-`plugin-editor` renders each step's options from the descriptor's `form`, so a new plugin needs no
-frontend change unless it has extra UI (like TMDB's template preview). Angular builds into `Namerre.Api/wwwroot` with no `browser`
-subdirectory (generated, cleared on rebuild) — put static assets in `Namerre.Front/public`.
-Missing asset files stay 404 rather than falling back to `index.html`. The app is an installable
-PWA: `public/manifest.webmanifest` plus `@angular/service-worker` (`ngsw-config.json`, production builds
-only), which caches only the app shell — never add `/api` to its asset or data groups. `app-update`
-offers a reload when a new version is ready. `@angular/service-worker` pins `@angular/core` exactly, so
-upgrade them together.
+- `CompanionFiles` ↔ `companions.ts`
+- `TmdbPlugin.OptionsHash` ↔ `Namerre.Front/src/app/modules/renamer/options-hash.ts`
+- `TmdbPlugin.Render` (and `{episode}` / `episodeRange` rendering) ↔ `tmdb-template-preview.ts`
+- `TmdbFileName` ↔ `tmdb-filename.ts`
+- `MatchConfidence.High` ↔ `HIGH_CONFIDENCE`
+- `modules/renamer/simple-presets.json` ↔ plugin options (checked by
+  `Namerre.Application.UnitTests/Renaming/SimplePresetTests`)
+- Telemetry spans and metrics ↔ the list in `README.md`
 
 ## Conventions
 
@@ -227,29 +128,20 @@ upgrade them together.
   or assembly scanning. `MED001/002/003/005` are build errors. Pass the request
   `CancellationToken` through `ISender.Send`.
 - Don't make handlers public for tests; `InternalsVisibleTo` exposes them to
-  `Namerre.Application.UnitTests`. `Namerre.Api.UnitTests` and `Namerre.Application.UnitTests` use
-  xUnit + NSubstitute (substitute collaborators, not the class under test).
-  `Namerre.Infrastructure.UnitTests` covers `TmdbMetadata` (stub `HttpMessageHandler`) and
-  `BoundedFileSystem` against temp directories. `Namerre.Api.Tests` holds HTTP integration tests
-  (`AuthWebApplicationFactory`).
-- Frontend linting/formatting: Biome (`biome.json`) for TS/CSS/SCSS, Prettier only for Angular
-  `.html` templates (Biome can't parse Angular control flow yet); 2 spaces, single quotes,
-  100 columns, OS-native line endings. Keep the strict compiler flags enabled (TypeScript
-  `noImplicitOverride`, `noPropertyAccessFromIndexSignature`, `noImplicitReturns`,
-  `noFallthroughCasesInSwitch`; Angular strict injection parameters and input access modifiers).
-- Workload limits enforced server-side through `RenameLimits` (configurable under `Namerre:Limits`):
-  by default ≤200 files and ≤32 plugin instances per run, ≤32 queued jobs (ceilings 2000/64/256);
-  fixed regex timeout 100 ms, TMDB lookups 15 s overall (5 s per attempt).
-- CI (`.github/workflows/ci.yml`: backend build/tests on Ubuntu and Windows, frontend lint/tests,
-  Betterleaks, commitlint on PRs) runs on PRs to `main`/`next` and is reused by `release.yml` and
-  `docker.yml` — keep path handling cross-platform. Shared Node setup is the
-  `.github/actions/setup-node` composite action. `release.yml` runs CI, then semantic-release
-  (`release.config.mjs`) on pushes to `main` (stable) and `next` (`-pre.N`), creates the tag and
-  GitHub release, and calls `docker.yml` for the new tag; Docker images are built and published
-  only for version tags (a hand-pushed tag runs CI in `docker.yml` first).
+  `Namerre.Application.UnitTests`. API and Application unit tests use xUnit + NSubstitute
+  (substitute collaborators, not the class under test). Other test projects are described in
+  `docs/architecture.md`.
+- Frontend: Biome (`biome.json`) for TS/CSS/SCSS, Prettier only for Angular `.html` templates (Biome
+  can't parse Angular control flow yet); 2 spaces, single quotes, 100 columns, OS-native line
+  endings. Keep the strict compiler flags enabled (TypeScript `noImplicitOverride`,
+  `noPropertyAccessFromIndexSignature`, `noImplicitReturns`, `noFallthroughCasesInSwitch`; Angular
+  strict injection parameters and input access modifiers). Component style (standalone, signals,
+  external templates, `app` prefix) is in `docs/architecture.md`.
+- Workload limits are enforced server-side through `RenameLimits` (`Namerre:Limits`; defaults and
+  ceilings in `docs/architecture.md`).
+- CI runs on PRs to `main`/`next` (backend on Ubuntu and Windows, so keep path handling
+  cross-platform) and is reused by `release.yml` and `docker.yml`; details in
+  `docs/architecture.md`.
 - Commits follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, …; `!` or a
   `BREAKING CHANGE:` footer for majors) — they drive the version bump. CI lints PR
   commits with commitlint; root `npm ci` installs the lefthook `commit-msg` hook (`lefthook.yml`).
-- CI's `betterleaks` job scans the full Git history with a pinned Betterleaks release on PRs and pushes;
-  the lefthook `pre-commit` hook scans staged changes when `betterleaks` is on PATH. Never commit
-  real credentials; mark test fixtures with `betterleaks:allow` or add them to `.betterleaksignore`.
