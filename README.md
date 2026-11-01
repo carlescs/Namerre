@@ -309,10 +309,13 @@ and delete users. The server keeps every account usable:
 - Usernames are unique ignoring case. A user without a password fails password sign-in exactly
   like a wrong password, without revealing that the account exists.
 
-Run history and presets are shared: everyone sees every run, attributed to the user who
-prepared, executed, undid or recovered it (watch-folder runs show the folder instead). Run
+Rename history belongs to the user who prepared each plan: a user sees, exports, undoes and
+recovers only their own plans and runs, including undos an administrator started for them, and
+anyone else's reads as not found. Administrators see and manage every run, attributed to the user
+who prepared, executed, undid or recovered it; watch-folder runs (which show the folder instead)
+and history from before users are visible to administrators only. Presets are shared. Run
 exports include `runCreatedBy` and `runOrigin` columns. Deleting a user keeps their runs, still
-showing their name. User management and linking actions are logged with who did what to which
+showing their name, and merging a user moves their history to the target user. User management and linking actions are logged with who did what to which
 user (never passwords, tokens or claims).
 
 The user management API is `api/users` (administrators only): `GET` lists users with their
@@ -690,7 +693,8 @@ the previous preparation; plugin and metadata changes also discard name override
 their progress and outcome are available in persistent history.
 Open pages follow progress live: the server pushes a short change signal (`renameChanged`
 with `kind`, `id` and `status`) over SignalR after every durable plan or run update, and the
-browser re-reads the record from the REST API. The signal carries no file paths. The hub
+browser re-reads the record from the REST API. The signal carries no file paths and only reaches
+administrators and the user whose history changed. The hub
 requires the same session cookie as the API and closes when the session expires; a fallback
 refresh every 15 seconds covers any missed signal.
 

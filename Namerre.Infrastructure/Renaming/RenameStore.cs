@@ -97,23 +97,28 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
             || candidate.StartsWith(parent.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar,
                 OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
-    public T Get<T>(string id, string kind)
+    /// <param name="ownedBy">Only finds a record that user owns (see <see cref="RenameDocument.OwnerId"/>); null
+    /// finds any. A record of someone else is reported as not found.</param>
+    public T Get<T>(string id, string kind, long? ownedBy = null)
     {
         Initialize();
         lock (gate)
         {
             using var db = Open();
-            return Read<T>(db, id, kind);
+            return Read<T>(db, id, kind, ownedBy);
         }
     }
 
-    public IReadOnlyList<T> List<T>(string kind, string[]? statuses = null, int skip = 0, int? take = null)
+    /// <param name="ownedBy">Only lists the records that user owns; null lists every record.</param>
+    public IReadOnlyList<T> List<T>(string kind, string[]? statuses = null, int skip = 0, int? take = null,
+        long? ownedBy = null)
     {
         Initialize();
         lock (gate)
         {
             using var db = Open();
             var query = db.Documents.AsNoTracking().Where(d => d.Kind == kind);
+            if (ownedBy is not null) query = query.Where(d => d.OwnerId == ownedBy);
             if (statuses is not null) query = query.Where(d => statuses.Contains(d.Status));
             var ordered = query.OrderByDescending(d => d.Order).ThenBy(d => d.Id).Skip(skip);
             if (take is not null) ordered = ordered.Take(take.Value);
@@ -136,6 +141,17 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
             var blocked = runs.Where(r => r.ParentId != null && !settled.Contains(r.Status)).Select(r => r.ParentId);
             return runs.Where(d => settled.Contains(d.Status) && !blocked.Contains(d.Id))
                 .OrderByDescending(d => d.Order).ThenBy(d => d.Id).Take(take).Select(d => d.Id).ToArray();
+        }
+    }
+
+    /// <summary>The owner of a plan or run (see <see cref="RenameDocument.OwnerId"/>); null when it has none or is gone.</summary>
+    public long? OwnerOf(string id)
+    {
+        Initialize();
+        lock (gate)
+        {
+            using var db = Open();
+            return db.Documents.AsNoTracking().Where(d => d.Id == id).Select(d => d.OwnerId).SingleOrDefault();
         }
     }
 
@@ -172,7 +188,8 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
     }
 
     /// <summary>
-    /// Replaces <c>CreatedBy</c> and <c>RecoveredBy</c> references to a user on every plan and run, in one transaction.
+    /// Replaces <c>CreatedBy</c> and <c>RecoveredBy</c> references to a user on every plan and run, and moves the
+    /// user's history to the other user, in one transaction.
     /// </summary>
     public int ReattributeUser(long fromUserId, Application.Authentication.UserReference to)
     {
@@ -210,6 +227,7 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
                 changed++;
             }
             db.SaveChanges();
+            db.Documents.Where(d => d.OwnerId == fromUserId).ExecuteUpdate(d => d.SetProperty(e => e.OwnerId, (long?)to.Id));
             transaction.Commit();
             return changed;
         }
@@ -275,14 +293,17 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
     /// Deletes a settled run record together with its rollback descendants, their jobs and idempotency keys,
     /// and any plan no remaining run references. The filesystem is never touched.
     /// </summary>
-    public IReadOnlyList<string> DeleteRun(string id) => DeleteRuns([id], ignoreMissing: false);
+    public IReadOnlyList<DeletedRun> DeleteRun(string id) => DeleteRuns([id], ignoreMissing: false);
+
+    /// <summary>A deleted run and its former owner, so the change can be announced to the right users.</summary>
+    public sealed record DeletedRun(string Id, long? OwnerId);
 
     /// <summary>
     /// Deletes the given runs with their rollbacks and orphaned plans in one transaction: either every
     /// run is deleted or none is. Runs already gone (e.g. deleted from another tab) are skipped unless
     /// <paramref name="ignoreMissing"/> is false.
     /// </summary>
-    public IReadOnlyList<string> DeleteRuns(IReadOnlyCollection<string> ids, bool ignoreMissing = true)
+    public IReadOnlyList<DeletedRun> DeleteRuns(IReadOnlyCollection<string> ids, bool ignoreMissing = true)
     {
         Initialize();
         lock (gate)
@@ -290,8 +311,11 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
             using var db = Open();
             using var transaction = db.Database.BeginTransaction();
             // Only the run graph is needed: stream the history and skip materializing files and journals.
-            var runs = db.Documents.AsNoTracking().Where(d => d.Kind == "Run").Select(d => d.Json).AsEnumerable()
-                .Select(json => JsonSerializer.Deserialize<RunLink>(json, Json)!).ToArray();
+            var rows = db.Documents.AsNoTracking().Where(d => d.Kind == "Run").Select(d => new { d.Json, d.OwnerId })
+                .AsEnumerable().Select(row => (Link: JsonSerializer.Deserialize<RunLink>(row.Json, Json)!, row.OwnerId))
+                .ToArray();
+            var runs = rows.Select(row => row.Link).ToArray();
+            var owners = rows.ToDictionary(row => row.Link.Id, row => row.OwnerId);
             var known = runs.ToDictionary(r => r.Id);
             if (!ignoreMissing && ids.Any(id => !known.ContainsKey(id)))
                 throw new RenameException("NotFound", "The requested resource was not found.", 404);
@@ -312,7 +336,7 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
             boundary?.Invoke("Delete:Before");
             transaction.Commit();
             boundary?.Invoke("Delete:After");
-            return deleted.Select(r => r.Id).ToArray();
+            return deleted.Select(r => new DeletedRun(r.Id, owners[r.Id])).ToArray();
         }
     }
 
@@ -422,9 +446,10 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         return new RenameDbContext(options!);
     }
 
-    private static T Read<T>(RenameDbContext db, string id, string kind)
+    private static T Read<T>(RenameDbContext db, string id, string kind, long? ownedBy = null)
     {
-        var document = db.Documents.AsNoTracking().SingleOrDefault(d => d.Id == id && d.Kind == kind);
+        var document = db.Documents.AsNoTracking()
+            .SingleOrDefault(d => d.Id == id && d.Kind == kind && (ownedBy == null || d.OwnerId == ownedBy));
         return document is not null ? JsonSerializer.Deserialize<T>(document.Json, Json)!
             : throw new RenameException("NotFound", "The requested resource was not found.", 404);
     }
@@ -437,7 +462,8 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
             // The previous JSON payload is always replaced, so load only the row metadata and attach it.
             document = db.Documents.AsNoTracking().Where(d => d.Id == id).Select(d => new RenameDocument
             {
-                Id = d.Id, Kind = d.Kind, Status = d.Status, Order = d.Order, Revision = d.Revision
+                Id = d.Id, Kind = d.Kind, Status = d.Status, ParentId = d.ParentId, OwnerId = d.OwnerId, Order = d.Order,
+                Revision = d.Revision
             }).SingleOrDefault();
             if (document is not null) db.Documents.Attach(document);
         }
@@ -445,7 +471,8 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         {
             document = new RenameDocument
             {
-                Id = id, Kind = kind, ParentId = (value as RunView)?.ParentRunId, Order = DateTime.UtcNow.Ticks
+                Id = id, Kind = kind, ParentId = (value as RunView)?.ParentRunId, OwnerId = NewOwner(db, value),
+                Order = DateTime.UtcNow.Ticks
             };
             db.Documents.Add(document);
         }
@@ -456,6 +483,18 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         document.Json = JsonSerializer.Serialize(value, Json);
         document.Revision++;
     }
+
+    /// <summary>
+    /// A plan belongs to the user who prepared it, and every run of a plan (its renames and their rollbacks) to the
+    /// plan's owner, so a user keeps the whole history of their renames whoever executed or undid them.
+    /// </summary>
+    private static long? NewOwner<T>(RenameDbContext db, T value) => value switch
+    {
+        PlanView plan => plan.CreatedBy?.Id,
+        RunView run => db.Documents.AsNoTracking().Where(d => d.Id == run.PlanId && d.Kind == "Plan")
+            .Select(d => d.OwnerId).SingleOrDefault(),
+        _ => null
+    };
 
     public bool IsOwnedEntry(string fullPath)
     {

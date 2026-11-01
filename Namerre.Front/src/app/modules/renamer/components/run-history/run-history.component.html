@@ -12,7 +12,12 @@
     {{ runId() ? 'Run details' : 'Rename history' }}
   </h1>
   <p class="mb-6 text-slate-500 dark:text-slate-400">
-    Look back at past renames, see what happened to each file, and undo or recover when needed.
+    @if (auth.isAdmin()) {
+      Look back at everyone's renames and who started them, see what happened to each file, and undo
+      or recover when needed.
+    } @else {
+      Look back at your renames, see what happened to each file, and undo or recover when needed.
+    }
   </p>
   @if (loading()) {
     <p role="status">Loading history…</p>

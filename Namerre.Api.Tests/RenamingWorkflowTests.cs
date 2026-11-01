@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -948,6 +950,33 @@ public sealed class RenamingWorkflowTests : IDisposable
         Assert.Equal(migrations, context.Database.GetAppliedMigrations().ToArray());
         Assert.True(context.Model.FindEntityType(typeof(RenameDocument))!.FindProperty("Revision")!.IsConcurrencyToken);
         Assert.True(context.Model.FindEntityType(typeof(DurableRenameJob))!.FindProperty("Revision")!.IsConcurrencyToken);
+    }
+
+    [Fact]
+    public void OwnerMigrationGivesPlansTheirAuthorAndRunsTheirPlansOwner()
+    {
+        Directory.CreateDirectory(Data);
+        using var context = new RenameDbContext(new DbContextOptionsBuilder<RenameDbContext>()
+            .UseSqlite($"Data Source={Path.Combine(Data, "owners.sqlite3")};Pooling=False").Options);
+        context.GetService<IMigrator>().Migrate("20261101071356_AddUsers");
+        context.Database.OpenConnection();
+        using (var insert = context.Database.GetDbConnection().CreateCommand())
+        {
+            insert.CommandText = """
+                INSERT INTO "Documents" ("Id", "Kind", "Status", "Json", "ParentId", "Order", "Revision") VALUES
+                ('p1', 'Plan', 'Ready', '{"id":"p1","createdBy":{"id":7,"username":"frank"}}', NULL, 1, 1),
+                ('p2', 'Plan', 'Ready', '{"id":"p2","origin":"watch:Downloads"}', NULL, 2, 1),
+                ('r1', 'Run', 'Completed', '{"id":"r1","planId":"p1","createdBy":{"id":1,"username":"admin"}}', NULL, 3, 1),
+                ('r2', 'Run', 'Completed', '{"id":"r2","planId":"p1","parentRunId":"r1"}', 'r1', 4, 1),
+                ('r3', 'Run', 'Completed', '{"id":"r3","planId":"p2"}', NULL, 5, 1);
+                """;
+            insert.ExecuteNonQuery();
+        }
+
+        context.Database.Migrate();
+
+        var owners = context.Documents.AsNoTracking().OrderBy(d => d.Order).Select(d => d.OwnerId).ToArray();
+        Assert.Equal(new long?[] { 7, null, 7, 7, null }, owners);
     }
 
     [Fact]
