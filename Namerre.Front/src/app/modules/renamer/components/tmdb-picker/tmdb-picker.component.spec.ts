@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { stubDialogs } from '../../../../dialogs.testing';
 import { tmdbOptionsHash } from '../../options-hash';
 import type { MetadataSelection, TmdbPickerState } from '../../rename-api';
 import { TmdbPickerComponent } from './tmdb-picker.component';
@@ -26,6 +27,8 @@ describe('TmdbPickerComponent', () => {
     confirmationToken: null,
   };
 
+  let restoreDialogs: () => void;
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [TmdbPickerComponent],
@@ -33,8 +36,7 @@ describe('TmdbPickerComponent', () => {
     }).compileComponents();
     http = TestBed.inject(HttpTestingController);
     // jsdom does not implement the modal dialog lifecycle.
-    HTMLDialogElement.prototype.showModal = vi.fn();
-    HTMLDialogElement.prototype.close = vi.fn();
+    restoreDialogs = stubDialogs(vi.fn(), vi.fn());
     fixture = TestBed.createComponent(TmdbPickerComponent);
     fixture.componentRef.setInput('context', {
       fileId: 'file-1',
@@ -45,6 +47,7 @@ describe('TmdbPickerComponent', () => {
   });
 
   afterEach(() => {
+    restoreDialogs();
     fixture.destroy();
     http.verify();
     vi.restoreAllMocks();

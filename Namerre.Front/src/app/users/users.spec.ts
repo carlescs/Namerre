@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { Auth } from '../auth/auth';
+import { stubDialogsThatToggle } from '../dialogs.testing';
 import { Users } from './users';
 import type { UserView } from './users-api';
 
@@ -36,16 +37,10 @@ describe('Users', () => {
     ],
   };
 
-  // Other specs replace these with no-op mocks and leave them, so install stubs that behave like a browser.
-  const { showModal, close } = HTMLDialogElement.prototype;
+  let restoreDialogs: () => void;
 
   beforeEach(async () => {
-    HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
-      this.setAttribute('open', '');
-    };
-    HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
-      this.removeAttribute('open');
-    };
+    restoreDialogs = stubDialogsThatToggle();
     await TestBed.configureTestingModule({
       imports: [Users],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
@@ -58,8 +53,7 @@ describe('Users', () => {
   });
 
   afterEach(() => {
-    HTMLDialogElement.prototype.showModal = showModal;
-    HTMLDialogElement.prototype.close = close;
+    restoreDialogs();
     http.verify();
   });
 

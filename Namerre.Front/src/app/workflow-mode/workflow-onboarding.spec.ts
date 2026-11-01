@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { stubDialogs } from '../dialogs.testing';
 import { savePipelineDraft } from '../modules/renamer/draft-storage';
 import { WorkflowMode, workflowModeStorageKey } from './workflow-mode';
 import { WorkflowModeWarning } from './workflow-mode-warning';
@@ -13,12 +14,13 @@ function button(element: HTMLElement, label: string): HTMLButtonElement {
 }
 
 describe('WorkflowOnboarding', () => {
+  let restoreDialogs: () => void;
   beforeEach(() => {
     localStorage.clear();
-    HTMLDialogElement.prototype.showModal = vi.fn();
-    HTMLDialogElement.prototype.close = vi.fn();
+    restoreDialogs = stubDialogs(vi.fn(), vi.fn());
   });
   afterEach(() => {
+    restoreDialogs();
     localStorage.clear();
     vi.restoreAllMocks();
   });
@@ -66,15 +68,17 @@ describe('WorkflowModeWarning', () => {
     options: { pattern: 'a', replacement: 'b', ignoreCase: false },
   };
 
+  let restoreDialogs: () => void;
+
   beforeEach(async () => {
     localStorage.clear();
     localStorage.setItem(workflowModeStorageKey, 'advanced');
     savePipelineDraft({ plugins: [step], verifyContent: false, deleteEmptyFolders: true });
-    HTMLDialogElement.prototype.showModal = vi.fn();
-    HTMLDialogElement.prototype.close = vi.fn();
+    restoreDialogs = stubDialogs(vi.fn(), vi.fn());
     await TestBed.inject(WorkflowMode).request('simple');
   });
   afterEach(() => {
+    restoreDialogs();
     localStorage.clear();
     vi.restoreAllMocks();
   });

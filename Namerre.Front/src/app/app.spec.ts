@@ -7,6 +7,7 @@ import { provideServiceWorker } from '@angular/service-worker';
 import { App } from './app';
 import { routes } from './app.routes';
 import { Auth } from './auth/auth';
+import { stubDialogs } from './dialogs.testing';
 
 describe('App', () => {
   const username = signal<string | null>(null);
@@ -66,8 +67,7 @@ describe('App', () => {
   });
 
   it('asks a signed-in user for a workflow mode until one is chosen', async () => {
-    HTMLDialogElement.prototype.showModal = vi.fn();
-    HTMLDialogElement.prototype.close = vi.fn();
+    onTestFinished(stubDialogs(vi.fn(), vi.fn()));
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('app-workflow-onboarding')).toBeNull();
