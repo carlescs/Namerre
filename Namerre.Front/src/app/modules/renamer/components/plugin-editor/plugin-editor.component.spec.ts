@@ -374,6 +374,27 @@ describe('PluginEditorComponent', () => {
     expect(document.activeElement).toBe(fixture.nativeElement.querySelector('button'));
   });
 
+  it('removes every step after confirming "Remove all steps"', async () => {
+    await add('literal');
+    await add('case');
+    textButton('Remove all steps').click();
+    await fixture.whenStable();
+    expect(plugins).toHaveLength(2);
+    expect(fixture.nativeElement.textContent).toContain('Remove all 2 steps?');
+    textButton('Keep steps').click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelectorAll('article')).toHaveLength(2);
+    textButton('Remove all steps').click();
+    await fixture.whenStable();
+    textButton('Confirm remove all').click();
+    await fixture.whenStable();
+    expect(plugins).toEqual([]);
+    expect(fixture.nativeElement.querySelectorAll('article')).toHaveLength(0);
+    expect(fixture.nativeElement.textContent).toContain('No plugins selected');
+    expect(textButton('Remove all steps')).toBeUndefined();
+    expect(document.activeElement).toBe(fixture.nativeElement.querySelector('button'));
+  });
+
   it('edits choice options and defaults missing option values', async () => {
     fixture.componentRef.setInput('catalog', [
       ...testCatalog,
@@ -819,6 +840,12 @@ describe('PluginEditorComponent', () => {
       fixture.nativeElement.querySelector(`button[data-plugin-type="${type}"]`) as HTMLButtonElement
     ).click();
     await fixture.whenStable();
+  }
+
+  function textButton(text: string): HTMLButtonElement {
+    return [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b) => (b as HTMLElement).textContent?.trim() === text,
+    ) as HTMLButtonElement;
   }
 
   function button(label: string): HTMLButtonElement {
