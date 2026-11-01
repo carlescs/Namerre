@@ -5,10 +5,12 @@ using Microsoft.Extensions.Options;
 using Namerre.Application;
 using Namerre.Application.Folders;
 using Namerre.Application.Renaming;
+using Namerre.Application.Renaming.Metadata;
 using Namerre.Application.Renaming.Presets;
 using Namerre.Application.WatchFolders;
-using Namerre.Infrastructure.Folders;
 using Namerre.Infrastructure.Configuration;
+using Namerre.Infrastructure.Folders;
+using Namerre.Infrastructure.Renaming;
 using Xunit;
 
 namespace Namerre.Api.Tests;
@@ -114,5 +116,29 @@ public sealed class ApplicationRegistrationTests
 
         using var otherScope = provider.CreateScope();
         Assert.NotSame(sender, otherScope.ServiceProvider.GetRequiredService<ISender>());
+    }
+
+    [Fact]
+    public void TestPipelineMatchesTheRegisteredCatalog()
+    {
+        var fileSystem = new BoundedFileSystem(null, Path.GetTempPath());
+        var metadata = new UnusedMetadata();
+        var services = new ServiceCollection();
+        services.AddApplication();
+        services.AddSingleton<ITmdbMetadata>(metadata);
+        services.AddSingleton<IRenameFileSystem>(fileSystem);
+        using var provider = services.BuildServiceProvider();
+
+        var registered = provider.GetRequiredService<PipelineEngine>().Catalog.Select(p => (p.TypeId, p.Version));
+        var helper = TestPipeline.Create(metadata, fileSystem).Catalog.Select(p => (p.TypeId, p.Version));
+
+        Assert.Equal(registered, helper);
+    }
+
+    private sealed class UnusedMetadata : ITmdbMetadata
+    {
+        public Task<TmdbSearchResult> Search(TmdbSearchRequest request, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+        public TmdbMatch Resolve(MetadataSelection selection) => throw new NotSupportedException();
     }
 }

@@ -18,6 +18,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- One engine helper for both test projects, so the built-in plugin list can't drift between them. -->
+    <Compile Include="..\Namerre.Application.UnitTests\Renaming\TestPipeline.cs" Link="TestPipeline.cs" />
+    <Using Include="Namerre.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Namerre.Api\Namerre.Api.csproj" />
   </ItemGroup>
 
