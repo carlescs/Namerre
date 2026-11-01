@@ -2,6 +2,7 @@ using CMediator.Abstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application;
 using Namerre.Application.Folders;
 using Namerre.Application.Renaming;

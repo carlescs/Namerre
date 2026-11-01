@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Namerre.Application.Renaming.Metadata;
+using Namerre.Application.Renaming.Pipeline;
 using Namerre.Domain.Renaming;
 
 namespace Namerre.Application.Renaming.Plugins;

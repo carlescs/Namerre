@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Namerre.Application.Authentication;
 using Namerre.Application.Folders;
+using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Presets;
 using Namerre.Infrastructure.Authentication;

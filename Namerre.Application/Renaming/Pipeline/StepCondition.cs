@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using Namerre.Domain.Renaming;
 
-namespace Namerre.Application.Renaming;
+namespace Namerre.Application.Renaming.Pipeline;
 
 /// <summary>
 /// Limits a step to some files. A file matches when its current extension is one of <see cref="Extensions"/>

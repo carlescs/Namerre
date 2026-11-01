@@ -1,4 +1,4 @@
-namespace Namerre.Application.Renaming;
+namespace Namerre.Application.Renaming.Pipeline;
 
 /// <summary>Filesystem details of a source file, read once per preview and snapshotted into plans.</summary>
 /// <param name="CreatedUtc">Creation (birth) time; null when the filesystem reports none. On Unix filesystems

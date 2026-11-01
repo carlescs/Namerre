@@ -1,3 +1,4 @@
+using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application.Renaming;
 using Xunit;
 

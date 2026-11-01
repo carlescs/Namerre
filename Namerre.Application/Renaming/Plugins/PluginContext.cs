@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Namerre.Application.Renaming.Pipeline;
 
 namespace Namerre.Application.Renaming.Plugins;
 
