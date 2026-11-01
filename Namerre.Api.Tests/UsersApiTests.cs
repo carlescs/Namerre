@@ -216,20 +216,16 @@ public sealed class UsersApiTests : IDisposable
             new { username = "frank", password = "frank-real-password" }); // betterleaks:allow
         var targetId = (await target.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt64();
 
+        string planId, runId;
         using (var provisioned = await SignIn(factory, "frank-2", "frank-long-password"))
-        {
-            var request = new PipelineRequest([new FileInput("0", "alpha.txt")],
-                [new PluginInstance("upper", "case", 1, true, JsonSerializer.SerializeToElement(new { mode = "upper" }))]);
-            using var prepare = await provisioned.PostAsJsonAsync("/api/rename-plans", request);
-            var accepted = (await prepare.Content.ReadFromJsonAsync<JobAccepted>())!;
-            var plan = await Poll(() => provisioned.GetFromJsonAsync<PlanView>("/api/rename-plans/" + accepted.Id),
-                p => p!.Status != "Preparing");
-            using var execute = await provisioned.PostAsJsonAsync($"/api/rename-plans/{plan!.Id}/execute",
-                new ExecuteRequest(plan.Version, Guid.NewGuid().ToString("N")));
-            var runId = (await execute.Content.ReadFromJsonAsync<JobAccepted>())!.Id;
-            await Poll(() => admin.GetFromJsonAsync<RunView>("/api/rename-runs/" + runId),
-                r => r!.Status is not ("Queued" or "Running"));
-        }
+            (planId, runId) = await Rename(provisioned, "alpha.txt");
+        // An administrator's undo belongs to the user too, so it moves with the rest of their history.
+        using var rollback = await admin.PostAsJsonAsync($"/api/rename-runs/{runId}/rollback",
+            new SelectionRequest(["0"], Guid.NewGuid().ToString("N")));
+        Assert.Equal(HttpStatusCode.Accepted, rollback.StatusCode);
+        var rollbackId = (await rollback.Content.ReadFromJsonAsync<JobAccepted>())!.Id;
+        await Poll(() => admin.GetFromJsonAsync<RunView>("/api/rename-runs/" + rollbackId),
+            r => r!.Status is not ("Queued" or "Running"));
 
         using var merge = await admin.PostAsJsonAsync($"/api/users/{targetId}/merge",
             new { sourceUserId = source.GetProperty("id").GetInt64() });
@@ -239,10 +235,17 @@ public sealed class UsersApiTests : IDisposable
         Assert.Equal(1, merged.GetProperty("logins").GetArrayLength());
         Assert.Equal(HttpStatusCode.NotFound,
             (await admin.GetAsync($"/api/users/{source.GetProperty("id").GetInt64()}")).StatusCode);
-        var run = Assert.Single((await admin.GetFromJsonAsync<RunPage>("/api/rename-runs"))!.Items);
+        var run = (await admin.GetFromJsonAsync<RunView>("/api/rename-runs/" + runId))!;
         Assert.Equal((targetId, "frank"), (run.CreatedBy!.Id, run.CreatedBy.Username));
         var plan2 = (await admin.GetFromJsonAsync<PlanView>("/api/rename-plans/" + run.PlanId))!;
         Assert.Equal("frank", plan2.CreatedBy!.Username);
+
+        // The target user now owns the history: the plan, the rename and the administrator's undo.
+        using var frank = await SignIn(factory, "frank", "frank-real-password");
+        Assert.Equal(HttpStatusCode.OK, (await frank.GetAsync("/api/rename-plans/" + planId)).StatusCode);
+        Assert.Equal([rollbackId, runId],
+            (await frank.GetFromJsonAsync<RunPage>("/api/rename-runs"))!.Items.Select(r => r.Id));
+        Assert.Equal(HttpStatusCode.OK, (await frank.GetAsync("/api/rename-runs/" + rollbackId)).StatusCode);
     }
 
     private static async Task<T> Poll<T>(Func<Task<T>> read, Func<T, bool> done)

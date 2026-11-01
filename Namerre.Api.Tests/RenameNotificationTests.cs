@@ -199,6 +199,86 @@ public sealed class RenameNotificationTests : IDisposable
         Assert.Equal(accepted.Id, await ready.Task.WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
+    [Fact]
+    public async Task ChangesOnlyReachTheOwnerAndAdministrators()
+    {
+        File.WriteAllText(Path.Combine(Root, "alpha.txt"), "A");
+        using var factory = new AuthWebApplicationFactory().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration(
+            (_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Namerre:Authentication:Username"] = "",
+                ["Namerre:Authentication:PasswordHash"] = "",
+                ["Namerre:RootPath"] = Root,
+                ["Namerre:DataPath"] = Path.Combine(workspace, "data")
+            })));
+        CookieContainer adminCookies = new(), ownerCookies = new(), otherCookies = new();
+        using var admin = CookieClient(factory, adminCookies);
+        await AuthWebApplicationFactory.RefreshCsrf(admin);
+        using (var setup = await admin.PostAsJsonAsync("/api/auth/setup", new
+        {
+            token = factory.Services.GetRequiredService<UserAccounts>().SetupToken,
+            username = "installed-admin", password = "installed-admin-password"
+        }))
+            setup.EnsureSuccessStatusCode();
+        await SignIn(admin, "installed-admin", "installed-admin-password");
+        foreach (var username in new[] { "frank", "grace" })
+            using (var created = await admin.PostAsJsonAsync("/api/users", new { username, password = username + "-long-password" }))
+                created.EnsureSuccessStatusCode();
+        using var owner = CookieClient(factory, ownerCookies);
+        await SignIn(owner, "frank", "frank-long-password");
+        using var other = CookieClient(factory, otherCookies);
+        await SignIn(other, "grace", "grace-long-password");
+
+        await using var adminHub = ConnectHub(factory, adminCookies);
+        await using var ownerHub = ConnectHub(factory, ownerCookies);
+        await using var otherHub = ConnectHub(factory, otherCookies);
+        var adminChanges = Collect(adminHub);
+        var ownerChanges = Collect(ownerHub);
+        var otherChanges = Collect(otherHub);
+        await Task.WhenAll(adminHub.StartAsync(), ownerHub.StartAsync(), otherHub.StartAsync());
+
+        var request = new PipelineRequest([new FileInput("0", "alpha.txt")],
+            [new PluginInstance("upper", "case", 1, true, JsonSerializer.SerializeToElement(new { mode = "upper" }))]);
+        using var prepare = await owner.PostAsJsonAsync("/api/rename-plans", request);
+        Assert.Equal(HttpStatusCode.Accepted, prepare.StatusCode);
+        var plan = (await prepare.Content.ReadFromJsonAsync<JobAccepted>())!.Id;
+        // A change without an owner, such as a watch folder's, is for administrators only.
+        factory.Services.GetRequiredService<IRenameNotifier>().Changed(new("Run", "ownerless", "Completed"));
+
+        await WaitFor(adminChanges, changes => changes.Any(c => c is { Kind: "Plan", Status: "Ready" } && c.Id == plan)
+            && changes.Any(c => c.Id == "ownerless"));
+        await WaitFor(ownerChanges, changes => changes.Any(c => c is { Kind: "Plan", Status: "Ready" } && c.Id == plan));
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        lock (ownerChanges) Assert.DoesNotContain(ownerChanges, c => c.Id == "ownerless");
+        lock (otherChanges) Assert.Empty(otherChanges);
+    }
+
+    private static async Task SignIn(HttpClient client, string username, string password)
+    {
+        await AuthWebApplicationFactory.RefreshCsrf(client);
+        using (var login = await client.PostAsJsonAsync("/api/auth/login", new { username, password }))
+            login.EnsureSuccessStatusCode();
+        await AuthWebApplicationFactory.RefreshCsrf(client);
+    }
+
+    private static List<RenameChange> Collect(HubConnection connection)
+    {
+        var changes = new List<RenameChange>();
+        connection.On<RenameChange>("renameChanged", change => { lock (changes) changes.Add(change); });
+        return changes;
+    }
+
+    private static async Task WaitFor(List<RenameChange> changes, Func<List<RenameChange>, bool> done)
+    {
+        for (var i = 0; i < 200; i++)
+        {
+            lock (changes)
+                if (done(changes)) return;
+            await Task.Delay(50);
+        }
+        throw new TimeoutException();
+    }
+
     private static HttpClient CookieClient(WebApplicationFactory<Program> factory, CookieContainer cookies)
         => new(new CookieContainerHandler(cookies) { InnerHandler = factory.Server.CreateHandler() })
         {
