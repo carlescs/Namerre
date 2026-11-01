@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Plugins;
 using NSubstitute;

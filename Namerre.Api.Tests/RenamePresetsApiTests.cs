@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Presets;
 using Namerre.Infrastructure.Renaming;

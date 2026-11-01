@@ -1,3 +1,5 @@
+using Namerre.Application.Renaming.Pipeline;
+
 namespace Namerre.Application.Renaming;
 
 /// <param name="IncludeCompanions">Renames subtitles, <c>.nfo</c> files and artwork in the request together with

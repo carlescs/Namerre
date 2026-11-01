@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Metadata;
 using Namerre.Application.Renaming.Plugins;

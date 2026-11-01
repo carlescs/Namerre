@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CMediator.Abstractions;
 using Microsoft.AspNetCore.Mvc;
+using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Metadata;
 using Namerre.Application.Renaming.Plans;

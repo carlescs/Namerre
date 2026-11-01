@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Namerre.Application.Folders;
+using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Metadata;
 using Namerre.Application.Renaming.Plans;
