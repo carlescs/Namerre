@@ -183,6 +183,83 @@ public sealed class WatchFolderServiceTests
     }
 
     [Fact]
+    public async Task APlanThatKeepsFailingToPrepareDoublesTheBackOffAndIsIgnoredAfterTheLastAttempt()
+    {
+        settings = settings with { MaxAttempts = 3 };
+        var service = Service();
+        var plan = Guid.NewGuid().ToString("N");
+        renames.Prepare(default!, default, default).ReturnsForAnyArgs(new JobAccepted(plan, "Queued", "/plan"));
+        renames.GetPlan(plan, Arg.Any<CancellationToken>()).Returns(Plan(plan, "Failed", "Disk full"));
+        await Stabilize(service);
+
+        await Scan(service, Interval);
+        Assert.Equal((WatchFileState.Failed, 1, time.GetUtcNow() + Interval),
+            (files.Rows[0].State, files.Rows[0].Attempts, files.Rows[0].NextAttemptAt));
+
+        // Queued again once the wait is over: the attempts survive and the wait doubles.
+        await Scan(service, Interval);
+        Assert.Equal((WatchFileState.Queued, 1), (files.Rows[0].State, files.Rows[0].Attempts));
+        await Scan(service, Interval);
+        Assert.Equal((WatchFileState.Failed, 2, time.GetUtcNow() + Interval * 2),
+            (files.Rows[0].State, files.Rows[0].Attempts, files.Rows[0].NextAttemptAt));
+
+        await Scan(service, Interval * 2);
+        await Scan(service, Interval);
+        var ignored = Assert.Single(files.Rows);
+        Assert.Equal((WatchFileState.Ignored, 3, null), (ignored.State, ignored.Attempts, ignored.NextAttemptAt));
+    }
+
+    [Fact]
+    public async Task ARunThatKeepsBeingInterruptedDoublesTheBackOffAndIsIgnoredAfterTheLastAttempt()
+    {
+        settings = settings with { MaxAttempts = 3 };
+        var service = Service();
+        var plan = Guid.NewGuid().ToString("N");
+        renames.Prepare(default!, default, default).ReturnsForAnyArgs(new JobAccepted(plan, "Queued", "/plan"));
+        renames.GetPlan(plan, Arg.Any<CancellationToken>()).Returns(Plan(plan, "Ready"));
+        renames.Execute(plan, Arg.Any<ExecuteRequest>(), Arg.Any<CancellationToken>()).Returns(new JobAccepted("run", "Queued", "/run"));
+        renames.GetRun("run", Arg.Any<CancellationToken>()).Returns(Run("RecoveryRequired") with { Error = "Interrupted" });
+        await Stabilize(service);
+
+        await Scan(service, Interval);
+        Assert.Equal((WatchFileState.Queued, "run"), (files.Rows[0].State, files.Rows[0].RunId));
+        await Scan(service, Interval);
+        Assert.Equal((WatchFileState.Failed, 1, time.GetUtcNow() + Interval),
+            (files.Rows[0].State, files.Rows[0].Attempts, files.Rows[0].NextAttemptAt));
+
+        await Scan(service, Interval);
+        Assert.Equal((WatchFileState.Queued, 1), (files.Rows[0].State, files.Rows[0].Attempts));
+        await Scan(service, Interval);
+        await Scan(service, Interval);
+        Assert.Equal((WatchFileState.Failed, 2, time.GetUtcNow() + Interval * 2),
+            (files.Rows[0].State, files.Rows[0].Attempts, files.Rows[0].NextAttemptAt));
+
+        await Scan(service, Interval * 2);
+        await Scan(service, Interval);
+        await Scan(service, Interval);
+        var ignored = Assert.Single(files.Rows);
+        Assert.Equal((WatchFileState.Ignored, 3, null), (ignored.State, ignored.Attempts, ignored.NextAttemptAt));
+    }
+
+    [Fact]
+    public async Task AChangedFileQueuedAfterFailuresStartsAgainFromTheFirstAttempt()
+    {
+        var service = Service();
+        var plan = Guid.NewGuid().ToString("N");
+        renames.Prepare(default!, default, default).ReturnsForAnyArgs(new JobAccepted(plan, "Queued", "/plan"));
+        renames.GetPlan(plan, Arg.Any<CancellationToken>()).Returns(Plan(plan, "Failed", "Disk full"));
+        files.Seed(new WatchedFile(Folder, "downloads/show.txt", 10, Modified.Ticks, WatchFileState.Failed, 1,
+            time.GetUtcNow(), "old"));
+        listed[0] = new("show.txt", 99, Modified);
+        await Stabilize(service);
+        Assert.Equal((WatchFileState.Queued, 99L, 0), (files.Rows[0].State, files.Rows[0].Size, files.Rows[0].Attempts));
+
+        await Scan(service, Interval);
+
+        Assert.Equal((WatchFileState.Failed, 1), (files.Rows[0].State, files.Rows[0].Attempts));
+    }
+
+    [Fact]
     public void RetryForgetsOnlyFailedOrIgnoredFiles()
     {
         var service = Service();

@@ -342,19 +342,29 @@ public sealed class WatchFolderService(IWatchFolderConfiguration configuration, 
     public static TimeSpan BackOff(TimeSpan interval, int attempts)
         => TimeSpan.FromTicks((long)Math.Min(MaxBackOff.Ticks, interval.Ticks * Math.Pow(2, Math.Max(0, attempts - 1))));
 
-    /// <summary>The file's record moved to <paramref name="state"/>; progress and errors reset when it is queued or done.</summary>
+    /// <summary>
+    /// The file's record moved to <paramref name="state"/>. Errors and the back-off reset when it is queued or done; the
+    /// failed attempts survive queueing (so a plan or run that fails again keeps counting) and reset when the file is
+    /// done or its fingerprint changed.
+    /// </summary>
     private WatchedFile Record(string folder, string path, (long Size, long Ticks) fingerprint, WatchFileState state,
         DateTimeOffset now, WatchedFile? existing = null)
     {
-        var row = (existing ?? files.Get(folder, path) ?? new WatchedFile(folder, path, 0, 0, state)) with
+        var previous = existing ?? files.Get(folder, path);
+        var changed = previous is not null && !previous.Matches(fingerprint.Size, fingerprint.Ticks);
+        var row = (previous ?? new WatchedFile(folder, path, 0, 0, state)) with
         {
             Size = fingerprint.Size,
             ModifiedTicks = fingerprint.Ticks,
             State = state,
             UpdatedAt = now
         };
-        return state is WatchFileState.Done or WatchFileState.Queued
-            ? row with { Attempts = 0, Error = null, NextAttemptAt = null } : row;
+        return state switch
+        {
+            WatchFileState.Done => row with { Attempts = 0, Error = null, NextAttemptAt = null },
+            WatchFileState.Queued => row with { Attempts = changed ? 0 : row.Attempts, Error = null, NextAttemptAt = null },
+            _ => row
+        };
     }
 
     private WatchFolderStatus Status(WatchFolderSettings settings)
