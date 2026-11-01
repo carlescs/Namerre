@@ -7,6 +7,16 @@ label {
   margin-bottom: 0.5rem;
 }
 
+dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: 85vh;
+  padding: 1.5rem;
+
+  form {
+    max-width: none;
+  }
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -16,5 +26,5 @@ th,
 td {
   padding: 0.5rem 0.75rem 0.5rem 0;
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
 }

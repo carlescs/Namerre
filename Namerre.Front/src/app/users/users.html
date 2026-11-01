@@ -16,52 +16,50 @@
 
   @if (users(); as list) {
     <section class="surface overflow-x-auto p-6" aria-labelledby="users-heading">
-      <h2 id="users-heading" class="text-lg">
-        {{ list.length }} {{ list.length === 1 ? 'user' : 'users' }}
-      </h2>
+      <div class="mb-4 flex items-center justify-between gap-3">
+        <h2 id="users-heading" class="my-0 text-lg">
+          {{ list.length }} {{ list.length === 1 ? 'user' : 'users' }}
+        </h2>
+        <button type="button" class="btn-primary" (click)="openCreate()">Add user</button>
+      </div>
       <table>
         <thead>
           <tr>
             <th scope="col">Username</th>
-            <th scope="col">Role</th>
-            <th scope="col">Sign-in methods</th>
-            <th scope="col" class="max-sm:hidden">Last sign-in</th>
+            <th scope="col" class="max-sm:hidden">Role</th>
+            <th scope="col" class="max-sm:hidden">Sign-in methods</th>
+            <th scope="col" class="max-lg:hidden">Last sign-in</th>
             <th scope="col"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
           @for (user of list; track user.id) {
             <tr [class.opacity-60]="user.disabled">
-              <td>
-                <strong>{{ user.username }}</strong>
-                @if (isSelf(user)) {
-                  <span class="text-xs text-slate-500 dark:text-slate-400"> (you)</span>
-                }
-                @if (user.disabled) {
-                  <span class="badge ml-2">Disabled</span>
-                }
-                @if (user.managedByConfiguration) {
-                  <span class="block text-xs text-slate-500 dark:text-slate-400">
-                    Configured on the server
-                  </span>
-                }
+              <td class="w-full max-w-0">
+                <div class="flex min-w-0 items-center gap-2">
+                  <strong class="truncate" [title]="user.username">{{ user.username }}</strong>
+                  @if (isSelf(user)) {
+                    <span class="shrink-0 text-xs text-slate-500 dark:text-slate-400">(you)</span>
+                  }
+                  @if (user.role === 'Admin') {
+                    <span class="badge shrink-0 sm:hidden">Admin</span>
+                  }
+                  @if (user.disabled) {
+                    <span class="badge shrink-0">Disabled</span>
+                  }
+                  @if (user.managedByConfiguration) {
+                    <span class="badge shrink-0" title="Configured on the server">Server</span>
+                  }
+                </div>
               </td>
-              <td>{{ user.role === 'Admin' ? 'Administrator' : 'User' }}</td>
-              <td>
-                @if (user.hasPassword) {
-                  <span class="block">Password</span>
-                }
-                @for (login of user.logins; track login.id) {
-                  <span class="block">{{ login.displayName }}</span>
-                }
-                @if (!methods(user)) {
-                  <span class="text-slate-500 dark:text-slate-400">None</span>
-                }
+              <td class="whitespace-nowrap max-sm:hidden">
+                {{ user.role === 'Admin' ? 'Administrator' : 'User' }}
               </td>
-              <td class="max-sm:hidden">
+              <td class="whitespace-nowrap max-sm:hidden">{{ methodSummary(user) }}</td>
+              <td class="whitespace-nowrap max-lg:hidden">
                 {{ user.lastSignInAt ? (user.lastSignInAt | date: 'medium') : 'Never' }}
               </td>
-              <td>
+              <td class="whitespace-nowrap text-right">
                 @if (!user.managedByConfiguration) {
                   <button
                     type="button"
@@ -259,8 +257,12 @@
       </section>
     }
 
-    <section class="surface mt-6 p-6" aria-labelledby="create-heading">
-      <h2 id="create-heading" class="text-lg">Add a user</h2>
+    <dialog
+      #createDialog
+      aria-labelledby="create-heading"
+      (cancel)="$event.preventDefault(); closeCreate()"
+    >
+      <h2 id="create-heading" class="mt-0 text-lg">Add a user</h2>
       <form [formGroup]="createForm" (ngSubmit)="create()">
         <label for="new-username">Username</label>
         <input id="new-username" formControlName="username" maxlength="128" required />
@@ -287,19 +289,25 @@
             auth.singleSignOn() ? ', a single sign-on identity, or both' : ''
           }}.
         </p>
-        <button
-          class="btn-primary mt-4"
-          type="submit"
-          [disabled]="
-            busy() ||
-            createForm.invalid ||
-            (!createForm.controls.password.value && !createForm.controls.subject.value.trim())
-          "
-        >
-          Add user
-        </button>
+        @if (createError()) {
+          <p class="error mt-3" role="alert">{{ createError() }}</p>
+        }
+        <div class="actions mt-4 justify-end gap-2">
+          <button type="button" (click)="closeCreate()" [disabled]="busy()">Cancel</button>
+          <button
+            class="btn-primary"
+            type="submit"
+            [disabled]="
+              busy() ||
+              createForm.invalid ||
+              (!createForm.controls.password.value && !createForm.controls.subject.value.trim())
+            "
+          >
+            Add user
+          </button>
+        </div>
       </form>
-    </section>
+    </dialog>
   } @else if (!error()) {
     <p role="status">Loading users…</p>
   }

@@ -1,10 +1,19 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, type OnInit, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  type ElementRef,
+  inject,
+  type OnInit,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom, type Observable } from 'rxjs';
 import { Auth, type LinkedLogin, minimumPasswordLength, type UserRole } from '../auth/auth';
+import { openModal } from '../workflow-mode/workflow-onboarding';
 import { type MoveSource, UsersApi, type UserView } from './users-api';
 
 /** An identity linked to some user, offered to move to another one. */
@@ -45,6 +54,8 @@ export class Users implements OnInit {
   protected readonly status = signal('');
   protected readonly confirmingDelete = signal(false);
   protected readonly minimumPasswordLength = minimumPasswordLength;
+  protected readonly createError = signal('');
+  private readonly createDialog = viewChild<ElementRef<HTMLDialogElement>>('createDialog');
   protected readonly createForm = new FormGroup({
     username: new FormControl('', {
       nonNullable: true,
@@ -103,6 +114,29 @@ export class Users implements OnInit {
     this.status.set('');
   }
 
+  /** Sign-in methods on one line, e.g. "Password, alice". */
+  protected methodSummary(user: UserView): string {
+    const methods = [
+      ...(user.hasPassword ? ['Password'] : []),
+      ...user.logins.map((l) => l.displayName),
+    ];
+    return methods.length ? methods.join(', ') : 'None';
+  }
+
+  protected openCreate(): void {
+    this.createForm.reset({ username: '', role: 'User', password: '', subject: '' });
+    this.createError.set('');
+    const dialog = this.createDialog()?.nativeElement;
+    if (dialog) openModal(dialog);
+  }
+
+  protected closeCreate(): void {
+    const dialog = this.createDialog()?.nativeElement;
+    if (!dialog) return;
+    if (typeof dialog.close === 'function') dialog.close();
+    else dialog.removeAttribute('open');
+  }
+
   protected async create(): Promise<void> {
     const { username, role, password, subject } = this.createForm.getRawValue();
     if (this.createForm.invalid || (!password && !subject.trim())) return;
@@ -116,7 +150,14 @@ export class Users implements OnInit {
       }),
       `Created ${username.trim()}.`,
     );
-    if (created) this.createForm.reset({ username: '', role: 'User', password: '', subject: '' });
+    if (created) {
+      this.closeCreate();
+      this.createForm.reset({ username: '', role: 'User', password: '', subject: '' });
+    } else {
+      // Keep the dialog open and explain there, rather than behind it.
+      this.createError.set(this.error());
+      this.error.set('');
+    }
   }
 
   protected setRole(user: UserView, role: string): Promise<unknown> {
