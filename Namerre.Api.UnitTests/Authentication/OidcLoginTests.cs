@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 using Namerre.Application.Authentication;
 using Namerre.Authentication;
 using Namerre.Infrastructure.Configuration;
-using NSubstitute;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 using AuthenticationOptions = Namerre.Infrastructure.Configuration.AuthenticationOptions;
 
@@ -17,9 +17,9 @@ public sealed class OidcLoginTests
         var oidc = Create(new OidcOptions());
 
         Assert.False(oidc.Enabled);
-        Assert.Null(oidc.CreateSessionPrincipal(External(("sub", "1"))));
+        Assert.Null(oidc.Read(External(("sub", "1"))));
         Assert.False(oidc.IsValidSession(new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(AdminAccount.StampClaim, "")]))));
+            [new Claim(UserSession.OidcStampClaim, "")]))));
     }
 
     public static TheoryData<OidcOptions, string> InvalidSettings => new()
@@ -71,50 +71,67 @@ public sealed class OidcLoginTests
         => Assert.False(OidcLogin.HasRole(External(("realm_access", value)), "realm_access.roles", "namerre-admin"));
 
     [Fact]
-    public void CreatesAMinimalStampedSessionForUsersWithTheRole()
+    public void ReadsTheStableSubjectOfIdentitiesWithTheRole()
     {
-        var oidc = Create(Valid());
-
-        var principal = oidc.CreateSessionPrincipal(External(("sub", "subject-1"),
+        var identity = Create(Valid(options => options.Authority += "/")).Read(External(("sub", "subject-1"),
             ("preferred_username", "alice"), ("email", "alice@example.com"),
             ("realm_access", """{"roles":["namerre-admin"]}""")));
 
-        Assert.NotNull(principal);
-        Assert.Equal("alice", principal.Identity!.Name);
-        Assert.Equal("subject-1", principal.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-        Assert.Null(principal.FindFirst("email"));
-        Assert.True(oidc.IsValidSession(principal));
-        Assert.True(AuthenticationSetup.IsValidSession(principal, UnconfiguredAccount(), oidc));
+        Assert.Equal(new ExternalIdentity("https://keycloak.example/realms/media", "subject-1", "alice"), identity);
     }
 
     [Fact]
     public void FallsBackToTheSubjectWhenTheUsernameClaimIsMissing()
-        => Assert.Equal("subject-1", Create(Valid()).CreateSessionPrincipal(External(("sub", "subject-1"),
-            ("realm_access", """{"roles":["namerre-admin"]}""")))!.Identity!.Name);
+        => Assert.Equal("subject-1", Create(Valid()).Read(External(("sub", "subject-1"),
+            ("realm_access", """{"roles":["namerre-admin"]}""")))!.Username);
 
     [Fact]
-    public void RejectsUsersWithoutTheRole()
-        => Assert.Null(Create(Valid()).CreateSessionPrincipal(External(("sub", "subject-1"),
-            ("preferred_username", "mallory"), ("realm_access", """{"roles":["user"]}"""))));
-
-    [Fact]
-    public void ChangingAccessSettingsInvalidatesSessions()
+    public void RejectsUsersWithoutTheRoleOrASubject()
     {
-        var principal = Create(Valid()).CreateSessionPrincipal(External(("sub", "1"),
-            ("realm_access", """{"roles":["namerre-admin","other"]}""")))!;
-
-        Assert.False(Create(Valid(options => options.RequiredRole = "other")).IsValidSession(principal));
-        Assert.False(AuthenticationSetup.IsValidSession(principal, UnconfiguredAccount(), Create(new OidcOptions())));
+        Assert.Null(Create(Valid()).Read(External(("sub", "subject-1"),
+            ("preferred_username", "mallory"), ("realm_access", """{"roles":["user"]}"""))));
+        Assert.Null(Create(Valid()).Read(External(("preferred_username", "mallory"),
+            ("realm_access", """{"roles":["namerre-admin"]}"""))));
     }
 
     [Fact]
-    public void LocalStampsDoNotValidateSingleSignOnSessionsOrViceVersa()
+    public void SessionsOfLocalUsersAreValidUntilTheirStampOrSingleSignOnSettingsChange()
     {
         var oidc = Create(Valid());
-        var local = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(AdminAccount.StampClaim, oidc.Stamp)], "Cookies"));
+        var store = new InMemoryUserStore();
+        var accounts = new UserAccounts(Options.Create(new NamerreOptions
+        {
+            Authentication = new AuthenticationOptions { Username = "root", PasswordHash = Passwords.HashPassword("a long password") }
+        }), store, NullLogger<UserAccounts>.Instance);
+        var (user, _, _) = accounts.SignInExternal(new ExternalIdentity(oidc.Issuer, "1", "alice"), true);
+        var principal = UserSession.Create(user!, UserSession.SingleSignOnMethod, oidc.Stamp, DateTimeOffset.UtcNow);
+        var local = UserSession.Create(user!, UserSession.PasswordMethod, null, DateTimeOffset.UtcNow);
 
-        Assert.False(AuthenticationSetup.IsValidSession(local, UnconfiguredAccount(), oidc));
+        Assert.True(AuthenticationSetup.IsValidSession(principal, accounts, oidc));
+        Assert.True(AuthenticationSetup.IsValidSession(local, accounts, oidc));
+        Assert.False(AuthenticationSetup.IsValidSession(principal, accounts,
+            Create(Valid(options => options.RequiredRole = "other"))));
+        Assert.False(AuthenticationSetup.IsValidSession(principal, accounts, Create(new OidcOptions())));
+
+        accounts.Update(new UserReference(99, "admin"), user!.Id, UserRole.Admin, null);
+
+        Assert.False(AuthenticationSetup.IsValidSession(principal, accounts, oidc));
+        Assert.False(AuthenticationSetup.IsValidSession(local, accounts, oidc));
+    }
+
+    [Fact]
+    public void ARecentSignInIsTheProvidersAuthenticationTime()
+    {
+        var now = new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero);
+        var earlier = now.AddHours(-3);
+
+        Assert.Equal(earlier, AuthenticationSetup.AuthenticatedAt(
+            External(("auth_time", earlier.ToUnixTimeSeconds().ToString())), now));
+        // Missing, malformed or future times count as now.
+        Assert.Equal(now, AuthenticationSetup.AuthenticatedAt(External(("sub", "1")), now));
+        Assert.Equal(now, AuthenticationSetup.AuthenticatedAt(External(("auth_time", "soon")), now));
+        Assert.Equal(now, AuthenticationSetup.AuthenticatedAt(
+            External(("auth_time", now.AddHours(1).ToUnixTimeSeconds().ToString())), now));
     }
 
     private static OidcLogin Create(OidcOptions options) => new(Options.Create(new NamerreOptions
@@ -136,7 +153,4 @@ public sealed class OidcLoginTests
 
     private static ClaimsPrincipal External(params (string Type, string Value)[] claims)
         => new(new ClaimsIdentity(claims.Select(claim => new Claim(claim.Type, claim.Value)), "oidc"));
-
-    private static AdminAccount UnconfiguredAccount()
-        => new(Options.Create(new NamerreOptions()), Substitute.For<IAdministratorStore>());
 }

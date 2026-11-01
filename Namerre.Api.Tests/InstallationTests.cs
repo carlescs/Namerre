@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Namerre.Application.Authentication;
 using Namerre.Authentication;
 using Namerre.Infrastructure.Renaming;
 using Xunit;
@@ -38,7 +39,7 @@ public sealed class InstallationTests : IDisposable
         using var denied = await client.GetAsync("/api/folders");
         Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
         using var database = OpenDatabase();
-        Assert.Empty(database.Administrators);
+        Assert.Empty(database.Users);
     }
 
     [Fact]
@@ -54,8 +55,8 @@ public sealed class InstallationTests : IDisposable
             new { token = new string('0', 64), Username, Password });
         Assert.Equal(HttpStatusCode.Forbidden, invalid.StatusCode);
         using var database = OpenDatabase();
-        Assert.Empty(database.Administrators);
-        Assert.True(factory.Services.GetRequiredService<AdminAccount>().RequiresSetup);
+        Assert.Empty(database.Users);
+        Assert.True(factory.Services.GetRequiredService<UserAccounts>().RequiresSetup);
     }
 
     [Theory]
@@ -72,7 +73,7 @@ public sealed class InstallationTests : IDisposable
             new { token = Token(factory), username, password });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         using var database = OpenDatabase();
-        Assert.Empty(database.Administrators);
+        Assert.Empty(database.Users);
     }
 
     [Theory]
@@ -88,7 +89,7 @@ public sealed class InstallationTests : IDisposable
         Assert.Equal(HttpStatusCode.BadRequest, setup.StatusCode);
         Assert.Contains("at least 12 characters", await setup.Content.ReadAsStringAsync());
         using (var database = OpenDatabase())
-            Assert.Empty(database.Administrators);
+            Assert.Empty(database.Users);
 
         using var retry = await client.PostAsJsonAsync("/api/auth/setup", new { token, Username, Password });
         Assert.Equal(HttpStatusCode.NoContent, retry.StatusCode);
@@ -133,14 +134,14 @@ public sealed class InstallationTests : IDisposable
             token = Token(factory);
             using var setup = await client.PostAsJsonAsync("/api/auth/setup", new { token, Username, Password });
             Assert.Equal(HttpStatusCode.NoContent, setup.StatusCode);
-            Assert.Null(factory.Services.GetRequiredService<AdminAccount>().SetupToken);
+            Assert.Null(factory.Services.GetRequiredService<UserAccounts>().SetupToken);
             using var database = OpenDatabase();
-            var account = Assert.Single(database.Administrators);
+            var account = Assert.Single(database.Users);
             Assert.Equal(1, account.Id);
-            Assert.Equal(Username, account.Username);
+            Assert.Equal((Username, "Admin"), (account.Username, account.Role));
             Assert.NotEqual(Password, account.PasswordHash);
-            Assert.True(factory.Services.GetRequiredService<AdminAccount>().Verify(Username, Password));
-            Assert.False(factory.Services.GetRequiredService<AdminAccount>().Verify(Username, "incorrect"));
+            Assert.NotNull(factory.Services.GetRequiredService<UserAccounts>().Authenticate(Username, Password));
+            Assert.Null(factory.Services.GetRequiredService<UserAccounts>().Authenticate(Username, "incorrect"));
             Assert.NotEmpty(database.Database.GetAppliedMigrations());
         }
 
@@ -149,7 +150,7 @@ public sealed class InstallationTests : IDisposable
         {
             var session = await client.GetFromJsonAsync<Session>("/api/auth/session");
             Assert.False(session!.RequiresSetup);
-            Assert.Null(factory.Services.GetRequiredService<AdminAccount>().SetupToken);
+            Assert.Null(factory.Services.GetRequiredService<UserAccounts>().SetupToken);
             await AuthWebApplicationFactory.RefreshCsrf(client);
             using var duplicate = await client.PostAsJsonAsync("/api/auth/setup",
                 new { token, username = "replacement", password = Password });
@@ -159,12 +160,12 @@ public sealed class InstallationTests : IDisposable
             using var folders = await client.GetAsync("/api/folders");
             Assert.Equal(HttpStatusCode.OK, folders.StatusCode);
             using var database = OpenDatabase();
-            Assert.Equal(Username, Assert.Single(database.Administrators).Username);
+            Assert.Equal(Username, Assert.Single(database.Users).Username);
         }
     }
 
     [Fact]
-    public async Task UpgradePreservesExistingHistoryAndTheDatabaseEnforcesOneAdministrator()
+    public async Task UpgradePreservesExistingHistory()
     {
         Directory.CreateDirectory(Data);
         using (var database = OpenDatabase())
@@ -187,20 +188,48 @@ public sealed class InstallationTests : IDisposable
         using var setup = await client.PostAsJsonAsync("/api/auth/setup",
             new { token = Token(factory), Username, Password });
         Assert.Equal(HttpStatusCode.NoContent, setup.StatusCode);
-        var store = factory.Services.GetRequiredService<Namerre.Application.Authentication.IAdministratorStore>();
-        Assert.False(store.TryCreate(new("replacement", AdminAccount.HashPassword(Password))));
         using var upgraded = OpenDatabase();
         var documents = upgraded.Documents.OrderBy(d => d.Order).ToArray();
         Assert.Equal(["existing-history", "existing-rollback"], documents.Select(d => d.Id));
         Assert.Null(documents[0].ParentId);
         Assert.Equal("existing-history", documents[1].ParentId);
-        Assert.Equal(Username, Assert.Single(upgraded.Administrators).Username);
+        Assert.Equal(Username, Assert.Single(upgraded.Users).Username);
         Assert.Empty(upgraded.Database.GetPendingMigrations());
-        upgraded.Administrators.Add(new AdministratorAccount
+    }
+
+    [Fact]
+    public async Task TheSingleAdministratorBecomesTheFirstAdminUserAndKeepsItsPassword()
+    {
+        Directory.CreateDirectory(Data);
+        using (var database = OpenDatabase())
         {
-            Id = 2, Username = "second-admin", PasswordHash = AdminAccount.HashPassword(Password)
-        });
-        await Assert.ThrowsAsync<DbUpdateException>(() => upgraded.SaveChangesAsync());
+            database.GetService<IMigrator>().Migrate("20261031114527_AddWatchFolders");
+            database.Database.OpenConnection();
+            using var seed = database.Database.GetDbConnection().CreateCommand();
+            seed.CommandText = """
+                INSERT INTO "Administrators" ("Id", "Username", "PasswordHash") VALUES (1, $username, $hash);
+                """;
+            seed.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("$username", Username));
+            seed.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("$hash", Passwords.HashPassword(Password)));
+            seed.ExecuteNonQuery();
+        }
+
+        using var factory = Factory();
+        using var client = AuthWebApplicationFactory.AnonymousClient(factory);
+        var before = await client.GetFromJsonAsync<Session>("/api/auth/session");
+        await AuthWebApplicationFactory.RefreshCsrf(client);
+        using var login = await client.PostAsJsonAsync("/api/auth/login", new { Username, Password });
+        await AuthWebApplicationFactory.RefreshCsrf(client);
+        using var users = await client.GetAsync("/api/users");
+
+        Assert.False(before!.RequiresSetup);
+        Assert.Equal(HttpStatusCode.NoContent, login.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, users.StatusCode);
+        using var upgraded = OpenDatabase();
+        var user = Assert.Single(upgraded.Users);
+        Assert.Equal((1L, Username, "Admin", false), (user.Id, user.Username, user.Role, user.Disabled));
+        Assert.Equal(32, user.Stamp.Length);
+        Assert.Empty(upgraded.Database.GetPendingMigrations());
     }
 
     [Fact]
@@ -218,7 +247,7 @@ public sealed class InstallationTests : IDisposable
             Assert.Single(responses, response => response.StatusCode == HttpStatusCode.NoContent);
             Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
             using var database = OpenDatabase();
-            Assert.Single(database.Administrators);
+            Assert.Single(database.Users);
         }
         finally
         {
@@ -235,7 +264,7 @@ public sealed class InstallationTests : IDisposable
         await AuthWebApplicationFactory.RefreshCsrf(client);
         var session = await client.GetFromJsonAsync<Session>("/api/auth/session");
         Assert.False(session!.RequiresSetup);
-        Assert.Null(factory.Services.GetRequiredService<AdminAccount>().SetupToken);
+        Assert.Null(factory.Services.GetRequiredService<UserAccounts>().SetupToken);
         using var setup = await client.PostAsJsonAsync("/api/auth/setup",
             new { token = new string('0', 64), Username, Password });
         Assert.Equal(HttpStatusCode.Conflict, setup.StatusCode);
@@ -278,8 +307,8 @@ public sealed class InstallationTests : IDisposable
 
         using (var factory = Factory())
         {
-            Assert.True(factory.Services.GetRequiredService<AdminAccount>().Verify(Username, newPassword));
-            Assert.False(factory.Services.GetRequiredService<AdminAccount>().Verify(Username, Password));
+            Assert.NotNull(factory.Services.GetRequiredService<UserAccounts>().Authenticate(Username, newPassword));
+            Assert.Null(factory.Services.GetRequiredService<UserAccounts>().Authenticate(Username, Password));
         }
     }
 
@@ -319,14 +348,13 @@ public sealed class InstallationTests : IDisposable
     public async Task FailedDatabaseWriteDoesNotCompleteInstallationOrConsumeTheToken()
     {
         using var factory = Factory().WithWebHostBuilder(builder =>
-            builder.ConfigureServices(services => services.AddSingleton<Namerre.Application.Authentication.IAdministratorStore>(
-                new FailingStore())));
+            builder.ConfigureServices(services => services.AddSingleton<IUserStore>(new FailingStore())));
         using var client = AuthWebApplicationFactory.AnonymousClient(factory);
         await AuthWebApplicationFactory.RefreshCsrf(client);
         var token = Token(factory);
         using var setup = await client.PostAsJsonAsync("/api/auth/setup", new { token, Username, Password });
         Assert.Equal(HttpStatusCode.ServiceUnavailable, setup.StatusCode);
-        var account = factory.Services.GetRequiredService<AdminAccount>();
+        var account = factory.Services.GetRequiredService<UserAccounts>();
         Assert.True(account.RequiresSetup);
         Assert.Equal(token, account.SetupToken);
     }
@@ -346,21 +374,28 @@ public sealed class InstallationTests : IDisposable
         .UseSqlite($"Data Source={Path.Combine(Data, "renaming.sqlite3")};Pooling=False").Options);
 
     private static string Token(WebApplicationFactory<Program> factory)
-        => factory.Services.GetRequiredService<AdminAccount>().SetupToken
+        => factory.Services.GetRequiredService<UserAccounts>().SetupToken
             ?? throw new InvalidOperationException("Expected an unconfigured administrator.");
 
     public void Dispose() => Directory.Delete(workspace, recursive: true);
 
     private sealed record Session(string? Username, bool RequiresSetup, bool CanChangePassword);
 
-    private sealed class FailingStore : Namerre.Application.Authentication.IAdministratorStore
+    private sealed class FailingStore : IUserStore
     {
-        public Namerre.Application.Authentication.AdminCredentials? Load() => null;
-        public bool TryCreate(Namerre.Application.Authentication.AdminCredentials credentials)
-            => throw new Namerre.Application.Authentication.AdministratorStorageException(
-                "Database is read-only.", new IOException("read-only"));
-        public bool TryUpdate(Namerre.Application.Authentication.AdminCredentials current, string passwordHash)
-            => throw new Namerre.Application.Authentication.AdministratorStorageException(
-                "Database is read-only.", new IOException("read-only"));
+        public bool IsAvailable => true;
+        public IReadOnlyList<UserRecord> List() => [];
+        public bool TryCreate(UserRecord user, out UserRecord created) => throw Failure();
+        public bool TryUpdate(UserRecord updated, string expectedStamp) => throw Failure();
+        public bool TryAddLogin(long userId, string expectedStamp, string newStamp, UserLoginRecord login)
+            => throw Failure();
+        public bool TryRemoveLogin(long userId, string expectedStamp, string newStamp, long loginId) => throw Failure();
+        public bool TryMoveLogin(long loginId, long fromUserId, string fromStamp, long toUserId, string toStamp,
+            string newStamp, bool deleteSource) => throw Failure();
+        public bool TryMergeUser(long fromUserId, string fromStamp, long toUserId, string toStamp,
+            string newStamp) => throw Failure();
+        public bool TryDelete(long userId, string expectedStamp) => throw Failure();
+        public void RecordSignIn(long userId, long? loginId, DateTimeOffset at) => throw Failure();
+        private static UserStorageException Failure() => new("Database is read-only.", new IOException("read-only"));
     }
 }

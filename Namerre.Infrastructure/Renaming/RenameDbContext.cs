@@ -9,7 +9,8 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
     public DbSet<DurableRenameJob> Jobs => Set<DurableRenameJob>();
     public DbSet<RenameOperation> Operations => Set<RenameOperation>();
     public DbSet<RenameSetting> Settings => Set<RenameSetting>();
-    public DbSet<AdministratorAccount> Administrators => Set<AdministratorAccount>();
+    public DbSet<UserRow> Users => Set<UserRow>();
+    public DbSet<UserLoginRow> UserLogins => Set<UserLoginRow>();
     public DbSet<RenamePresetRow> Presets => Set<RenamePresetRow>();
     public DbSet<WatchedFileRow> WatchedFiles => Set<WatchedFileRow>();
 
@@ -42,14 +43,28 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
             entity.HasOne<RenameDocument>().WithMany().HasForeignKey(e => e.Target).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<RenameSetting>().HasKey(e => e.Key);
-        modelBuilder.Entity<AdministratorAccount>(entity =>
+        modelBuilder.Entity<UserRow>(entity =>
         {
-            entity.ToTable("Administrators", table =>
-                table.HasCheckConstraint("CK_Administrators_Singleton", "\"Id\" = 1"));
+            entity.ToTable("Users", table =>
+                table.HasCheckConstraint("CK_Users_Role", "\"Role\" IN ('Admin', 'User')"));
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).ValueGeneratedNever();
-            entity.Property(e => e.Username).HasMaxLength(128).IsRequired();
-            entity.Property(e => e.PasswordHash).HasMaxLength(256).IsRequired();
+            // NOCASE keeps usernames unique ignoring (ASCII) case.
+            entity.Property(e => e.Username).HasMaxLength(128).IsRequired().UseCollation("NOCASE");
+            entity.HasIndex(e => e.Username).IsUnique();
+            entity.Property(e => e.PasswordHash).HasMaxLength(256);
+            entity.Property(e => e.Role).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.Stamp).HasMaxLength(64).IsRequired();
+            entity.HasMany(e => e.Logins).WithOne().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<UserLoginRow>(entity =>
+        {
+            entity.ToTable("UserLogins");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Issuer).HasMaxLength(512).IsRequired();
+            entity.Property(e => e.Subject).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.DisplayName).HasMaxLength(256).IsRequired();
+            // One identity belongs to at most one local user.
+            entity.HasIndex(e => new { e.Issuer, e.Subject }).IsUnique();
         });
         modelBuilder.Entity<RenamePresetRow>(entity =>
         {
@@ -76,11 +91,30 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
     }
 }
 
-public sealed class AdministratorAccount
+/// <summary>A local user; see <c>Application.Authentication.UserRecord</c>.</summary>
+public sealed class UserRow
 {
-    public int Id { get; set; }
+    public long Id { get; set; }
     public string Username { get; set; } = "";
-    public string PasswordHash { get; set; } = "";
+    public string? PasswordHash { get; set; }
+    public string Role { get; set; } = "";
+    public bool Disabled { get; set; }
+    public string Stamp { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? LastSignInAt { get; set; }
+    public List<UserLoginRow> Logins { get; set; } = [];
+}
+
+/// <summary>A single sign-on identity (issuer and subject) linked to a <see cref="UserRow"/>.</summary>
+public sealed class UserLoginRow
+{
+    public long Id { get; set; }
+    public long UserId { get; set; }
+    public string Issuer { get; set; } = "";
+    public string Subject { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public DateTimeOffset LinkedAt { get; set; }
+    public DateTimeOffset? LastUsedAt { get; set; }
 }
 
 /// <summary>A pipeline preset; <see cref="Json"/> holds its steps and run options.</summary>

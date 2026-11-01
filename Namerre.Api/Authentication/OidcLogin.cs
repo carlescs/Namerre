@@ -2,19 +2,23 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.Extensions.Options;
 using Namerre.Infrastructure.Configuration;
 
 namespace Namerre.Authentication;
 
-/// <summary>Optional OpenID Connect sign-in. Users holding the required role become the administrator.</summary>
+/// <summary>
+/// Optional OpenID Connect sign-in. Identities holding the required role may sign in; each one signs in as the local
+/// user it is linked to (see <see cref="UserAccounts.SignInExternal"/>), whose role is managed in Namerre only.
+/// </summary>
 public sealed class OidcLogin
 {
     public const string Scheme = "oidc";
-    public const string MethodClaim = "auth-method";
     public const string CallbackPath = "/api/auth/oidc/callback";
     public const string IdTokenName = "id_token";
+    /// <summary>Challenge properties naming the user (and its stamp) an identity is being linked to.</summary>
+    public const string LinkUserItem = "namerre-link-user";
+    public const string LinkStampItem = "namerre-link-stamp";
 
     public OidcLogin(IOptions<NamerreOptions> options)
     {
@@ -31,9 +35,11 @@ public sealed class OidcLogin
         if (!Uri.TryCreate(Options.Authority, UriKind.Absolute, out var authority) ||
             authority.Scheme != Uri.UriSchemeHttps && (Options.RequireHttpsMetadata || authority.Scheme != Uri.UriSchemeHttp))
             throw Invalid("Namerre:Authentication:Oidc:Authority must be an absolute HTTPS URL.");
+        if (Options.Authority!.Length > 512)
+            throw Invalid("Namerre:Authentication:Oidc:Authority must be at most 512 characters.");
         if (string.IsNullOrWhiteSpace(Options.ClientId))
             throw Invalid("Namerre:Authentication:Oidc:ClientId is required.");
-        // Fail closed: without a required role every account of the identity provider would be an administrator.
+        // Fail closed: without a required role every account of the identity provider could sign in.
         if (string.IsNullOrWhiteSpace(Options.RequiredRole))
             throw Invalid("Namerre:Authentication:Oidc:RequiredRole is required.");
         if (string.IsNullOrWhiteSpace(Options.RoleClaim) || Options.RoleClaim.Split('.').Any(string.IsNullOrEmpty))
@@ -53,8 +59,12 @@ public sealed class OidcLogin
     public string DisplayName => Options.DisplayName ?? "";
     public string Stamp { get; } = "";
 
-    /// <summary>Returns the session principal for a validated identity, or null when the user may not sign in.</summary>
-    public ClaimsPrincipal? CreateSessionPrincipal(ClaimsPrincipal? external)
+    /// <summary>
+    /// Reads the stable identity from a validated sign-in, or null when it may not sign in: the required role is
+    /// missing (checked on every sign-in, also for linked users) or the subject is unusable. Users are keyed on the
+    /// issuer and the <c>sub</c> claim, never on a username or email, which can change or be reused.
+    /// </summary>
+    public ExternalIdentity? Read(ClaimsPrincipal? external)
     {
         if (!Enabled || external is null || !HasRole(external, Options.RoleClaim!, Options.RequiredRole!))
             return null;
@@ -62,19 +72,20 @@ public sealed class OidcLogin
         var username = external.FindFirst(Options.UsernameClaim!)?.Value;
         if (string.IsNullOrWhiteSpace(username))
             username = subject;
-        if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(username) || username.Length > 256)
+        if (string.IsNullOrWhiteSpace(subject) || subject.Length > 256 || string.IsNullOrWhiteSpace(username) ||
+            username.Length > 256)
             return null;
-        return new ClaimsPrincipal(new ClaimsIdentity(
-        [
-            new Claim(ClaimTypes.NameIdentifier, subject),
-            new Claim(ClaimTypes.Name, username),
-            new Claim(MethodClaim, Scheme),
-            new Claim(AdminAccount.StampClaim, Stamp)
-        ], CookieAuthenticationDefaults.AuthenticationScheme));
+        return new ExternalIdentity(Issuer, subject, username);
     }
 
+    /// <summary>
+    /// The issuer identities are linked under: the configured authority without a trailing slash. The handler only
+    /// accepts tokens from that authority, and links an administrator enters use the same value.
+    /// </summary>
+    public string Issuer => Enabled ? Options.Authority!.TrimEnd('/') : "";
+
     public bool IsValidSession(ClaimsPrincipal principal)
-        => Enabled && principal.FindFirst(AdminAccount.StampClaim)?.Value == Stamp;
+        => Enabled && principal.FindFirst(UserSession.OidcStampClaim)?.Value == Stamp;
 
     /// <summary>
     /// Checks <paramref name="claimPath"/> for <paramref name="role"/>. The first segment is the claim type;

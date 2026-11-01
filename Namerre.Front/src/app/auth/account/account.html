@@ -3,66 +3,191 @@
   <h1>Account</h1>
   <p class="mb-6 text-slate-500 dark:text-slate-400">
     Signed in as <strong>{{ auth.username() }}</strong
-    >.
+    >{{ roleLabel() }}.
   </p>
-  <section class="surface p-6">
-    <h2 class="text-lg">Change password</h2>
-    @if (auth.canChangePassword()) {
-      <p class="text-slate-500 dark:text-slate-400">
-        Changing the password signs out every other browser session.
-      </p>
-      <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="busy()">
-        <label for="current-password">Current password</label>
-        <input
-          id="current-password"
-          type="password"
-          formControlName="currentPassword"
-          autocomplete="current-password"
-          maxlength="1024"
-          required
-        />
-        <label for="new-password">New password</label>
-        <input
-          id="new-password"
-          type="password"
-          formControlName="newPassword"
-          autocomplete="new-password"
-          [attr.minlength]="minimumPasswordLength"
-          maxlength="1024"
-          aria-describedby="new-password-hint"
-          required
-        />
-        <p id="new-password-hint" class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
-          At least {{ minimumPasswordLength }} characters.
-        </p>
-        <label for="new-password-confirmation">Confirm new password</label>
-        <input
-          id="new-password-confirmation"
-          type="password"
-          formControlName="confirmation"
-          autocomplete="new-password"
-          maxlength="1024"
-          required
-        />
-        @if (form.hasError('passwordMismatch') && form.controls.confirmation.dirty) {
-          <p role="alert">Passwords must match.</p>
-        }
-        @if (error()) {
-          <p role="alert">{{ error() }}</p>
-        }
-        @if (changed()) {
-          <p role="status">Password changed. Other sessions have been signed out.</p>
-        }
-        <button class="btn-primary mt-4" type="submit" [disabled]="busy() || form.invalid">
-          {{ busy() ? 'Saving...' : 'Change password' }}
-        </button>
-      </form>
-    } @else {
+  @if (auth.managedByConfiguration()) {
+    <section class="surface p-6">
+      <h2 class="text-lg">Password</h2>
       <p class="mb-0 text-slate-500 dark:text-slate-400">
         The administrator credentials are set in the server configuration. To change the password,
         generate a new hash, update <code>Namerre:Authentication:PasswordHash</code>, and restart
         Namerre.
       </p>
+    </section>
+  } @else {
+    <section class="surface p-6">
+      <h2 class="text-lg">{{ setsFirstPassword() ? 'Set a password' : 'Change password' }}</h2>
+      @if (setsFirstPassword()) {
+        <p class="text-slate-500 dark:text-slate-400">
+          You sign in with single sign-on. Add a password to also sign in with your username
+          <strong>{{ auth.username() }}</strong
+          >.
+          @if (!auth.recentSignIn()) {
+            To confirm it is you, sign in again with single sign-on first.
+          }
+        </p>
+        @if (!auth.recentSignIn()) {
+          <button type="button" (click)="signInAgain()">Sign in again</button>
+        }
+      } @else {
+        <p class="text-slate-500 dark:text-slate-400">
+          Changing the password signs out every other browser session.
+        </p>
+      }
+      @if (!setsFirstPassword() || auth.recentSignIn()) {
+        <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="busy()">
+          @if (!setsFirstPassword()) {
+            <label for="current-password">Current password</label>
+            <input
+              id="current-password"
+              type="password"
+              formControlName="currentPassword"
+              autocomplete="current-password"
+              maxlength="1024"
+              required
+            />
+          }
+          <label for="new-password">New password</label>
+          <input
+            id="new-password"
+            type="password"
+            formControlName="newPassword"
+            autocomplete="new-password"
+            [attr.minlength]="minimumPasswordLength"
+            maxlength="1024"
+            aria-describedby="new-password-hint"
+            required
+          />
+          <p id="new-password-hint" class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
+            At least {{ minimumPasswordLength }} characters.
+          </p>
+          <label for="new-password-confirmation">Confirm new password</label>
+          <input
+            id="new-password-confirmation"
+            type="password"
+            formControlName="confirmation"
+            autocomplete="new-password"
+            maxlength="1024"
+            required
+          />
+          @if (form.hasError('passwordMismatch') && form.controls.confirmation.dirty) {
+            <p role="alert">Passwords must match.</p>
+          }
+          @if (error()) {
+            <p role="alert">{{ error() }}</p>
+          }
+          @if (changed()) {
+            <p role="status">Password changed. Other sessions have been signed out.</p>
+          }
+          <button
+            class="btn-primary mt-4"
+            type="submit"
+            [disabled]="
+              busy() ||
+              form.invalid ||
+              (!setsFirstPassword() && !form.controls.currentPassword.value)
+            "
+          >
+            {{ busy() ? 'Saving...' : setsFirstPassword() ? 'Set password' : 'Change password' }}
+          </button>
+        </form>
+      }
+      @if (auth.hasPassword() && auth.logins().length) {
+        <p class="mt-6 mb-2 text-sm text-slate-500 dark:text-slate-400">
+          You can also sign in with single sign-on, so the password is optional.
+        </p>
+        <button
+          type="button"
+          class="btn-danger"
+          (click)="request('remove-password')"
+          [disabled]="busy() || pending() !== null"
+        >
+          Remove password
+        </button>
+      }
+    </section>
+
+    @if (auth.singleSignOn(); as provider) {
+      <section class="surface mt-6 p-6" aria-labelledby="single-sign-on-heading">
+        <h2 id="single-sign-on-heading" class="text-lg">{{ provider.displayName }}</h2>
+        @if (auth.logins().length) {
+          <ul class="mb-4 space-y-2">
+            @for (login of auth.logins(); track login.id) {
+              <li class="flex flex-wrap items-center gap-3">
+                <span class="min-w-0 flex-1">
+                  <strong>{{ login.displayName }}</strong>
+                  <span class="block text-xs break-all text-slate-500 dark:text-slate-400">
+                    {{ login.issuer }}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  (click)="unlink(login)"
+                  [disabled]="busy() || signInMethods() <= 1"
+                  [title]="
+                    signInMethods() <= 1
+                      ? 'Add a password first: this is your only way to sign in'
+                      : 'Unlink this identity'
+                  "
+                  [attr.aria-label]="'Unlink ' + login.displayName"
+                >
+                  Unlink
+                </button>
+              </li>
+            }
+          </ul>
+        } @else {
+          <p class="text-slate-500 dark:text-slate-400">
+            Link your {{ provider.displayName }} identity to sign in to this account with it.
+          </p>
+        }
+        <button type="button" (click)="request('link')" [disabled]="busy() || pending() !== null">
+          Link {{ auth.logins().length ? 'another identity' : provider.displayName }}
+        </button>
+      </section>
     }
-  </section>
+
+    @if (pending(); as action) {
+      <section class="surface mt-6 p-6" role="group" aria-label="Confirm it is you">
+        <h2 class="text-lg">Confirm it is you</h2>
+        @if (auth.hasPassword()) {
+          <form [formGroup]="confirmForm" (ngSubmit)="confirm()">
+            <label for="confirm-password">
+              Enter your password to {{ action === 'link' ? 'link single sign-on' : 'remove it' }}.
+            </label>
+            <input
+              id="confirm-password"
+              type="password"
+              formControlName="password"
+              autocomplete="current-password"
+              maxlength="1024"
+              required
+            />
+            <div class="actions mt-4">
+              <button
+                class="btn-primary"
+                type="submit"
+                [disabled]="busy() || confirmPassword.invalid"
+              >
+                Confirm
+              </button>
+              <button type="button" (click)="cancel()" [disabled]="busy()">Cancel</button>
+            </div>
+          </form>
+        } @else {
+          <p>Sign in again with single sign-on, then retry.</p>
+          <div class="actions">
+            <button class="btn-primary" type="button" (click)="signInAgain()">Sign in again</button>
+            <button type="button" (click)="cancel()">Cancel</button>
+          </div>
+        }
+      </section>
+    }
+    @if (accessError()) {
+      <p class="error mt-4" role="alert">{{ accessError() }}</p>
+    }
+    @if (accessStatus()) {
+      <p class="mt-4" role="status">{{ accessStatus() }}</p>
+    }
+  }
 </main>

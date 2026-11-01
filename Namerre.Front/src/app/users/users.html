@@ -1,0 +1,306 @@
+<main id="main-content" tabindex="-1" class="mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-10">
+  <p class="eyebrow">Administration</p>
+  <h1>Users</h1>
+  <p class="mb-6 text-slate-500 dark:text-slate-400">
+    Everyone signs in as a local user, with a password, single sign-on, or both. Roles are managed
+    here only. Administrators manage users, watch folders and run history; users rename files and
+    see every run.
+  </p>
+
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+  @if (status()) {
+    <p role="status">{{ status() }}</p>
+  }
+
+  @if (users(); as list) {
+    <section class="surface overflow-x-auto p-6" aria-labelledby="users-heading">
+      <h2 id="users-heading" class="text-lg">
+        {{ list.length }} {{ list.length === 1 ? 'user' : 'users' }}
+      </h2>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Username</th>
+            <th scope="col">Role</th>
+            <th scope="col">Sign-in methods</th>
+            <th scope="col" class="max-sm:hidden">Last sign-in</th>
+            <th scope="col"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (user of list; track user.id) {
+            <tr [class.opacity-60]="user.disabled">
+              <td>
+                <strong>{{ user.username }}</strong>
+                @if (isSelf(user)) {
+                  <span class="text-xs text-slate-500 dark:text-slate-400"> (you)</span>
+                }
+                @if (user.disabled) {
+                  <span class="badge ml-2">Disabled</span>
+                }
+                @if (user.managedByConfiguration) {
+                  <span class="block text-xs text-slate-500 dark:text-slate-400">
+                    Configured on the server
+                  </span>
+                }
+              </td>
+              <td>{{ user.role === 'Admin' ? 'Administrator' : 'User' }}</td>
+              <td>
+                @if (user.hasPassword) {
+                  <span class="block">Password</span>
+                }
+                @for (login of user.logins; track login.id) {
+                  <span class="block">{{ login.displayName }}</span>
+                }
+                @if (!methods(user)) {
+                  <span class="text-slate-500 dark:text-slate-400">None</span>
+                }
+              </td>
+              <td class="max-sm:hidden">
+                {{ user.lastSignInAt ? (user.lastSignInAt | date: 'medium') : 'Never' }}
+              </td>
+              <td>
+                @if (!user.managedByConfiguration) {
+                  <button
+                    type="button"
+                    [attr.aria-expanded]="selectedId() === user.id"
+                    [attr.aria-label]="'Manage ' + user.username"
+                    (click)="select(user)"
+                  >
+                    {{ selectedId() === user.id ? 'Close' : 'Manage' }}
+                  </button>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+
+    @if (selected(); as user) {
+      <section
+        class="surface mt-6 grid gap-8 p-6 lg:grid-cols-2"
+        [attr.aria-label]="'Manage ' + user.username"
+      >
+        <div>
+          <h2 class="text-lg">{{ user.username }}</h2>
+          <label for="user-role">Role</label>
+          <select
+            id="user-role"
+            #role
+            [value]="user.role"
+            (change)="setRole(user, role.value)"
+            [disabled]="busy() || isSelf(user)"
+          >
+            <option value="User">User</option>
+            <option value="Admin">Administrator</option>
+          </select>
+          @if (isSelf(user)) {
+            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Another administrator must change your own role or status.
+            </p>
+          }
+          <div class="actions mt-4">
+            <button
+              type="button"
+              (click)="setDisabled(user, !user.disabled)"
+              [disabled]="busy() || isSelf(user)"
+            >
+              {{ user.disabled ? 'Enable' : 'Disable' }}
+            </button>
+            @if (!confirmingDelete()) {
+              <button
+                type="button"
+                class="btn-danger"
+                (click)="confirmingDelete.set(true)"
+                [disabled]="busy() || isSelf(user)"
+              >
+                Delete user
+              </button>
+            }
+          </div>
+          @if (confirmingDelete()) {
+            <div class="mt-3" role="group" aria-label="Confirm deletion">
+              <p>Delete {{ user.username }}? Their runs stay in the history under their name.</p>
+              <div class="actions">
+                <button type="button" class="btn-danger" (click)="remove(user)" [disabled]="busy()">
+                  Confirm deletion
+                </button>
+                <button type="button" (click)="confirmingDelete.set(false)" [disabled]="busy()">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          }
+
+          <h3 class="mt-6 text-base">Password</h3>
+          @if (isSelf(user)) {
+            <p class="text-slate-500 dark:text-slate-400">
+              Change your own password on your <a routerLink="/account">Account</a> page, which
+              confirms it is you.
+            </p>
+          } @else {
+            <form [formGroup]="passwordGroup" (ngSubmit)="resetPassword(user)">
+              <label for="user-password">
+                {{ passwordLabels(user).field }}
+              </label>
+              <input
+                id="user-password"
+                type="password"
+                formControlName="password"
+                autocomplete="new-password"
+                [attr.minlength]="minimumPasswordLength"
+                maxlength="1024"
+                required
+              />
+              <p class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
+                At least {{ minimumPasswordLength }} characters. Ends the user's sessions.
+              </p>
+              <div class="actions mt-3">
+                <button type="submit" [disabled]="busy() || passwordForm.invalid">
+                  {{ passwordLabels(user).action }}
+                </button>
+                @if (user.hasPassword) {
+                  <button
+                    type="button"
+                    (click)="removePassword(user)"
+                    [disabled]="busy() || (!user.disabled && methods(user) <= 1)"
+                    [title]="
+                      !user.disabled && methods(user) <= 1
+                        ? 'This is the only way this user can sign in'
+                        : 'Remove the password'
+                    "
+                  >
+                    Remove password
+                  </button>
+                }
+              </div>
+            </form>
+          }
+        </div>
+
+        @if (auth.singleSignOn(); as provider) {
+          <div>
+            <h3 class="text-base">{{ provider.displayName }} identities</h3>
+            @if (user.logins.length) {
+              <ul class="mb-4 space-y-2">
+                @for (login of user.logins; track login.id) {
+                  <li class="flex flex-wrap items-center gap-3">
+                    <span class="min-w-0 flex-1">
+                      <strong>{{ login.displayName }}</strong>
+                      <span class="block text-xs text-slate-500 dark:text-slate-400">
+                        Linked {{ login.linkedAt | date: 'medium' }}
+                        @if (login.lastUsedAt) {
+                          · last used {{ login.lastUsedAt | date: 'medium' }}
+                        }
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      (click)="unlink(user, login)"
+                      [disabled]="busy() || (!user.disabled && methods(user) <= 1)"
+                      [attr.aria-label]="'Unlink ' + login.displayName"
+                    >
+                      Unlink
+                    </button>
+                  </li>
+                }
+              </ul>
+            } @else {
+              <p class="text-slate-500 dark:text-slate-400">No linked identities.</p>
+            }
+
+            <form [formGroup]="linkForm" (ngSubmit)="link(user)">
+              <label for="link-subject">Link an identity by its subject (<code>sub</code>)</label>
+              <input id="link-subject" formControlName="subject" maxlength="256" required />
+              <label for="link-name">Name to show (optional)</label>
+              <input id="link-name" formControlName="displayName" maxlength="256" />
+              <button class="mt-3" type="submit" [disabled]="busy() || linkForm.invalid">
+                Link identity
+              </button>
+            </form>
+
+            @if (movable().length) {
+              <form class="mt-6" [formGroup]="moveForm" (ngSubmit)="move(user)">
+                <label for="move-login">Move an identity linked to another user</label>
+                <select id="move-login" formControlName="loginId">
+                  <option [ngValue]="null" disabled>Choose an identity</option>
+                  @for (entry of movable(); track entry.login.id) {
+                    <option [ngValue]="entry.login.id">
+                      {{ entry.login.displayName }} (now {{ entry.owner.username }})
+                    </option>
+                  }
+                </select>
+                <fieldset class="mt-2 grid gap-1 text-sm">
+                  <legend class="mb-1">The user it leaves</legend>
+                  <label class="flex items-center gap-2">
+                    <input type="radio" formControlName="source" value="keep" />
+                    Keep it
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <input type="radio" formControlName="source" value="delete" />
+                    Delete it; its runs keep its name
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <input type="radio" formControlName="source" value="merge" />
+                    Merge it into {{ user.username }}: move all its identities and run history, then
+                    delete it
+                  </label>
+                </fieldset>
+                <button class="mt-3" type="submit" [disabled]="busy() || moveForm.invalid">
+                  {{ moveForm.controls.source.value === 'merge' ? 'Merge user' : 'Move identity' }}
+                </button>
+              </form>
+            }
+          </div>
+        }
+      </section>
+    }
+
+    <section class="surface mt-6 p-6" aria-labelledby="create-heading">
+      <h2 id="create-heading" class="text-lg">Add a user</h2>
+      <form [formGroup]="createForm" (ngSubmit)="create()">
+        <label for="new-username">Username</label>
+        <input id="new-username" formControlName="username" maxlength="128" required />
+        <label for="new-role">Role</label>
+        <select id="new-role" formControlName="role">
+          <option value="User">User</option>
+          <option value="Admin">Administrator</option>
+        </select>
+        <label for="new-user-password">Password</label>
+        <input
+          id="new-user-password"
+          type="password"
+          formControlName="password"
+          autocomplete="new-password"
+          [attr.minlength]="minimumPasswordLength"
+          maxlength="1024"
+        />
+        @if (auth.singleSignOn(); as provider) {
+          <label for="new-subject">Or link a {{ provider.displayName }} identity by subject</label>
+          <input id="new-subject" formControlName="subject" maxlength="256" />
+        }
+        <p class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
+          Give the user a password of at least {{ minimumPasswordLength }} characters{{
+            auth.singleSignOn() ? ', a single sign-on identity, or both' : ''
+          }}.
+        </p>
+        <button
+          class="btn-primary mt-4"
+          type="submit"
+          [disabled]="
+            busy() ||
+            createForm.invalid ||
+            (!createForm.controls.password.value && !createForm.controls.subject.value.trim())
+          "
+        >
+          Add user
+        </button>
+      </form>
+    </section>
+  } @else if (!error()) {
+    <p role="status">Loading users…</p>
+  }
+</main>

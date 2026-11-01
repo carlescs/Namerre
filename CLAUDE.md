@@ -126,8 +126,8 @@ and no cross-device copy fallback. The data directory and media root must not co
 
 **Persistence.** `RenameStore` wraps EF Core SQLite (`RenameDbContext`) in `Namerre:DataPath`; it
 runs `Migrate()` on startup and refuses unknown applied migrations. Migrations live in
-`Namerre.Infrastructure/Renaming/Migrations`. The single administrator account is stored in the
-same database (`Administrators` table), and so are pipeline presets (`Presets` table, `PresetStore` behind the
+`Namerre.Infrastructure/Renaming/Migrations`. Local users are stored in the same database (`Users` and
+`UserLogins` tables, `UserStore` behind the Application `IUserStore`), and so are pipeline presets (`Presets` table, `PresetStore` behind the
 Application `IPresetStore`; `PresetService` validates through `PipelineEngine.ValidatePlugins`, served by
 `RenamePresetsController` at `api/rename-presets`). Add migrations with `dotnet ef migrations add <Name>
 -o Renaming/Migrations` from `Namerre.Infrastructure`.
@@ -163,6 +163,24 @@ calls `ILibraryNotifier.RunFinished`, implemented by `Infrastructure/Integration
 drained by a hosted service; best effort, tokens only in request headers and never logged;
 `NamerreOptionsValidator` fails startup on bad URLs or missing/orphaned keys).
 
+**Users and authentication.** Every session belongs to a local user (`Application/Authentication`:
+`UserRecord`, `UserLoginRecord`, `UserRole` `Admin`/`User`, `IUserStore`, `ICurrentUser`). The account rules live in
+`Namerre.Api/Authentication/UserAccounts` (a singleton caching users in memory, mutations under one lock, compare-and-swap
+on each user's random credential stamp): unique NOCASE usernames, `Passwords` policy, at least one enabled admin, no
+self-demotion/disable/delete, and an enabled user always keeps a password or a linked identity. Every access change
+(role, disabled, password, link) replaces the stamp, which `AuthenticationSetup.IsValidSession` checks on each request,
+so sessions end at once. `UserSession` builds the cookie principal from the local user (ID, name, role claim, stamp,
+method, sign-in time; SSO sessions add the `OidcLogin.Stamp`) and defines the live-update group. A configured
+`Namerre:Authentication` account is a never-stored break-glass `Admin` with ID 0. SSO identities are keyed on
+(issuer = configured authority, `sub`); `OidcLogin.Read` checks `RequiredRole`, then `AuthenticationSetup.OnTicketReceived`
+resolves the linked user, provisions a `User` when `Oidc:AutoProvision` allows (never matching by username), or links
+the identity when the challenge carries the protected link items from `AuthController.LinkSingleSignOn` (needs a recent
+sign-in or the password). Moving a link can merge its user into the target (`UserAccounts.Merge`, then
+`IUserHistory.Reattribute`, implemented by `RenameService` under its job gate, rewrites `CreatedBy`/`RecoveredBy`).
+`AuthenticationSetup.AdminPolicy` (`RequireAdmin`) guards `api/users`, watch folders and run
+deletion; `AccountException` maps refusals to `{ code, message }`. `HttpCurrentUser` feeds `RenameService`, which records
+`CreatedBy` on plans/runs and `RecoveredBy` on recoveries.
+
 **Hosting.** `Program.cs` requires HTTPS for `/api` (400 otherwise), sets `no-store` on API
 responses, requires authorization on all controllers, returns 404 for unmatched `/api/*`, and
 falls back to `index.html` otherwise. OpenAPI is exposed only in Development. Static files go through
@@ -172,6 +190,9 @@ falls back to `index.html` otherwise. OpenAPI is exposed only in Development. St
 `styleUrl`, `app` selector prefix, SCSS component styles, Tailwind CSS v4 via PostCSS in
 `src/styles.css`). `src/main.ts` bootstraps `App` with `appConfig`; app-wide providers go in
 `src/app/app.config.ts`, routes in `src/app/app.routes.ts`. Use same-origin `/api/...` URLs.
+`Auth` (`src/app/auth/auth.ts`) holds the session (`role`/`isAdmin`, `hasPassword`, `logins`, `recentSignIn`);
+`auth/account` manages the user's own password and SSO links; `users/` is the admin-only user management page (route
+guarded by `isAdmin`, linked from `settings-menu`); admin-only controls (watch folders, run deletion) are hidden for users.
 The root route lazy-loads `modules/renamer`; `rename-api.ts` is the HTTP client for the
 resource-style renaming endpoints (`/api/rename-plugins`, `/api/rename-previews`,
 `/api/rename-plans`, …). The workflow is a staged wizard (`rename-workflow` component) across file

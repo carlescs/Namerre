@@ -220,6 +220,15 @@ export interface RunView {
   rollbackRuns?: RunReference[];
   /** What started the run: absent for a person, `watch:<name>` for a watch folder. */
   origin?: string | null;
+  /** The user who started the run; absent for watch folders and runs from before users. */
+  createdBy?: UserReference | null;
+  /** The user who last requested recovery of this run. */
+  recoveredBy?: UserReference | null;
+}
+/** Who did something; the username is kept when the user is deleted. */
+export interface UserReference {
+  id: number;
+  username: string;
 }
 export interface RunReference {
   id: string;

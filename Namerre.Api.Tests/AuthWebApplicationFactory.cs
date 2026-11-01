@@ -11,7 +11,7 @@ public sealed class AuthWebApplicationFactory : WebApplicationFactory<Program>
 {
     public const string Username = "test-admin";
     public const string Password = "test-password-not-for-production";
-    private static readonly string PasswordHash = AdminAccount.HashPassword(Password);
+    private static readonly string PasswordHash = Passwords.HashPassword(Password);
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
         => builder.ConfigureAppConfiguration((_, configuration) =>

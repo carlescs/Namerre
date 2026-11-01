@@ -35,6 +35,13 @@ describe('App', () => {
             requiresSetup,
             canChangePassword,
             singleSignOn: signal(null),
+            userId: signal(1),
+            role: signal('Admin'),
+            isAdmin: signal(true),
+            hasPassword: signal(true),
+            managedByConfiguration: signal(false),
+            recentSignIn: signal(true),
+            logins: signal([]),
             refresh,
             logout,
           },
@@ -141,7 +148,7 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('header app-settings-menu')).not.toBeNull();
   });
 
-  it('opens change password from the username menu in the header', async () => {
+  it('opens the account page from the username menu in the header', async () => {
     username.set('admin');
     const fixture = TestBed.createComponent(App);
     await TestBed.inject(Router).navigateByUrl('/');

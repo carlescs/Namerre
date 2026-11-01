@@ -49,7 +49,13 @@ public sealed class OidcOptions
     public string? RequiredRole { get; set; }
     /// <summary>ID token claim holding the roles; dots address nested JSON (Keycloak's default is <c>realm_access.roles</c>).</summary>
     public string? RoleClaim { get; set; } = "realm_access.roles";
+    /// <summary>Claim whose value names users created on their first sign-in; the stable <c>sub</c> claim identifies them.</summary>
     public string? UsernameClaim { get; set; } = "preferred_username";
+    /// <summary>
+    /// Creates a local user (role <c>User</c>) on an identity's first sign-in. When false, identities must be linked
+    /// to a user by an administrator or by the user before they can sign in.
+    /// </summary>
+    public bool AutoProvision { get; set; } = true;
     /// <summary>Scopes requested in addition to <c>openid</c> and <c>profile</c>.</summary>
     public string[] Scopes { get; set; } = [];
     public bool RequireHttpsMetadata { get; set; } = true;

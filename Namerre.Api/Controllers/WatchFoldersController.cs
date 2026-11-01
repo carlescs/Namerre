@@ -1,11 +1,14 @@
+using Microsoft.AspNetCore.Authorization;
+using Namerre.Authentication;
 using CMediator.Abstractions;
 using Microsoft.AspNetCore.Mvc;
 using Namerre.Application.WatchFolders;
 
 namespace Namerre.Controllers;
 
-/// <summary>Status of the configured watch folders, with pause, resume and retry.</summary>
+/// <summary>Status of the configured watch folders, with pause, resume and retry. Administrators only.</summary>
 [ApiController]
+[Authorize(Policy = AuthenticationSetup.AdminPolicy)]
 [Route("api/watch-folders")]
 [TypeFilter(typeof(RenameExceptionFilter))]
 public sealed class WatchFoldersController(ISender sender) : ControllerBase

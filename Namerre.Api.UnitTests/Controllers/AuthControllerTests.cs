@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,6 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Namerre.Api.UnitTests.Authentication;
 using Namerre.Application.Authentication;
 using Namerre.Application.Renaming;
 using Namerre.Authentication;
@@ -24,8 +26,9 @@ namespace Namerre.Api.UnitTests.Controllers;
 
 public sealed class AuthControllerTests
 {
-    private static readonly string Hash = AdminAccount.HashPassword("password");
-    private readonly IAdministratorStore store = Substitute.For<IAdministratorStore>();
+    private static readonly string Hash = Passwords.HashPassword("password");
+    private readonly InMemoryUserStore store = new();
+    private readonly ManualTime time = new(new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero));
     private readonly IAntiforgery antiforgery = Substitute.For<IAntiforgery>();
     private readonly IAuthenticationService authentication = Substitute.For<IAuthenticationService>();
     private readonly IConfigurationManager<OpenIdConnectConfiguration> providerMetadata =
@@ -54,14 +57,17 @@ public sealed class AuthControllerTests
     {
         antiforgery.GetAndStoreTokens(Arg.Any<HttpContext>())
             .Returns(new AntiforgeryTokenSet("t", "c", "form", "X-XSRF-TOKEN"));
-        var controller = Controller(Configured());
-        controller.ControllerContext.HttpContext.User = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(ClaimTypes.Name, "admin")], CookieAuthenticationDefaults.AuthenticationScheme));
+        var account = Configured();
+        var controller = Controller(account);
+        SignIn(controller, account.Find(UserAccounts.ConfiguredUserId)!);
 
         var result = Assert.IsType<OkObjectResult>(controller.Session());
 
-        Assert.Equivalent(new { username = "admin", requiresSetup = false, canChangePassword = false },
-            result.Value);
+        Assert.Equivalent(new
+        {
+            username = "admin", userId = 0L, role = "Admin", requiresSetup = false, canChangePassword = false,
+            managedByConfiguration = true, recentSignIn = true
+        }, result.Value);
     }
 
     [Theory]
@@ -92,7 +98,6 @@ public sealed class AuthControllerTests
     [Fact]
     public void SuccessfulSetupReturnsNoContent()
     {
-        store.TryCreate(Arg.Any<AdminCredentials>()).Returns(true);
         var account = Unconfigured();
 
         Assert.IsType<NoContentResult>(Controller(account).Setup(
@@ -117,15 +122,15 @@ public sealed class AuthControllerTests
         new IOException("disk"),
         new UnauthorizedAccessException("denied"),
         new RenameException("DataUnavailable", "db"),
-        new AdministratorStorageException("db", new IOException())
+        new UserStorageException("db", new IOException())
     };
 
     [Theory]
     [MemberData(nameof(StorageFailures))]
     public void StorageFailuresDuringSetupAreServiceUnavailable(Exception failure)
     {
-        store.TryCreate(Arg.Any<AdminCredentials>()).Throws(failure);
         var account = Unconfigured();
+        store.Failure = failure;
 
         var result = Controller(account).Setup(new SetupRequest(account.SetupToken!, "admin", "a long enough password"));
 
@@ -155,7 +160,9 @@ public sealed class AuthControllerTests
         await authentication.Received(1).SignInAsync(controller.HttpContext,
             CookieAuthenticationDefaults.AuthenticationScheme,
             Arg.Is<ClaimsPrincipal>(p => p.Identity!.Name == "admin"
-                && p.FindFirst("credential-stamp")!.Value == account.Stamp),
+                && p.FindFirst(ClaimTypes.NameIdentifier)!.Value == "0"
+                && p.FindFirst(ClaimTypes.Role)!.Value == "Admin"
+                && p.FindFirst("credential-stamp")!.Value == account.Find(0)!.Stamp),
             Arg.Is<AuthenticationProperties>(p => !p.IsPersistent));
     }
 
@@ -173,79 +180,202 @@ public sealed class AuthControllerTests
     [Fact]
     public async Task ChangingThePasswordKeepsTheCurrentSessionWithTheNewStamp()
     {
-        var account = Stored();
-        var stamp = account.Stamp;
+        var (account, user) = Stored();
         var controller = Controller(account);
+        SignIn(controller, user);
 
         Assert.IsType<NoContentResult>(await controller.ChangePassword(
             new ChangePasswordRequest("password", "new password")));
 
-        Assert.True(account.Verify("admin", "new password"));
-        Assert.NotEqual(stamp, account.Stamp);
+        var changed = account.Find(user.Id)!;
+        Assert.NotNull(account.Authenticate("alice", "new password"));
+        Assert.NotEqual(user.Stamp, changed.Stamp);
         await authentication.Received(1).SignInAsync(controller.HttpContext,
             CookieAuthenticationDefaults.AuthenticationScheme,
-            Arg.Is<ClaimsPrincipal>(p => p.Identity!.Name == "admin"
-                && p.FindFirst("credential-stamp")!.Value == account.Stamp),
+            Arg.Is<ClaimsPrincipal>(p => p.Identity!.Name == "alice"
+                && p.FindFirst("credential-stamp")!.Value == changed.Stamp),
             Arg.Is<AuthenticationProperties>(p => !p.IsPersistent));
     }
 
     [Fact]
     public async Task ChangingThePasswordWithAWrongCurrentPasswordIsForbidden()
     {
-        var account = Stored();
+        var (account, user) = Stored();
+        var controller = Controller(account);
+        SignIn(controller, user);
 
-        var result = await Controller(account).ChangePassword(new ChangePasswordRequest("wrong", "new password"));
+        var error = await Assert.ThrowsAsync<AccountException>(() =>
+            controller.ChangePassword(new ChangePasswordRequest("wrong", "new password")));
 
-        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(result).StatusCode);
-        Assert.True(account.Verify("admin", "password"));
+        Assert.Equal(StatusCodes.Status403Forbidden, error.Status);
+        Assert.NotNull(account.Authenticate("alice", "password"));
         await authentication.DidNotReceiveWithAnyArgs().SignInAsync(default!, default, default!, default);
     }
 
     [Fact]
     public async Task ChangingToAShortPasswordIsABadRequest()
     {
-        var account = Stored();
+        var (account, user) = Stored();
+        var controller = Controller(account);
+        SignIn(controller, user);
 
-        var result = await Controller(account).ChangePassword(new ChangePasswordRequest("password", "too short"));
+        var error = await Assert.ThrowsAsync<AccountException>(() =>
+            controller.ChangePassword(new ChangePasswordRequest("password", "too short")));
 
-        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-        Assert.Equivalent(new { message = "Use a password of at least 12 characters." }, badRequest.Value);
-        Assert.True(account.Verify("admin", "password"));
-        await authentication.DidNotReceiveWithAnyArgs().SignInAsync(default!, default, default!, default);
+        Assert.Equal((StatusCodes.Status400BadRequest, "Use a password of at least 12 characters."),
+            (error.Status, error.Message));
+        Assert.NotNull(account.Authenticate("alice", "password"));
     }
 
     [Fact]
     public async Task ConfiguredPasswordsCannotBeChangedThroughTheApi()
-        => Assert.IsType<ConflictObjectResult>(await Controller(Configured())
-            .ChangePassword(new ChangePasswordRequest("password", "new password")));
-
-    [Theory]
-    [MemberData(nameof(StorageFailures))]
-    public async Task StorageFailuresDuringPasswordChangeAreServiceUnavailable(Exception failure)
     {
-        var account = Stored();
-        store.TryUpdate(Arg.Any<AdminCredentials>(), Arg.Any<string>()).Throws(failure);
+        var account = Configured();
+        var controller = Controller(account);
+        SignIn(controller, account.Find(UserAccounts.ConfiguredUserId)!);
 
-        var result = await Controller(account).ChangePassword(new ChangePasswordRequest("password", "new password"));
+        var error = await Assert.ThrowsAsync<AccountException>(() =>
+            controller.ChangePassword(new ChangePasswordRequest("password", "new password")));
 
-        Assert.Equal(StatusCodes.Status503ServiceUnavailable, Assert.IsType<ObjectResult>(result).StatusCode);
-        Assert.True(account.Verify("admin", "password"));
+        Assert.Equal(StatusCodes.Status409Conflict, error.Status);
     }
 
-    private AdminAccount Stored()
+    [Fact]
+    public async Task StorageFailuresDuringPasswordChangeLeaveThePasswordUnchanged()
     {
-        var credentials = new AdminCredentials("admin", Hash);
-        store.Load().Returns(credentials);
-        store.TryUpdate(credentials, Arg.Any<string>()).Returns(true);
-        return Unconfigured();
+        var (account, user) = Stored();
+        var controller = Controller(account);
+        SignIn(controller, user);
+        store.Failure = new UserStorageException("db");
+
+        await Assert.ThrowsAsync<UserStorageException>(() =>
+            controller.ChangePassword(new ChangePasswordRequest("password", "new password")));
+
+        store.Failure = null;
+        Assert.NotNull(account.Authenticate("alice", "password"));
     }
 
-    private AdminAccount Configured() => new(Options.Create(new NamerreOptions
+    [Fact]
+    public async Task SingleSignOnUsersSetAFirstPasswordOnlyAfterARecentSignIn()
+    {
+        var oidc = Oidc();
+        var account = Configured();
+        var (user, _, _) = account.SignInExternal(new ExternalIdentity(oidc.Issuer, "sub-1", "alice"), true);
+        var controller = Controller(account, oidc);
+        SignIn(controller, user!, UserSession.SingleSignOnMethod, oidc.Stamp);
+        time.Advance(TimeSpan.FromMinutes(11));
+
+        var stale = await Assert.ThrowsAsync<AccountException>(() =>
+            controller.ChangePassword(new ChangePasswordRequest(null, "a brand new password")));
+        SignIn(controller, user!, UserSession.SingleSignOnMethod, oidc.Stamp);
+        Assert.IsType<NoContentResult>(await controller.ChangePassword(
+            new ChangePasswordRequest(null, "a brand new password")));
+
+        Assert.Equal("RecentSignInRequired", stale.Code);
+        Assert.NotNull(account.Authenticate("alice", "a brand new password"));
+        // The renewed session is still a single sign-on session.
+        await authentication.Received(1).SignInAsync(controller.HttpContext,
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            Arg.Is<ClaimsPrincipal>(p => p.FindFirst(UserSession.MethodClaim)!.Value == "oidc"
+                && p.FindFirst(UserSession.OidcStampClaim)!.Value == oidc.Stamp),
+            Arg.Any<AuthenticationProperties>());
+    }
+
+    [Fact]
+    public async Task RemovingThePasswordNeedsARecentSignInAndAnotherWayToSignIn()
+    {
+        var oidc = Oidc();
+        var (account, user) = Stored();
+        var controller = Controller(account, oidc);
+        SignIn(controller, user);
+
+        Assert.Equal("LastSignInMethod",
+            (await Assert.ThrowsAsync<AccountException>(controller.RemovePassword)).Code);
+
+        user = account.Link(new UserReference(user.Id, "alice"), user.Id,
+            new ExternalIdentity(oidc.Issuer, "sub-1", "alice"));
+        SignIn(controller, user);
+        time.Advance(TimeSpan.FromMinutes(11));
+        Assert.Equal("RecentSignInRequired",
+            (await Assert.ThrowsAsync<AccountException>(controller.RemovePassword)).Code);
+
+        Assert.IsType<NoContentResult>(await controller.Reauthenticate(new ConfirmRequest("password")));
+        SignIn(controller, account.Find(user.Id)!);
+        Assert.IsType<NoContentResult>(await controller.RemovePassword());
+        Assert.False(account.Find(user.Id)!.HasPassword);
+    }
+
+    [Fact]
+    public async Task LinkingSingleSignOnNeedsConfirmationAndIssuesATicketForThisUserVersion()
+    {
+        var oidc = Oidc();
+        var (account, user) = Stored();
+        var controller = Controller(account, oidc);
+        SignIn(controller, user);
+        time.Advance(TimeSpan.FromMinutes(11));
+
+        Assert.Equal("RecentSignInRequired", Assert.Throws<AccountException>(() =>
+            controller.LinkSingleSignOn(new ConfirmRequest("wrong"))).Code);
+        var link = Assert.IsType<OkObjectResult>(controller.LinkSingleSignOn(new ConfirmRequest("password")));
+        var url = (string)link.Value!.GetType().GetProperty("url")!.GetValue(link.Value)!;
+        var ticket = Uri.UnescapeDataString(url["/api/auth/oidc/link?ticket=".Length..]);
+
+        Assert.IsType<EmptyResult>(await controller.LinkSingleSignOnChallenge(ticket, CancellationToken.None));
+        await authentication.Received(1).ChallengeAsync(controller.HttpContext, OidcLogin.Scheme,
+            Arg.Is<AuthenticationProperties>(p => p.RedirectUri == "/account"
+                && p.Items[OidcLogin.LinkUserItem] == user.Id.ToString()
+                && p.Items[OidcLogin.LinkStampItem] == user.Stamp));
+
+        // Once the user changes, the ticket no longer works.
+        account.SetPassword(new UserReference(user.Id, "alice"), user.Id, "password", "another long password", false);
+        SignIn(controller, account.Find(user.Id)!);
+        var expired = Assert.IsType<RedirectResult>(
+            await controller.LinkSingleSignOnChallenge(ticket, CancellationToken.None));
+        Assert.Equal("/account?linkError=expired", expired.Url);
+    }
+
+    [Fact]
+    public async Task UnlinkingKeepsTheSessionButNeverTheLastSignInMethod()
+    {
+        var oidc = Oidc();
+        var account = Configured();
+        var (user, loginId, _) = account.SignInExternal(new ExternalIdentity(oidc.Issuer, "sub-1", "alice"), true);
+        var controller = Controller(account, oidc);
+        SignIn(controller, user!, UserSession.SingleSignOnMethod, oidc.Stamp);
+
+        Assert.Equal("LastSignInMethod",
+            (await Assert.ThrowsAsync<AccountException>(() => controller.Unlink(loginId!.Value))).Code);
+
+        account.SetPassword(new UserReference(user!.Id, "alice"), user.Id, null, "a brand new password", true);
+        SignIn(controller, account.Find(user.Id)!, UserSession.SingleSignOnMethod, oidc.Stamp);
+        Assert.IsType<NoContentResult>(await controller.Unlink(loginId!.Value));
+        Assert.Empty(account.Find(user.Id)!.Logins);
+    }
+
+    private (UserAccounts Account, UserRecord User) Stored()
+    {
+        var account = Unconfigured();
+        account.CompleteSetup(account.SetupToken!, "admin", "a long enough password");
+        var user = account.Create(new UserReference(1, "admin"), "alice", UserRole.User, "a placeholder password",
+            null);
+        // Store the short legacy password directly: existing passwords keep working until they are changed.
+        store.Tamper(user.Id, u => u with { PasswordHash = Hash });
+        account = new UserAccounts(Options.Create(new NamerreOptions()), store, NullLogger<UserAccounts>.Instance,
+            time);
+        return (account, account.Find(user.Id)!);
+    }
+
+    private UserAccounts Configured() => new(Options.Create(new NamerreOptions
     {
         Authentication = new AuthenticationOptions { Username = "admin", PasswordHash = Hash }
-    }), store);
+    }), store, NullLogger<UserAccounts>.Instance, time);
 
-    private AdminAccount Unconfigured() => new(Options.Create(new NamerreOptions()), store);
+    private UserAccounts Unconfigured() => new(Options.Create(new NamerreOptions()), store,
+        NullLogger<UserAccounts>.Instance, time);
+
+    private void SignIn(AuthController controller, UserRecord user, string method = UserSession.PasswordMethod,
+        string? oidcStamp = null)
+        => controller.ControllerContext.HttpContext.User = UserSession.Create(user, method, oidcStamp, time.GetUtcNow());
 
     [Fact]
     public void SessionAdvertisesConfiguredSingleSignOn()
@@ -298,27 +428,6 @@ public sealed class AuthControllerTests
         Assert.Equal("/?signInError=unavailable", result.Url);
     }
 
-    [Fact]
-    public async Task SingleSignOnSessionsCannotChangeTheLocalPassword()
-    {
-        antiforgery.GetAndStoreTokens(Arg.Any<HttpContext>())
-            .Returns(new AntiforgeryTokenSet("t", "c", "form", "X-XSRF-TOKEN"));
-        var account = Stored();
-        var oidc = Oidc();
-        var controller = Controller(account, oidc);
-        controller.ControllerContext.HttpContext.User = oidc.CreateSessionPrincipal(new ClaimsPrincipal(
-            new ClaimsIdentity([new Claim("sub", "subject-1"),
-                new Claim("realm_access", """{"roles":["namerre-admin"]}""")], "oidc")))!;
-
-        var session = Assert.IsType<OkObjectResult>(controller.Session());
-        var result = await controller.ChangePassword(new ChangePasswordRequest("password", "new password"));
-
-        Assert.Equivalent(new { canChangePassword = false }, session.Value);
-        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(result).StatusCode);
-        Assert.True(account.Verify("admin", "password"));
-        await authentication.DidNotReceiveWithAnyArgs().SignInAsync(default!, default, default!, default);
-    }
-
     private static OidcLogin Oidc() => new(Options.Create(new NamerreOptions
     {
         Authentication = new AuthenticationOptions
@@ -333,13 +442,13 @@ public sealed class AuthControllerTests
         }
     }));
 
-    private AuthController Controller(AdminAccount account, OidcLogin? oidc = null)
+    private AuthController Controller(UserAccounts account, OidcLogin? oidc = null)
     {
         var services = new ServiceCollection().AddSingleton(authentication).BuildServiceProvider();
         var oidcOptions = Substitute.For<IOptionsMonitor<OpenIdConnectOptions>>();
         oidcOptions.Get(OidcLogin.Scheme).Returns(new OpenIdConnectOptions { ConfigurationManager = providerMetadata });
         return new AuthController(account, oidc ?? new OidcLogin(Options.Create(new NamerreOptions())), oidcOptions,
-            antiforgery, NullLogger<AuthController>.Instance)
+            antiforgery, NullLogger<AuthController>.Instance, new EphemeralDataProtectionProvider(), time: time)
         {
             ControllerContext = new ControllerContext
             {

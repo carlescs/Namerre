@@ -17,7 +17,7 @@
       Signed in as <strong>{{ username() }}</strong>
     </p>
     <a #firstItem routerLink="/account" role="menuitem" (click)="close()">
-      <fa-icon [icon]="keyIcon" aria-hidden="true" /> Change password
+      <fa-icon [icon]="keyIcon" aria-hidden="true" /> Account
     </a>
     <button type="button" role="menuitem" [disabled]="signingOut()" (click)="requestSignOut()">
       <fa-icon [icon]="signOutIcon" aria-hidden="true" />

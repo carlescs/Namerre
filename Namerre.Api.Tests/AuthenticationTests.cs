@@ -164,8 +164,11 @@ public sealed class AuthenticationTests
             .Get(CookieAuthenticationDefaults.AuthenticationScheme);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
         [
+            new Claim(ClaimTypes.NameIdentifier, "0"),
             new Claim(ClaimTypes.Name, AuthWebApplicationFactory.Username),
-            new Claim("credential-stamp", factory.Services.GetRequiredService<Namerre.Authentication.AdminAccount>().Stamp)
+            new Claim(ClaimTypes.Role, "Admin"),
+            new Claim("credential-stamp", factory.Services.GetRequiredService<Namerre.Authentication.UserAccounts>()
+                .Find(0)!.Stamp)
         ], CookieAuthenticationDefaults.AuthenticationScheme));
         if (!expired)
             ((ClaimsIdentity)principal.Identity!).RemoveClaim(principal.FindFirst("credential-stamp")!);

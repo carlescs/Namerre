@@ -18,7 +18,7 @@ describe('UserMenu', () => {
     return { fixture, element, trigger: element.querySelector('button') as HTMLButtonElement };
   }
 
-  it('shows the username and toggles a menu with change password', async () => {
+  it('shows the username and toggles a menu with the account page', async () => {
     const { fixture, element, trigger } = await render();
     document.body.appendChild(element);
     expect(trigger.textContent).toContain('admin');
@@ -29,7 +29,7 @@ describe('UserMenu', () => {
     await fixture.whenStable();
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
     const item = element.querySelector('[role="menuitem"]') as HTMLAnchorElement;
-    expect(item.textContent).toContain('Change password');
+    expect(item.textContent).toContain('Account');
     expect(item.getAttribute('href')).toBe('/account');
     await vi.waitFor(() => expect(document.activeElement).toBe(item));
 
@@ -70,7 +70,7 @@ describe('UserMenu', () => {
     trigger.click();
     await fixture.whenStable();
     const items = [...element.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-    expect(items.map((item) => item.textContent?.trim())).toEqual(['Change password', 'Sign out']);
+    expect(items.map((item) => item.textContent?.trim())).toEqual(['Account', 'Sign out']);
     await vi.waitFor(() => expect(document.activeElement).toBe(items[0]));
     items[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     expect(document.activeElement).toBe(items[1]);

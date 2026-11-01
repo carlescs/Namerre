@@ -1,4 +1,5 @@
 using CMediator.Abstractions;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Namerre.Application.Renaming;
@@ -9,6 +10,7 @@ using Namerre.Application.Renaming.Previews;
 using Namerre.Application.Renaming.Recovery;
 using Namerre.Application.Renaming.Rollback;
 using Namerre.Application.Renaming.Runs;
+using Namerre.Authentication;
 
 namespace Namerre.Controllers;
 
@@ -57,6 +59,7 @@ public sealed class RenamingController(ISender sender) : ControllerBase
         return File(export.Content, export.ContentType, export.FileName);
     }
 
+    [Authorize(Policy = AuthenticationSetup.AdminPolicy)]
     [HttpDelete("api/rename-runs/{id}")]
     public async Task<IActionResult> DeleteRun(string id, CancellationToken cancellationToken)
     {
@@ -64,10 +67,12 @@ public sealed class RenamingController(ISender sender) : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Policy = AuthenticationSetup.AdminPolicy)]
     [HttpGet("api/rename-run-deletions/candidates")]
     public async Task<IActionResult> DeletableRuns(CancellationToken cancellationToken)
         => Ok(await sender.Send(new GetDeletableRenameRunsQuery(), cancellationToken));
 
+    [Authorize(Policy = AuthenticationSetup.AdminPolicy)]
     [HttpPost("api/rename-run-deletions")]
     public async Task<IActionResult> DeleteRuns(DeleteRunsRequest request, CancellationToken cancellationToken)
         => Ok(await sender.Send(new DeleteRenameRunsCommand(request), cancellationToken));

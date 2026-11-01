@@ -14,7 +14,7 @@ public static class RunExportWriter
 
     private static readonly string[] Columns =
     [
-        "runId", "runKind", "runStatus", "runCreatedAt", "fileId", "companionOf", "sourcePath", "targetPath",
+        "runId", "runKind", "runStatus", "runCreatedAt", "runCreatedBy", "runOrigin", "fileId", "companionOf", "sourcePath", "targetPath",
         "status", "errorCode", "error", "rollbackRunId", "rollbackStatus", "rollbackCreatedAt"
     ];
 
@@ -24,7 +24,8 @@ public static class RunExportWriter
         string Status, string? ErrorCode, string? Error, Rollback? Rollback);
 
     public sealed record Document(string RunId, string PlanId, string? ParentRunId, string Kind, string Status,
-        DateTimeOffset CreatedAt, string? Error, IReadOnlyList<ExportedFile> Files);
+        DateTimeOffset CreatedAt, string? Error, IReadOnlyList<ExportedFile> Files, string? CreatedBy = null,
+        string? Origin = null, string? RecoveredBy = null);
 
     public static RunExport Write(RunView run, IReadOnlyList<RunView> rollbacks, string format)
     {
@@ -46,7 +47,7 @@ public static class RunExportWriter
                     file.ErrorCode, file.Error, rollback is null ? null
                         : new Rollback(rollback.Id, rollback.Status,
                             rollback.Files.First(f => f.Id == file.Id).Status, rollback.CreatedAt));
-            }).ToArray());
+            }).ToArray(), run.CreatedBy?.Username, run.Origin, run.RecoveredBy?.Username);
     }
 
     private static byte[] Csv(Document document)
@@ -56,7 +57,8 @@ public static class RunExportWriter
         foreach (var file in document.Files)
         {
             AppendRow(csv, [
-                document.RunId, document.Kind, document.Status, Time(document.CreatedAt), file.FileId,
+                document.RunId, document.Kind, document.Status, Time(document.CreatedAt), document.CreatedBy,
+                document.Origin, file.FileId,
                 file.CompanionOf, file.SourcePath, file.TargetPath, file.Status, file.ErrorCode, file.Error,
                 file.Rollback?.RunId, file.Rollback?.Status, file.Rollback is null ? null : Time(file.Rollback.CreatedAt)
             ]);
