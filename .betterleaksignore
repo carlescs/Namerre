@@ -50,3 +50,5 @@ efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.UnitTests/Controllers/AuthC
 efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.UnitTests/Controllers/AuthControllerTests.cs:generic-password:255
 efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.UnitTests/Controllers/AuthControllerTests.cs:generic-password:275
 994352a715200a66d9dbd96bcec11504fa3996b3:Namerre.Api.Tests/RenameNotificationTests.cs:generic-password:220
+acab354266215569122d58bfc4dd7716d34ce0f9:Namerre.Application.UnitTests/Authentication/AccountRequestTests.cs:generic-password:18
+acab354266215569122d58bfc4dd7716d34ce0f9:Namerre.Infrastructure.UnitTests/Authentication/PasswordHasherTests.cs:generic-password:8

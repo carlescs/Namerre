@@ -5,7 +5,7 @@ namespace Namerre.Infrastructure.UnitTests.Authentication;
 
 public sealed class PasswordHasherTests
 {
-    private const string Password = "correct horse battery";
+    private const string Password = "correct horse battery"; // betterleaks:allow
     private static readonly PasswordHasher Hasher = new();
     // Hashing is deliberately slow, so share one hash across tests.
     private static readonly string Hash = Hasher.Hash(Password);

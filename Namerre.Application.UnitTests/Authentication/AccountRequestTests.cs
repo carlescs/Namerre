@@ -15,7 +15,7 @@ namespace Namerre.Application.UnitTests.Authentication;
 public sealed class AccountRequestTests : IDisposable
 {
     private const string Issuer = "https://keycloak.example/realms/media";
-    private const string Password = "correct horse battery";
+    private const string Password = "correct horse battery"; // betterleaks:allow
     private static readonly UserReference Someone = new(999, "someone");
     private readonly InMemoryUserStore store = new();
     private readonly IUserHistory history = Substitute.For<IUserHistory>();
