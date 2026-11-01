@@ -99,7 +99,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     }
 
     public Task<PlanView> GetPlan(string id, CancellationToken cancellationToken)
-        => Task.FromResult(store.Get<PlanView>(id, "Plan"));
+        => Task.FromResult(store.Get<PlanView>(id, "Plan", Viewer));
 
     public async Task<JobAccepted> Execute(string id, ExecuteRequest request, CancellationToken cancellationToken)
     {
@@ -108,7 +108,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         try
         {
             EnsureOperational();
-            var plan = store.Get<PlanView>(id, "Plan");
+            var plan = store.Get<PlanView>(id, "Plan", Viewer);
             if (request.Version != plan.Version)
                 throw new RenameException("StalePlan", "Confirm the exact prepared plan version.", 409);
             var operation = "Execute:" + id;
@@ -134,12 +134,13 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     {
         if (page < 1 || page > 100000 || pageSize is < 1 or > 100)
             throw new RenameException("InvalidPagination", "Use page >= 1 and pageSize between 1 and 100.");
-        var slice = store.List<RunView>("Run", skip: (page - 1) * pageSize, take: pageSize + 1);
+        var slice = store.List<RunView>("Run", skip: (page - 1) * pageSize, take: pageSize + 1, ownedBy: Viewer);
         return Task.FromResult(new RunPage(slice.Take(pageSize).ToArray(), page, pageSize, slice.Count > pageSize));
     }
 
+    // Rollbacks share their parent's owner (both belong to the plan's owner), so every child is visible too.
     public Task<RunView> GetRun(string id, CancellationToken cancellationToken)
-        => Task.FromResult(store.Get<RunView>(id, "Run") with { RollbackRuns = store.ChildRuns(id) });
+        => Task.FromResult(store.Get<RunView>(id, "Run", Viewer) with { RollbackRuns = store.ChildRuns(id) });
 
     public async Task<IReadOnlyList<string>> DeleteRun(string id, CancellationToken cancellationToken)
     {
@@ -148,9 +149,9 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         {
             EnsureOperational();
             var deleted = store.DeleteRun(id);
-            foreach (var run in deleted) Notify("Run", run, "Deleted");
+            foreach (var run in deleted) Notify("Run", run.Id, "Deleted", run.OwnerId);
             logger.LogInformation("Deleted run {RunId} with {Count} runs in total", id, deleted.Count);
-            return deleted;
+            return deleted.Select(run => run.Id).ToArray();
         }
         finally { gate.Release(); }
     }
@@ -171,9 +172,9 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         {
             EnsureOperational();
             var deleted = store.DeleteRuns(request.RunIds);
-            foreach (var run in deleted) Notify("Run", run, "Deleted");
+            foreach (var run in deleted) Notify("Run", run.Id, "Deleted", run.OwnerId);
             logger.LogInformation("Deleted {Count} runs", deleted.Count);
-            return deleted;
+            return deleted.Select(run => run.Id).ToArray();
         }
         finally { gate.Release(); }
     }
@@ -191,7 +192,8 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             await gate.WaitAsync(cancellationToken);
             try
             {
-                return await BuildRollback(store.Get<RunView>(id, "Run"), request.FileIds, cancellationToken, progress);
+                return await BuildRollback(store.Get<RunView>(id, "Run", Viewer), request.FileIds, cancellationToken,
+                    progress);
             }
             finally { gate.Release(); }
         }
@@ -201,6 +203,8 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     public Task<RollbackCheckProgress> GetRollbackCheckProgress(string id, string operationId, CancellationToken cancellationToken)
     {
         ValidateOperation(operationId);
+        if (Viewer is { } viewer && store.OwnerOf(id) != viewer)
+            throw new RenameException("NotFound", "The requested resource was not found.", 404);
         return Task.FromResult(rollbackChecks.TryGetValue(RollbackCheckKey(id, operationId), out var progress)
             ? progress : new RollbackCheckProgress(0, 0));
     }
@@ -213,11 +217,11 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         try
         {
             EnsureOperational();
+            var parent = store.Get<RunView>(id, "Run", Viewer);
             var key = "Rollback:" + id + ":" + request.OperationId;
             var previous = store.Operation(key);
             if (previous is not null) return Accepted(previous, store.Get<RunView>(previous, "Run").Status);
             EnsureNoRecovery();
-            var parent = store.Get<RunView>(id, "Run");
             var preview = await BuildRollback(parent, request.FileIds, cancellationToken);
             var safe = preview.Files.Where(f => f.Safe).Select(f => f.Id).ToHashSet();
             if (safe.Count == 0)
@@ -241,7 +245,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     public async Task<RecoveryPreview> PreviewRecovery(string id, CancellationToken cancellationToken)
     {
         await gate.WaitAsync(cancellationToken);
-        try { return await BuildRecovery(store.Get<RunView>(id, "Run"), cancellationToken); }
+        try { return await BuildRecovery(store.Get<RunView>(id, "Run", Viewer), cancellationToken); }
         finally { gate.Release(); }
     }
 
@@ -254,10 +258,10 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
         try
         {
             EnsureOperational();
+            var run = store.Get<RunView>(id, "Run", Viewer);
             var key = "Recover:" + id + ":" + request.OperationId;
             var previous = store.Operation(key);
             if (previous is not null) return Accepted(previous, store.Get<RunView>(previous, "Run").Status);
-            var run = store.Get<RunView>(id, "Run");
             if (run.Status != "RecoveryRequired")
                 throw new RenameException("RecoveryNotRequired", "This run does not require recovery.", 409);
             var preview = await BuildRecovery(run, cancellationToken);
@@ -799,10 +803,30 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     }
 
     // Runs after the durable write; a failed push only delays clients until their fallback refresh.
+    /// <summary>
+    /// The user whose history the current request may see; null when it may see everything: administrators, and
+    /// background work such as jobs and watch folders.
+    /// </summary>
+    private long? Viewer => currentUser is { Current: { } user, IsAdmin: false } ? user.Id : null;
+
+    // Only the record's owner and administrators are told; see RenameStore.OwnerOf.
     private void Notify(string kind, string id, string status)
     {
         if (notifier is null) return;
-        try { notifier.Changed(new(kind, id, status)); }
+        long? owner;
+        try { owner = store.OwnerOf(id); }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Rename change notification failed: {Kind} {Id}", kind, id);
+            return;
+        }
+        Notify(kind, id, status, owner);
+    }
+
+    private void Notify(string kind, string id, string status, long? owner)
+    {
+        if (notifier is null) return;
+        try { notifier.Changed(new(kind, id, status, owner)); }
         catch (Exception exception) { logger.LogWarning(exception, "Rename change notification failed: {Kind} {Id}", kind, id); }
     }
     // Runs after the durable write; the notifier only queues the work, so this never blocks the job.

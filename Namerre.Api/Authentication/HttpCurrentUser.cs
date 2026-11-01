@@ -6,4 +6,7 @@ namespace Namerre.Authentication;
 public sealed class HttpCurrentUser(IHttpContextAccessor accessor) : ICurrentUser
 {
     public UserReference? Current => accessor.HttpContext?.User is { } user ? UserSession.Reference(user) : null;
+
+    // Role changes replace the credential stamp and so end the session: the role claim is always current.
+    public bool IsAdmin => accessor.HttpContext?.User.IsInRole(nameof(UserRole.Admin)) == true;
 }

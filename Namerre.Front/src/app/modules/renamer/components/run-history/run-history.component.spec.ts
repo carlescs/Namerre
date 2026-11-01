@@ -446,6 +446,21 @@ describe('RunHistoryComponent', () => {
     expect(deleteButton().title).toBe('Only completed or recovered runs can be deleted');
   });
 
+  it("tells administrators the history holds everyone's renames", async () => {
+    params.next(convertToParamMap({}));
+    http.expectOne('/api/rename-runs/run-1');
+    http.expectOne('/api/rename-runs?page=1&pageSize=20').flush({
+      items: [],
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    });
+    await fixture.whenStable();
+    http.expectOne('/api/watch-folders').flush([]);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain("Look back at everyone's renames");
+  });
+
   it('names the watch folder that started a run and shows the folders on the history page', async () => {
     http.expectOne('/api/rename-runs/run-1').flush({ ...run, origin: 'watch:Downloads' });
     await fixture.whenStable();
@@ -493,6 +508,8 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     const element = fixture.nativeElement as HTMLElement;
     expect(element.textContent).toContain('Started by frank');
+    expect(element.textContent).toContain('Look back at your renames');
+    expect(element.textContent).not.toContain("everyone's renames");
     expect(element.textContent).not.toContain('Watch folders');
     expect(element.querySelector('[aria-label="Bulk actions"]')).toBeNull();
     expect(element.querySelector('button[aria-label^="Delete"]')).toBeNull();

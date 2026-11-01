@@ -70,6 +70,9 @@ namespace Namerre.Infrastructure.Renaming.Migrations
                     b.Property<long>("Order")
                         .HasColumnType("INTEGER");
 
+                    b.Property<long?>("OwnerId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ParentId")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
@@ -88,6 +91,8 @@ namespace Namerre.Infrastructure.Renaming.Migrations
                     b.HasIndex("ParentId");
 
                     b.HasIndex("Kind", "Order");
+
+                    b.HasIndex("Kind", "OwnerId", "Order");
 
                     b.ToTable("Documents");
                 });

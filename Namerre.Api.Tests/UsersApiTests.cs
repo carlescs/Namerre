@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Plans;
+using Namerre.Application.Renaming.Rollback;
 using Namerre.Application.Renaming.Runs;
 using Namerre.Authentication;
 using Xunit;
@@ -125,11 +126,76 @@ public sealed class UsersApiTests : IDisposable
         Assert.Equal("frank", plan.CreatedBy!.Username);
         Assert.Equal("Completed", run!.Status);
         Assert.Equal("frank", run.CreatedBy!.Username);
-        // Everyone sees the shared history, attributed to its author.
+        // Administrators see everyone's history, attributed to its author.
         var page = (await admin.GetFromJsonAsync<RunPage>("/api/rename-runs"))!;
         Assert.Equal("frank", Assert.Single(page.Items).CreatedBy!.Username);
         var csv = await admin.GetStringAsync($"/api/rename-runs/{runId}/export?format=csv");
         Assert.Contains(",frank,", csv);
+    }
+
+    [Fact]
+    public async Task UsersOnlySeeAndManageTheirOwnRenamesWhileAdministratorsSeeEveryone()
+    {
+        File.WriteAllText(Path.Combine(Root, "alpha.txt"), "A");
+        File.WriteAllText(Path.Combine(Root, "beta.txt"), "B");
+        using var factory = Factory();
+        using var admin = await Installed(factory);
+        foreach (var username in new[] { "frank", "grace" })
+            using (await admin.PostAsJsonAsync("/api/users", new { username, password = username + "-long-password" })) { }
+        using var frank = await SignIn(factory, "frank", "frank-long-password");
+        using var grace = await SignIn(factory, "grace", "grace-long-password");
+
+        var (frankPlan, frankRun) = await Rename(frank, "alpha.txt");
+        var (_, adminRun) = await Rename(admin, "beta.txt");
+
+        // Each user lists only their own runs; administrators list both, with their authors.
+        Assert.Equal([frankRun], (await frank.GetFromJsonAsync<RunPage>("/api/rename-runs"))!.Items.Select(r => r.Id));
+        Assert.Empty((await grace.GetFromJsonAsync<RunPage>("/api/rename-runs"))!.Items);
+        var all = (await admin.GetFromJsonAsync<RunPage>("/api/rename-runs"))!.Items;
+        Assert.Equal(["installed-admin", "frank"], all.Select(r => r.CreatedBy!.Username));
+
+        // Someone else's plan or run reads as missing, and cannot be exported, undone or recovered.
+        var operation = Guid.NewGuid().ToString("N");
+        foreach (var response in new[]
+        {
+            await grace.GetAsync("/api/rename-plans/" + frankPlan),
+            await grace.PostAsJsonAsync($"/api/rename-plans/{frankPlan}/execute", new ExecuteRequest(1, operation)),
+            await grace.GetAsync("/api/rename-runs/" + frankRun),
+            await grace.GetAsync($"/api/rename-runs/{frankRun}/export?format=json"),
+            await grace.PostAsJsonAsync($"/api/rename-runs/{frankRun}/rollback-preview", new SelectionRequest(["0"], operation)),
+            await grace.GetAsync($"/api/rename-runs/{frankRun}/rollback-preview/{operation}"),
+            await grace.PostAsJsonAsync($"/api/rename-runs/{frankRun}/rollback", new SelectionRequest(["0"], operation)),
+            await grace.PostAsync($"/api/rename-runs/{frankRun}/recovery-preview", null),
+            await frank.GetAsync("/api/rename-runs/" + adminRun)
+        })
+            await AssertCode(response, HttpStatusCode.NotFound, "NotFound");
+
+        // An administrator can undo a user's rename; the rollback stays in that user's history.
+        using var rollback = await admin.PostAsJsonAsync($"/api/rename-runs/{frankRun}/rollback",
+            new SelectionRequest(["0"], operation));
+        Assert.Equal(HttpStatusCode.Accepted, rollback.StatusCode);
+        var rollbackId = (await rollback.Content.ReadFromJsonAsync<JobAccepted>())!.Id;
+        var undone = await Poll(() => frank.GetFromJsonAsync<RunView>("/api/rename-runs/" + rollbackId),
+            r => r!.Status is not ("Queued" or "Running"));
+        Assert.Equal(("Completed", "installed-admin"), (undone!.Status, undone.CreatedBy!.Username));
+        Assert.Equal(2, (await frank.GetFromJsonAsync<RunPage>("/api/rename-runs"))!.Items.Count);
+    }
+
+    /// <summary>Prepares and executes an uppercase rename of one file, returning the plan and completed run IDs.</summary>
+    private static async Task<(string Plan, string Run)> Rename(HttpClient client, string path)
+    {
+        var request = new PipelineRequest([new FileInput("0", path)],
+            [new PluginInstance("upper", "case", 1, true, JsonSerializer.SerializeToElement(new { mode = "upper" }))]);
+        using var prepare = await client.PostAsJsonAsync("/api/rename-plans", request);
+        var accepted = (await prepare.Content.ReadFromJsonAsync<JobAccepted>())!;
+        var plan = await Poll(() => client.GetFromJsonAsync<PlanView>("/api/rename-plans/" + accepted.Id),
+            p => p!.Status != "Preparing");
+        using var execute = await client.PostAsJsonAsync($"/api/rename-plans/{plan!.Id}/execute",
+            new ExecuteRequest(plan.Version, Guid.NewGuid().ToString("N")));
+        var runId = (await execute.Content.ReadFromJsonAsync<JobAccepted>())!.Id;
+        await Poll(() => client.GetFromJsonAsync<RunView>("/api/rename-runs/" + runId),
+            r => r!.Status is not ("Queued" or "Running"));
+        return (plan.Id, runId);
     }
 
     [Fact]
@@ -150,20 +216,16 @@ public sealed class UsersApiTests : IDisposable
             new { username = "frank", password = "frank-real-password" }); // betterleaks:allow
         var targetId = (await target.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt64();
 
+        string planId, runId;
         using (var provisioned = await SignIn(factory, "frank-2", "frank-long-password"))
-        {
-            var request = new PipelineRequest([new FileInput("0", "alpha.txt")],
-                [new PluginInstance("upper", "case", 1, true, JsonSerializer.SerializeToElement(new { mode = "upper" }))]);
-            using var prepare = await provisioned.PostAsJsonAsync("/api/rename-plans", request);
-            var accepted = (await prepare.Content.ReadFromJsonAsync<JobAccepted>())!;
-            var plan = await Poll(() => provisioned.GetFromJsonAsync<PlanView>("/api/rename-plans/" + accepted.Id),
-                p => p!.Status != "Preparing");
-            using var execute = await provisioned.PostAsJsonAsync($"/api/rename-plans/{plan!.Id}/execute",
-                new ExecuteRequest(plan.Version, Guid.NewGuid().ToString("N")));
-            var runId = (await execute.Content.ReadFromJsonAsync<JobAccepted>())!.Id;
-            await Poll(() => admin.GetFromJsonAsync<RunView>("/api/rename-runs/" + runId),
-                r => r!.Status is not ("Queued" or "Running"));
-        }
+            (planId, runId) = await Rename(provisioned, "alpha.txt");
+        // An administrator's undo belongs to the user too, so it moves with the rest of their history.
+        using var rollback = await admin.PostAsJsonAsync($"/api/rename-runs/{runId}/rollback",
+            new SelectionRequest(["0"], Guid.NewGuid().ToString("N")));
+        Assert.Equal(HttpStatusCode.Accepted, rollback.StatusCode);
+        var rollbackId = (await rollback.Content.ReadFromJsonAsync<JobAccepted>())!.Id;
+        await Poll(() => admin.GetFromJsonAsync<RunView>("/api/rename-runs/" + rollbackId),
+            r => r!.Status is not ("Queued" or "Running"));
 
         using var merge = await admin.PostAsJsonAsync($"/api/users/{targetId}/merge",
             new { sourceUserId = source.GetProperty("id").GetInt64() });
@@ -173,10 +235,17 @@ public sealed class UsersApiTests : IDisposable
         Assert.Equal(1, merged.GetProperty("logins").GetArrayLength());
         Assert.Equal(HttpStatusCode.NotFound,
             (await admin.GetAsync($"/api/users/{source.GetProperty("id").GetInt64()}")).StatusCode);
-        var run = Assert.Single((await admin.GetFromJsonAsync<RunPage>("/api/rename-runs"))!.Items);
+        var run = (await admin.GetFromJsonAsync<RunView>("/api/rename-runs/" + runId))!;
         Assert.Equal((targetId, "frank"), (run.CreatedBy!.Id, run.CreatedBy.Username));
         var plan2 = (await admin.GetFromJsonAsync<PlanView>("/api/rename-plans/" + run.PlanId))!;
         Assert.Equal("frank", plan2.CreatedBy!.Username);
+
+        // The target user now owns the history: the plan, the rename and the administrator's undo.
+        using var frank = await SignIn(factory, "frank", "frank-real-password");
+        Assert.Equal(HttpStatusCode.OK, (await frank.GetAsync("/api/rename-plans/" + planId)).StatusCode);
+        Assert.Equal([rollbackId, runId],
+            (await frank.GetFromJsonAsync<RunPage>("/api/rename-runs"))!.Items.Select(r => r.Id));
+        Assert.Equal(HttpStatusCode.OK, (await frank.GetAsync("/api/rename-runs/" + rollbackId)).StatusCode);
     }
 
     private static async Task<T> Poll<T>(Func<Task<T>> read, Func<T, bool> done)

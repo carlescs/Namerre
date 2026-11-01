@@ -177,6 +177,10 @@ resolves the linked user, provisions a `User` when `Oidc:AutoProvision` allows (
 the identity when the challenge carries the protected link items from `AuthController.LinkSingleSignOn` (needs a recent
 sign-in or the password). Moving a link can merge its user into the target (`UserAccounts.Merge`, then
 `IUserHistory.Reattribute`, implemented by `RenameService` under its job gate, rewrites `CreatedBy`/`RecoveredBy`).
+History is per user: `RenameDocument.OwnerId` (the plan's `CreatedBy`; a run, rollbacks included, takes its plan's owner;
+null for watch folders and pre-user history) scopes every plan/run read in `RenameService` through `Viewer` (null for
+administrators and background work, from `ICurrentUser.IsAdmin`), so someone else's record is `NotFound`, and
+`HubRenameNotifier` only nudges administrators and the owner (`RenameChange.OwnerId`, never serialized).
 `AuthenticationSetup.AdminPolicy` (`RequireAdmin`) guards `api/users`, watch folders and run
 deletion; `AccountException` maps refusals to `{ code, message }`. `HttpCurrentUser` feeds `RenameService`, which records
 `CreatedBy` on plans/runs and `RecoveredBy` on recoveries.
