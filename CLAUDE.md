@@ -73,7 +73,8 @@ before changing a feature, and update it with the change.
 - Controllers (`Namerre.Api/Controllers`, namespace `Namerre.Controllers`) use routes starting with
   `api/` and send CMediator requests via `ISender`. Request and handler live in separate files
   (`XQuery.cs` + `XQueryHandler.cs`) in a feature folder with a matching namespace. Renaming handlers
-  stay thin; logic belongs in `Namerre.Infrastructure/Renaming/RenameService.cs`.
+  stay thin; logic belongs in `Namerre.Infrastructure/Renaming` (`RenameService` and the collaborators
+  it builds; see `docs/architecture.md`).
   Account handlers (`Application/Authentication`, `Application/Users`) stay thin too; the rules belong
   in `Application/Authentication/UserAccounts`, and the auth controllers keep only cookie/claims/OIDC
   plumbing.

@@ -503,7 +503,7 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
             return false;
         var path = Path.GetRelativePath(fileSystem.Root, fullPath).Replace('\\', '/');
         return List<RunView>("Run", ["Queued", "Running", "RecoveryRequired", "RecoveryQueued", "Recovering"]).Any(r => r.Files.Any(f => f.StagingPath == path)
-            || r.Journal.Any(j => !RenameService.IsDirectoryEntry(j.Kind) && (j.FromPath == path || j.ToPath == path)));
+            || r.Journal.Any(j => !JournaledMover.IsDirectoryEntry(j.Kind) && (j.FromPath == path || j.ToPath == path)));
     }
 
     private sealed record RunLink(string Id, string PlanId, string? ParentRunId, string Kind, string Status,

@@ -27,7 +27,19 @@ sign-in/out and renewal, claims, antiforgery, OIDC challenges and link tickets).
 
 Renaming handlers are thin pass-throughs to `IRenameService` (the run export handler also formats
 through `Runs/RunExportWriter`: RFC 4180 CSV with BOM and formula-injection guard, or JSON); the real
-logic lives in `Namerre.Infrastructure/Renaming/RenameService.cs` (a singleton).
+logic lives in `Namerre.Infrastructure/Renaming` (`RenameService` is the singleton behind it), split by concern:
+
+- `RenameService`: the `IRenameService`/`IUserHistory` surface: validation, history scoping (`Viewer`),
+  preview slots and queueing. It builds the internal collaborators below.
+- `RenameJobRunner`: `ProcessNext` takes the next queued job and runs prepare, execute (rename or
+  rollback) or recovery, recording job telemetry and failures.
+- `JournaledMover`: journal intents and completions around staging moves, directory creation and
+  empty-folder cleanup; `FileVerifier` re-checks the prepared hash or size/time stamp.
+- `RollbackPlanner` / `RecoveryPlanner`: build the rollback and recovery previews that both the
+  commands and the jobs rely on; `RollbackCheckTracker` keeps per-file progress of in-flight checks.
+- `RenameCoordinator`: the gate that serializes durable state changes, the "storage unavailable" stop
+  flag, queueing and the trace origin of each job; `RenameRecorder`: durable plan/run writes followed
+  by change and library notifications.
 
 DTOs are one type per file: feature-specific ones (e.g. `RunView`, `PlanView`, `TmdbMatch`) sit in
 their feature folder; shared ones (`PipelineRequest`, `PluginInstance`, `RenameIssue`,
@@ -105,7 +117,7 @@ satisfy `Domain/Renaming/RunTransitions.Allows`; naming rules are in `Domain/Ren
 
 ## Live updates
 
-After each durable plan/run write, `RenameService` calls `IRenameNotifier` (Application contract,
+After each durable plan/run write, `RenameRecorder` calls `IRenameNotifier` (Application contract,
 best effort, never throws into the job). `HubRenameNotifier` (`Namerre.Api/Notifications`)
 broadcasts a `RenameChange` nudge as `renameChanged` on the authorized `RenameHub`
 (`/api/hubs/rename`). In the frontend, `rename-events.ts` (`RenameEvents.watch` and `refreshOn`)
@@ -174,7 +186,7 @@ Everything app-specific is under the `Namerre` section, bound to `NamerreOptions
   whose URL may hold a secret are marked with `NamerreTelemetry.Untraced`. README lists every span
   and metric.
 - `Integrations`: optional Jellyfin/Emby/Plex library refresh and webhook after a
-  `Completed`/`Recovered` run. `RenameService.Complete` calls `ILibraryNotifier.RunFinished`,
+  `Completed`/`Recovered` run. `RenameRecorder.Complete` calls `ILibraryNotifier.RunFinished`,
   implemented by `Infrastructure/Integrations/LibraryNotifier`, a bounded channel drained by a
   hosted service; best effort. `NamerreOptionsValidator` fails startup on bad URLs or
   missing/orphaned keys.
