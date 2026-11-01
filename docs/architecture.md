@@ -88,12 +88,16 @@ satisfy `Domain/Renaming/RunTransitions.Allows`; naming rules are in `Domain/Ren
 
 - `RenameWorker` (hosted service) polls `RenameService.ProcessNext`, so jobs run independently of
   the browser.
-- `WatchFolderWorker` runs `Infrastructure/WatchFolders/WatchFolderService.Scan` every few seconds:
-  configured `Namerre:WatchFolders` (validated by `WatchFolderOptions.Problem`) are listed through
-  `IFolderBrowser`, stable files previewed with their preset and prepared through
-  `RenameService.Prepare(request, origin, …)` (`origin` = `watch:<name>` on `PlanView`/`RunView`),
-  then executed; per-file state with back-off lives in the `WatchedFiles` table and pausing in
-  `Settings`. TMDB steps need the folder's `TmdbAutoConfirm` threshold.
+- `WatchFolderWorker` calls `IWatchFolders.Scan` every few seconds. The rules live in
+  `Application/WatchFolders/WatchFolderService`: configured `Namerre:WatchFolders` (validated by
+  `WatchFolderOptions.Problem`, exposed to Application through `IWatchFolderConfiguration`) are
+  listed through `IFolderBrowser`, stable files previewed with their preset and prepared through
+  `IRenameService.Prepare(request, origin, …)` (`origin` = `watch:<name>` on `PlanView`/`RunView`),
+  then executed. Per-file state (`WatchFileState`, persisted as strings) with back-off and pausing
+  go through the `IWatchedFileStore` port (Infrastructure `WatchedFileStore` over the `WatchedFiles`
+  table and `Settings`); telemetry goes through `IWatchFolderDiagnostics`. TMDB steps need the
+  folder's `TmdbAutoConfirm` threshold. `WatchFolderServiceTests` (Application unit tests, with
+  `FakeTimeProvider`) cover the rules; `Namerre.Api.Tests/WatchFolderTests` covers the database path.
 - Runs are journaled (with staging paths), not atomic; interrupted mutations are never blindly resumed.
 
 ## Live updates

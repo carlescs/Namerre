@@ -5,6 +5,7 @@ using Namerre.Application.Folders;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Metadata;
 using Namerre.Application.Renaming.Plans;
+using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application.Renaming.Presets;
 using Namerre.Application.Renaming.Runs;
 using Namerre.Application.WatchFolders;
