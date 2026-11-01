@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Namerre.Application.Authentication;
 using Namerre.Application.Folders;
+using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Presets;
 using Namerre.Infrastructure.Authentication;
@@ -33,7 +34,7 @@ public static class DependencyInjection
             options => options.Limits.ToLimits().IsValid,
             "Namerre:Limits values must be between 1 and their ceilings: MaxFilesPerRun "
             + $"{RenameLimits.CeilingFiles}, MaxStepsPerRun {RenameLimits.CeilingSteps}, "
-            + $"MaxQueuedJobs {RenameLimits.CeilingQueuedJobs}."));
+            + $"MaxQueuedJobs {RenameLimits.CeilingQueuedJobs}, MaxConcurrentPreviews {RenameLimits.CeilingConcurrentPreviews}."));
         services.AddSingleton(provider =>
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.Limits.ToLimits());
         services.AddSingleton<IValidateOptions<NamerreOptions>, NamerreOptionsValidator>();
@@ -66,8 +67,9 @@ public static class DependencyInjection
         services.AddHostedService<RenameWorker>();
         // Backlog gauges; only created when telemetry export asks for them.
         services.AddSingleton<RenameStateMetrics>();
-        services.AddSingleton<WatchFolderService>();
-        services.AddSingleton<IWatchFolders>(provider => provider.GetRequiredService<WatchFolderService>());
+        services.AddSingleton<IWatchFolderConfiguration, WatchFolderConfiguration>();
+        services.AddSingleton<IWatchedFileStore, WatchedFileStore>();
+        services.AddSingleton<IWatchFolderDiagnostics, WatchFolderDiagnostics>();
         services.AddHostedService<WatchFolderWorker>();
         services.AddSingleton<IFolderBrowser>(provider => new ServerFolderBrowser(
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.RootPath,

@@ -1,10 +1,11 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Namerre.Application.WatchFolders;
 
 namespace Namerre.Infrastructure.WatchFolders;
 
-/// <summary>Runs <see cref="WatchFolderService.Scan"/> every few seconds; each folder keeps its own interval.</summary>
-public sealed class WatchFolderWorker(WatchFolderService service, ILogger<WatchFolderWorker> logger) : BackgroundService
+/// <summary>Runs <see cref="IWatchFolders.Scan"/> every few seconds; each folder keeps its own interval.</summary>
+public sealed class WatchFolderWorker(IWatchFolders service, ILogger<WatchFolderWorker> logger) : BackgroundService
 {
     public static readonly TimeSpan Tick = TimeSpan.FromSeconds(5);
 

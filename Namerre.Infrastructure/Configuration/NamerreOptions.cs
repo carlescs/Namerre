@@ -24,8 +24,9 @@ public sealed class LimitsOptions
     public int MaxFilesPerRun { get; set; } = RenameLimits.DefaultFiles;
     public int MaxStepsPerRun { get; set; } = RenameLimits.DefaultSteps;
     public int MaxQueuedJobs { get; set; } = RenameLimits.DefaultQueuedJobs;
+    public int MaxConcurrentPreviews { get; set; } = RenameLimits.DefaultConcurrentPreviews;
 
-    public RenameLimits ToLimits() => new(MaxFilesPerRun, MaxStepsPerRun, MaxQueuedJobs);
+    public RenameLimits ToLimits() => new(MaxFilesPerRun, MaxStepsPerRun, MaxQueuedJobs, MaxConcurrentPreviews);
 }
 
 public sealed class AuthenticationOptions

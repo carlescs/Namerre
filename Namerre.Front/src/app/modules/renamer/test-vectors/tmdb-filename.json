@@ -1,0 +1,464 @@
+[
+  {
+    "path": "Movies/The.Movie.2024.1080p.WEB-DL.x264.mkv",
+    "mediaType": "movie",
+    "expected": {
+      "query": "The Movie",
+      "year": "2024",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "1917 (2019).mkv",
+    "mediaType": "movie",
+    "expected": {
+      "query": "1917",
+      "year": "2019",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "2001.A.Space.Odyssey.mkv",
+    "mediaType": "movie",
+    "expected": {
+      "query": "2001 A Space Odyssey",
+      "year": null,
+      "season": null,
+      "episode": null,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Blade_Runner_2049_2017_1080p.mkv",
+    "mediaType": "movie",
+    "expected": {
+      "query": "Blade Runner 2049",
+      "year": "2017",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Movie [2019].mkv",
+    "mediaType": "movie",
+    "expected": {
+      "query": "Movie",
+      "year": "2019",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Movie (1899).mkv",
+    "mediaType": "movie",
+    "expected": {
+      "query": "Movie 1899",
+      "year": null,
+      "season": null,
+      "episode": null,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Movie.BluRay.mkv",
+    "mediaType": "movie",
+    "expected": {
+      "query": "Movie",
+      "year": null,
+      "season": null,
+      "episode": null,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Movie.x265.2020.mkv",
+    "mediaType": "movie",
+    "expected": {
+      "query": "Movie",
+      "year": "2020",
+      "season": null,
+      "episode": null,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "NoDotsHere",
+    "mediaType": "movie",
+    "expected": {
+      "query": "NoDotsHere",
+      "year": null,
+      "season": null,
+      "episode": null,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Trailing.dot.",
+    "mediaType": "movie",
+    "expected": {
+      "query": "Trailing dot",
+      "year": null,
+      "season": null,
+      "episode": null,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": ".hidden",
+    "mediaType": "movie",
+    "expected": {
+      "query": "hidden",
+      "year": null,
+      "season": null,
+      "episode": null,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Dir/.hidden.mkv",
+    "mediaType": "movie",
+    "expected": {
+      "query": "hidden",
+      "year": null,
+      "season": null,
+      "episode": null,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show.S01E01.mkv",
+    "mediaType": "movie",
+    "expected": {
+      "query": "Show S01E01",
+      "year": null,
+      "season": null,
+      "episode": null,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "TV/A.Show.S02E03.1080p.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "A Show",
+      "year": null,
+      "season": 2,
+      "episode": 3,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "A Show - 0x02 - Special.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "A Show",
+      "year": null,
+      "season": 0,
+      "episode": 2,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "A Show/Season 02/S02E04.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "A Show",
+      "year": null,
+      "season": 2,
+      "episode": 4,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "show.s01e02.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "show",
+      "year": null,
+      "season": 1,
+      "episode": 2,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "The_Show_S01E01.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "The Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show.Name.2x05.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show Name",
+      "year": null,
+      "season": 2,
+      "episode": 5,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show.2019.S01E01.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": "2019",
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show.1080p.S01E01.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show.S01E01.2019.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show.S01E01-E02.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": 2
+    }
+  },
+  {
+    "path": "Show.S01E01E02.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": 2
+    }
+  },
+  {
+    "path": "Show.S01E01-02.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": 2
+    }
+  },
+  {
+    "path": "Show 1x01-1x02.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": 2
+    }
+  },
+  {
+    "path": "Show 1x01-02.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": 2
+    }
+  },
+  {
+    "path": "Show.S01E01-E05.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": 5
+    }
+  },
+  {
+    "path": "Show.S01E01-E10.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": 10
+    }
+  },
+  {
+    "path": "Show.S01E01-E11.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show.S01E01-E20.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show.S01E05-E03.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 5,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show.S01E05-E05.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 5,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show.S01E01-720p.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show.S01E01-1080p.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show Name/S01E01.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show Name",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show Name/Season 1/S01E02.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show Name",
+      "year": null,
+      "season": 1,
+      "episode": 2,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show/s2/S02E01.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 2,
+      "episode": 1,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "S01E01.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "[Group] Show - S01E01 [1080p].mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Group Show",
+      "year": null,
+      "season": 1,
+      "episode": 1,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Show.S123E1234.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Show",
+      "year": null,
+      "season": 123,
+      "episode": 1234,
+      "episodeEnd": null
+    }
+  },
+  {
+    "path": "Just.A.Show.mkv",
+    "mediaType": "tv",
+    "expected": {
+      "query": "Just A Show",
+      "year": null,
+      "season": null,
+      "episode": null,
+      "episodeEnd": null
+    }
+  }
+]

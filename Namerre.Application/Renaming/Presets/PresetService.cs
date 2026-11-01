@@ -1,3 +1,5 @@
+using Namerre.Application.Renaming.Pipeline;
+
 namespace Namerre.Application.Renaming.Presets;
 
 /// <summary>

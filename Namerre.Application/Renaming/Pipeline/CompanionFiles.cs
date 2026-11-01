@@ -1,4 +1,4 @@
-namespace Namerre.Application.Renaming;
+namespace Namerre.Application.Renaming.Pipeline;
 
 /// <summary>
 /// Related files that follow a video: subtitles (<c>Movie.srt</c>, <c>Movie.en.hi.srt</c>), the <c>.nfo</c> and

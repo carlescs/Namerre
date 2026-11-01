@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Namerre.Application.Authentication;
+using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Plans;
 using Namerre.Application.Renaming.Previews;
@@ -14,12 +15,16 @@ namespace Namerre.Infrastructure.Renaming;
 
 public sealed class RenameService(RenameStore store, IRenameFileSystem fileSystem, PipelineEngine pipeline,
     ILogger<RenameService> logger, IRenameNotifier? notifier = null,
-    ILibraryNotifier? libraryNotifier = null, ICurrentUser? currentUser = null) : IRenameService, IUserHistory
+    ILibraryNotifier? libraryNotifier = null, ICurrentUser? currentUser = null,
+    RenameLimits? limits = null) : IRenameService, IUserHistory
 {
     /// <summary>Most runs one bulk deletion accepts; also caps the "select all pages" candidate list.</summary>
     public const int MaxRunsPerDeletion = 1000;
+    private readonly int maxConcurrentPreviews = (limits ?? RenameLimits.Default).MaxConcurrentPreviews;
+    // Serializes every durable state change (prepare, execute, rollback, recovery, deletion): one at a time by design.
     private readonly SemaphoreSlim gate = new(1);
-    private readonly SemaphoreSlim previews = new(4);
+    // Bounds concurrent read-only previews; a preview that finds no free slot is rejected (429), not queued.
+    private readonly SemaphoreSlim previews = new((limits ?? RenameLimits.Default).MaxConcurrentPreviews);
     // In-flight rollback checks keyed by run and operation, so a polling client can show per-file progress.
     private readonly ConcurrentDictionary<string, RollbackCheckProgress> rollbackChecks = new();
     // The trace context of the request that queued each job, so the job's span links back to it. Best effort and
@@ -30,7 +35,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
     public async Task<PreviewResult> Preview(PipelineRequest request, CancellationToken cancellationToken)
     {
         if (!await previews.WaitAsync(0, cancellationToken))
-            throw Rejected(new RenameException("PreviewBusy", "Four previews are already running. Try again shortly.", 429));
+            throw Rejected(new RenameException("PreviewBusy", $"{maxConcurrentPreviews} previews are already running. Try again shortly.", 429));
         using var activity = NamerreTelemetry.Source.StartActivity("rename.preview");
         activity?.SetTag("namerre.files.count", request.Files?.Count ?? 0);
         activity?.SetTag("namerre.steps.count", request.Plugins?.Count ?? 0);

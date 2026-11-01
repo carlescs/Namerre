@@ -1,0 +1,351 @@
+{
+  "isVideo": [
+    {
+      "name": "Movie.mkv",
+      "expected": true
+    },
+    {
+      "name": "Movie.MKV",
+      "expected": true
+    },
+    {
+      "name": "Movie.mp4",
+      "expected": true
+    },
+    {
+      "name": "a.ts",
+      "expected": true
+    },
+    {
+      "name": "a.m2ts",
+      "expected": true
+    },
+    {
+      "name": "a.srt",
+      "expected": false
+    },
+    {
+      "name": "a.nfo",
+      "expected": false
+    },
+    {
+      "name": "a.txt",
+      "expected": false
+    },
+    {
+      "name": "Movie",
+      "expected": false
+    },
+    {
+      "name": "Movie.",
+      "expected": false
+    },
+    {
+      "name": "a.mkv.bak",
+      "expected": false
+    }
+  ],
+  "suffix": [
+    {
+      "videoStem": "Movie",
+      "name": "Movie.srt",
+      "expected": ".srt"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.en.srt",
+      "expected": ".en.srt"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.en.hi.srt",
+      "expected": ".en.hi.srt"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.EN.srt",
+      "expected": ".EN.srt"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.pt-BR.srt",
+      "expected": ".pt-BR.srt"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.pt_BR.srt",
+      "expected": ".pt_BR.srt"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.zh-Hans.srt",
+      "expected": ".zh-Hans.srt"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.pt-BR.forced.vtt",
+      "expected": ".pt-BR.forced.vtt"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.eng.ass",
+      "expected": ".eng.ass"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.ENG.srt",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.xx.srt",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.e.srt",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.en-USA.srt",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.en.sdh.SRT",
+      "expected": ".en.sdh.SRT"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.forced.srt",
+      "expected": ".forced.srt"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.default.ssa",
+      "expected": ".default.ssa"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.sub",
+      "expected": ".sub"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.idx",
+      "expected": ".idx"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie..srt",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.Part.Two.srt",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.en.srt.bak",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.en.txt",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.en.",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.nfo",
+      "expected": ".nfo"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.NFO",
+      "expected": ".NFO"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.nfo.bak",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie-poster.jpg",
+      "expected": "-poster.jpg"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie-fanart.PNG",
+      "expected": "-fanart.PNG"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie-thumb.webp",
+      "expected": "-thumb.webp"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie-thumb.tbn",
+      "expected": "-thumb.tbn"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie-POSTER.jpeg",
+      "expected": "-POSTER.jpeg"
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie-banner.jpg",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.jpg",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie-poster.srt",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie-poster.gif",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie 2.srt",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie2-poster.jpg",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "movie.srt",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie.mkv",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie",
+      "name": "Movie",
+      "expected": null
+    },
+    {
+      "videoStem": "",
+      "name": "x.srt",
+      "expected": null
+    },
+    {
+      "videoStem": "Movie.en",
+      "name": "Movie.en.srt",
+      "expected": ".srt"
+    },
+    {
+      "videoStem": "Show S01E01",
+      "name": "Show S01E01.en.srt",
+      "expected": ".en.srt"
+    }
+  ],
+  "detect": [
+    {
+      "name": "subtitle, nfo and artwork follow their video",
+      "files": [
+        "A/Movie.mkv",
+        "A/Movie.en.srt",
+        "A/Movie.nfo",
+        "A/Movie-poster.jpg",
+        "A/Other.txt"
+      ],
+      "expected": {
+        "A/Movie.en.srt": "A/Movie.mkv",
+        "A/Movie.nfo": "A/Movie.mkv",
+        "A/Movie-poster.jpg": "A/Movie.mkv"
+      }
+    },
+    {
+      "name": "fanart and thumb",
+      "files": ["Movie.mkv", "Movie-fanart.jpg", "Movie-thumb.png"],
+      "expected": {
+        "Movie-fanart.jpg": "Movie.mkv",
+        "Movie-thumb.png": "Movie.mkv"
+      }
+    },
+    {
+      "name": "different folders never pair",
+      "files": ["A/Movie.mkv", "B/Movie.srt"],
+      "expected": {}
+    },
+    {
+      "name": "no video, no companions",
+      "files": ["Movie.srt", "Movie.nfo"],
+      "expected": {}
+    },
+    {
+      "name": "videos are never companions",
+      "files": ["Movie.mkv", "Movie.en.mkv"],
+      "expected": {}
+    },
+    {
+      "name": "longest video stem wins",
+      "files": ["Movie.mkv", "Movie.en.mkv", "Movie.en.srt"],
+      "expected": {
+        "Movie.en.srt": "Movie.en.mkv"
+      }
+    },
+    {
+      "name": "each video keeps its own companions",
+      "files": [
+        "Show S01E01.mkv",
+        "Show S01E02.mkv",
+        "Show S01E01.srt",
+        "Show S01E02.en.srt",
+        "Show S01E02.nfo"
+      ],
+      "expected": {
+        "Show S01E01.srt": "Show S01E01.mkv",
+        "Show S01E02.en.srt": "Show S01E02.mkv",
+        "Show S01E02.nfo": "Show S01E02.mkv"
+      }
+    },
+    {
+      "name": "a stem followed by a space is not a companion",
+      "files": ["Movie.mkv", "Movie 2.srt", "Movie2-poster.jpg"],
+      "expected": {}
+    },
+    {
+      "name": "companion of an uppercase extension video",
+      "files": ["Movie.MKV", "Movie.srt"],
+      "expected": {
+        "Movie.srt": "Movie.MKV"
+      }
+    },
+    {
+      "name": "nested folders are matched exactly",
+      "files": ["A/B/Movie.mkv", "A/Movie.srt", "A/B/Movie.srt"],
+      "expected": {
+        "A/B/Movie.srt": "A/B/Movie.mkv"
+      }
+    },
+    {
+      "name": "empty request",
+      "files": [],
+      "expected": {}
+    }
+  ]
+}

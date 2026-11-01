@@ -1,4 +1,5 @@
 using Namerre.Application.Authentication;
+using Namerre.Application.Renaming.Pipeline;
 
 namespace Namerre.Application.Renaming.Plans;
 

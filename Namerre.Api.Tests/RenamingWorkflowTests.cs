@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Metadata;
 using Namerre.Application.Renaming.Plans;
@@ -1190,6 +1191,7 @@ public sealed class RenamingWorkflowTests : IDisposable
     [InlineData("MaxFilesPerRun", "2001")]
     [InlineData("MaxStepsPerRun", "65")]
     [InlineData("MaxQueuedJobs", "257")]
+    [InlineData("MaxConcurrentPreviews", "17")]
     public void OutOfRangeLimitsFailStartup(string key, string value)
     {
         using var factory = Factory(new() { ["Namerre:Limits:" + key] = value });

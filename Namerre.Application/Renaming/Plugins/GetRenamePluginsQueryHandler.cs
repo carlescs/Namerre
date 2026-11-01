@@ -1,4 +1,5 @@
 using CMediator.Abstractions;
+using Namerre.Application.Renaming.Pipeline;
 
 namespace Namerre.Application.Renaming.Plugins;
 

@@ -1,9 +1,11 @@
 using CMediator;
 using Microsoft.Extensions.DependencyInjection;
+using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Metadata;
 using Namerre.Application.Renaming.Plugins;
 using Namerre.Application.Renaming.Presets;
+using Namerre.Application.WatchFolders;
 
 namespace Namerre.Application;
 
@@ -33,6 +35,7 @@ public static class DependencyInjection
         services.AddSingleton<PipelineEngine>();
         services.AddSingleton<TmdbSuggester>();
         services.AddSingleton<PresetService>();
+        services.AddSingleton<IWatchFolders, WatchFolderService>();
 
         return services;
     }

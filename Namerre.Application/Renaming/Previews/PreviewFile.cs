@@ -1,3 +1,5 @@
+using Namerre.Application.Renaming.Pipeline;
+
 namespace Namerre.Application.Renaming.Previews;
 
 /// <param name="CompanionOf">ID of the video this related file follows; null for files the steps renamed.</param>

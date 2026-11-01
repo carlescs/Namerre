@@ -6,6 +6,7 @@ using Namerre.Application.Renaming.Metadata;
 using Namerre.Application.Renaming.Plans;
 using Namerre.Application.Renaming.Presets;
 using Namerre.Application.Renaming.Runs;
+using Namerre.Application.WatchFolders;
 using Namerre.Infrastructure.Configuration;
 using Namerre.Infrastructure.Folders;
 using Namerre.Infrastructure.Renaming;
@@ -226,8 +227,9 @@ public sealed class WatchFolderTests : IDisposable
     {
         var options = Options.Create(new NamerreOptions { WatchFolders = [folder] });
         var engine = TestPipeline.Create(metadata, fileSystem);
-        return new WatchFolderService(options, store, renames, engine, presets, new PresetStore(store),
-            new TmdbSuggester(metadata), new ServerFolderBrowser("media", workspace, store.IsOwnedEntry), fileSystem,
+        return new WatchFolderService(new WatchFolderConfiguration(options), new WatchedFileStore(store), renames, engine,
+            presets, new PresetStore(store), new TmdbSuggester(metadata),
+            new ServerFolderBrowser("media", workspace, store.IsOwnedEntry), fileSystem, new WatchFolderDiagnostics(),
             NullLogger<WatchFolderService>.Instance, clock);
     }
 
