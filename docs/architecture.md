@@ -60,6 +60,10 @@ engine and the editor; set for TMDB).
 
 ### Engine
 
+- The engine and its helpers (`PipelineEngine`, `IRenameFileSystem`, `CompanionFiles`/`Companion`,
+  `StepCondition`, `StepTrace`, `FileFacts`, `FileInput`, `TargetOverride`) live in
+  `Application/Renaming/Pipeline` (namespace `Namerre.Application.Renaming.Pipeline`); contracts and
+  shared DTOs stay directly in `Application/Renaming`.
 - `PipelineEngine` takes the plugins via DI, keys them by `(TypeId, Version)`, and applies enabled
   plugin instances in the request's order — catalog order never determines execution order.
 - Plugins return `PathParts`; the engine rejects extension changes other than case (only
@@ -150,7 +154,8 @@ Everything app-specific is under the `Namerre` section, bound to `NamerreOptions
 - `RootPath`, `DataPath`.
 - `Limits`: bound to the Application `RenameLimits` singleton; out-of-range values fail startup;
   signed-in `GET api/auth/session` reports them to the frontend's `WorkloadLimits`. Defaults:
-  ≤200 files and ≤32 plugin instances per run, ≤32 queued jobs (ceilings 2000/64/256); fixed regex
+  ≤200 files and ≤32 plugin instances per run, ≤32 queued jobs, ≤4 concurrent previews
+  (`MaxConcurrentPreviews`; ceilings 2000/64/256/16); fixed regex
   timeout 100 ms, TMDB lookups 15 s overall (5 s per attempt).
 - `Authentication`, incl. optional `Oidc` single sign-on, e.g. Keycloak — see
   `Namerre.Api/Authentication/OidcLogin.cs`; the OIDC scheme is hidden by `OidcAwareSchemeProvider`
