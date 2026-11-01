@@ -106,7 +106,10 @@ public sealed class ApplicationRegistrationTests
         services.AddSingleton<ITmdbMetadata>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddSingleton<IRenameFileSystem>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddSingleton<IPresetStore>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
-        services.AddSingleton<IWatchFolders>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
+        services.AddSingleton<IWatchFolderConfiguration>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
+        services.AddSingleton<IWatchedFileStore>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
+        services.AddSingleton<IWatchFolderDiagnostics>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
+        services.AddLogging();
         using var provider = services.BuildServiceProvider(
             new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
         using var scope = provider.CreateScope();

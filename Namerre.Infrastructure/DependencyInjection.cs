@@ -66,8 +66,9 @@ public static class DependencyInjection
         services.AddHostedService<RenameWorker>();
         // Backlog gauges; only created when telemetry export asks for them.
         services.AddSingleton<RenameStateMetrics>();
-        services.AddSingleton<WatchFolderService>();
-        services.AddSingleton<IWatchFolders>(provider => provider.GetRequiredService<WatchFolderService>());
+        services.AddSingleton<IWatchFolderConfiguration, WatchFolderConfiguration>();
+        services.AddSingleton<IWatchedFileStore, WatchedFileStore>();
+        services.AddSingleton<IWatchFolderDiagnostics, WatchFolderDiagnostics>();
         services.AddHostedService<WatchFolderWorker>();
         services.AddSingleton<IFolderBrowser>(provider => new ServerFolderBrowser(
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.RootPath,
