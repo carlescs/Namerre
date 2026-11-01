@@ -319,7 +319,8 @@ The user management API is `api/users` (administrators only): `GET` lists users 
 sign-in methods, `POST` creates one (`username`, `role`, and a `password`, a single sign-on
 `subject`, or both), `PATCH /{id}` changes `role` or `disabled`, `PUT`/`DELETE /{id}/password`
 sets or removes the password, `POST /{id}/logins` links an identity (`subject`) or moves one
-(`loginId`, optional `deleteSource` or `mergeSource`), `DELETE /{id}/logins/{loginId}` unlinks it and
+(`loginId`, optional `deleteSource`), `POST /{id}/merge` merges another user into it (`sourceUserId`),
+`DELETE /{id}/logins/{loginId}` unlinks it and
 `DELETE /{id}` deletes the user. Users manage their own account under `api/auth`: `POST password`
 (`currentPassword` may be omitted only by a user without a password, after a recent sign-in),
 `DELETE password`, `POST reauthenticate`, `POST oidc/link` (returns the address that starts linking),

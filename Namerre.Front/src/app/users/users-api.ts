@@ -60,13 +60,14 @@ export class UsersApi {
     return this.http.post<UserView>(`/api/users/${id}/logins`, { subject, displayName });
   }
 
-  /** Moves an identity linked to another user here, keeping, deleting or merging the user it leaves. */
-  moveLogin(id: number, loginId: number, source: MoveSource) {
-    return this.http.post<UserView>(`/api/users/${id}/logins`, {
-      loginId,
-      deleteSource: source === 'delete',
-      mergeSource: source === 'merge',
-    });
+  /** Moves an identity linked to another user here, keeping or deleting the user it leaves. */
+  moveLogin(id: number, loginId: number, deleteSource: boolean) {
+    return this.http.post<UserView>(`/api/users/${id}/logins`, { loginId, deleteSource });
+  }
+
+  /** Merges another user into this one: its identities and run history move here, then it is deleted. */
+  merge(id: number, sourceUserId: number) {
+    return this.http.post<UserView>(`/api/users/${id}/merge`, { sourceUserId });
   }
 
   unlink(id: number, loginId: number) {

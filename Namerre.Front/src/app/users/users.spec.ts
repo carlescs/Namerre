@@ -171,8 +171,8 @@ describe('Users', () => {
     merge.click();
     await fixture.whenStable();
     buttonNamed(element, 'Merge user').click();
-    const request = http.expectOne('/api/users/1/logins');
-    expect(request.request.body).toEqual({ loginId: 5, deleteSource: false, mergeSource: true });
+    const request = http.expectOne('/api/users/1/merge');
+    expect(request.request.body).toEqual({ sourceUserId: 2 });
     request.flush({ ...admin, logins: alice.logins });
     await settle(fixture);
     http.expectOne('/api/users').flush([{ ...admin, logins: alice.logins }]);

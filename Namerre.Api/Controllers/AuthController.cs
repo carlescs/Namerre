@@ -184,7 +184,7 @@ public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
         accounts.RecordSignIn(verified);
         NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "password"), new("namerre.auth.outcome", "success"));
         logger.LogInformation("User {UserId} ({Username}) signed in from {RemoteAddress}", verified.Id,
-            verified.Username, HttpContext.Connection.RemoteIpAddress);
+            LogText.Clean(verified.Username), HttpContext.Connection.RemoteIpAddress);
         return NoContent();
     }
 

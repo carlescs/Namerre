@@ -208,7 +208,7 @@ public static class AuthenticationSetup
         if (identity is null)
         {
             logger.LogWarning("Single sign-on rejected subject {Subject}: the required role is missing.",
-                context.Principal?.FindFirst("sub")?.Value);
+                LogText.Clean(context.Principal?.FindFirst("sub")?.Value));
             return Refuse(linking ? "/account?linkError=access-denied" : "/?signInError=access-denied", "denied");
         }
 
@@ -246,7 +246,7 @@ public static class AuthenticationSetup
             if (resolved is null)
             {
                 logger.LogWarning("Single sign-on rejected subject {Subject} from issuer {Issuer}: {Reason}.",
-                    identity.Subject, identity.Issuer, failure);
+                    LogText.Clean(identity.Subject), LogText.Clean(identity.Issuer), failure);
                 return Refuse(failure switch
                 {
                     ExternalSignInFailure.NotLinked => "/?signInError=not-linked",
@@ -263,7 +263,7 @@ public static class AuthenticationSetup
 
         accounts.RecordSignIn(user, loginId);
         NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "oidc"), new("namerre.auth.outcome", "success"));
-        logger.LogInformation("User {UserId} ({Username}) signed in with single sign-on.", user.Id, user.Username);
+        logger.LogInformation("User {UserId} ({Username}) signed in with single sign-on.", user.Id, LogText.Clean(user.Username));
         // The provider's authentication time, not the callback's, decides whether the sign-in counts as recent:
         // a provider session reused without signing in again must not unlock sensitive changes.
         context.Principal = UserSession.Create(user, UserSession.SingleSignOnMethod, oidc.Stamp,

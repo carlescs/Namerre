@@ -181,7 +181,7 @@ public sealed class UserAccounts
                     Reload();
                     logger.LogInformation(
                         "Created user {UserId} ({Username}) for a first single sign-on from issuer {Issuer}.",
-                        created.Id, created.Username, identity.Issuer);
+                        created.Id, LogText.Clean(created.Username), LogText.Clean(identity.Issuer));
                     return (created, created.Logins[0].Id, ExternalSignInFailure.None);
                 }
                 return (null, null, ExternalSignInFailure.Unavailable);
@@ -226,8 +226,8 @@ public sealed class UserAccounts
                     : UsernameTaken();
             }
             Reload();
-            logger.LogInformation("{Actor} created user {UserId} ({Username}) with role {Role}.", actor.Username,
-                created.Id, created.Username, created.Role);
+            logger.LogInformation("{Actor} created user {UserId} ({Username}) with role {Role}.", LogText.Clean(actor.Username),
+                created.Id, LogText.Clean(created.Username), created.Role);
             return created;
         }
     }
@@ -251,7 +251,7 @@ public sealed class UserAccounts
                 throw AccountException.LastSignInMethod();
             Save(user, updated with { Stamp = NewStamp() });
             logger.LogInformation("{Actor} changed user {UserId} ({Username}): role {Role}, disabled {Disabled}.",
-                actor.Username, id, user.Username, updated.Role, updated.Disabled);
+                LogText.Clean(actor.Username), id, LogText.Clean(user.Username), updated.Role, updated.Disabled);
             return Find(id)!;
         }
     }
@@ -277,10 +277,10 @@ public sealed class UserAccounts
             }
             Save(user, user with { PasswordHash = hash, Stamp = NewStamp() });
             if (reset)
-                logger.LogInformation("{Actor} reset the password of user {UserId} ({Username}).", actor.Username, id,
-                    user.Username);
+                logger.LogInformation("{Actor} reset the password of user {UserId} ({Username}).", LogText.Clean(actor.Username), id,
+                    LogText.Clean(user.Username));
             else
-                logger.LogInformation("User {UserId} ({Username}) {Action} their password.", id, user.Username,
+                logger.LogInformation("User {UserId} ({Username}) {Action} their password.", id, LogText.Clean(user.Username),
                     user.HasPassword ? "changed" : "set");
             return Find(id)!;
         }
@@ -296,8 +296,8 @@ public sealed class UserAccounts
             if (!user.Disabled && user.Logins.Count == 0)
                 throw AccountException.LastSignInMethod();
             Save(user, user with { PasswordHash = null, Stamp = NewStamp() });
-            logger.LogInformation("{Actor} removed the password of user {UserId} ({Username}).", actor.Username, id,
-                user.Username);
+            logger.LogInformation("{Actor} removed the password of user {UserId} ({Username}).", LogText.Clean(actor.Username), id,
+                LogText.Clean(user.Username));
             return Find(id)!;
         }
     }
@@ -325,7 +325,7 @@ public sealed class UserAccounts
             }
             Reload();
             logger.LogInformation("{Actor} linked a single sign-on identity from issuer {Issuer} to user {UserId} ({Username}).",
-                actor.Username, identity.Issuer, id, user.Username);
+                LogText.Clean(actor.Username), LogText.Clean(identity.Issuer), id, LogText.Clean(user.Username));
             return Find(id)!;
         }
     }
@@ -346,7 +346,7 @@ public sealed class UserAccounts
             }
             Reload();
             logger.LogInformation("{Actor} unlinked a single sign-on identity from issuer {Issuer} from user {UserId} ({Username}).",
-                actor.Username, login.Issuer, id, user.Username);
+                LogText.Clean(actor.Username), LogText.Clean(login.Issuer), id, LogText.Clean(user.Username));
             return Find(id)!;
         }
     }
@@ -377,7 +377,7 @@ public sealed class UserAccounts
             Reload();
             logger.LogInformation(
                 "{Actor} moved a single sign-on identity from user {SourceId} ({SourceName}) to user {UserId} ({Username}){Deleted}.",
-                actor.Username, source.Id, source.Username, target.Id, target.Username,
+                LogText.Clean(actor.Username), source.Id, LogText.Clean(source.Username), target.Id, LogText.Clean(target.Username),
                 deleteSource ? " and deleted the source user" : "");
             return Find(toUserId)!;
         }
@@ -410,7 +410,7 @@ public sealed class UserAccounts
             Reload();
             logger.LogInformation(
                 "{Actor} merged user {SourceId} ({SourceName}) with {LoginCount} single sign-on identities into user {UserId} ({Username}).",
-                actor.Username, source.Id, source.Username, source.Logins.Count, target.Id, target.Username);
+                LogText.Clean(actor.Username), source.Id, LogText.Clean(source.Username), source.Logins.Count, target.Id, LogText.Clean(target.Username));
             return Find(targetId)!;
         }
     }
@@ -427,7 +427,7 @@ public sealed class UserAccounts
                 throw AccountException.Changed();
             }
             Reload();
-            logger.LogInformation("{Actor} deleted user {UserId} ({Username}).", actor.Username, id, user.Username);
+            logger.LogInformation("{Actor} deleted user {UserId} ({Username}).", LogText.Clean(actor.Username), id, LogText.Clean(user.Username));
         }
     }
 

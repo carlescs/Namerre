@@ -163,8 +163,11 @@ export class Users implements OnInit {
     const { loginId, source } = this.moveForm.getRawValue();
     if (loginId === null) return;
     const owner = this.movable().find((entry) => entry.login.id === Number(loginId))?.owner;
+    if (source === 'merge' && !owner) return;
     const updated = await this.apply(
-      this.api.moveLogin(user.id, Number(loginId), source),
+      source === 'merge' && owner
+        ? this.api.merge(user.id, owner.id)
+        : this.api.moveLogin(user.id, Number(loginId), source === 'delete'),
       source === 'merge'
         ? `Merged ${owner?.username ?? 'the user'} into ${user.username}, with its identities and run history.`
         : `Moved the identity to ${user.username}${source === 'delete' ? ' and deleted the user it left' : ''}.`,

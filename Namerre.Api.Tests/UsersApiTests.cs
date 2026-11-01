@@ -165,9 +165,8 @@ public sealed class UsersApiTests : IDisposable
                 r => r!.Status is not ("Queued" or "Running"));
         }
 
-        var loginId = source.GetProperty("logins")[0].GetProperty("id").GetInt64();
-        using var merge = await admin.PostAsJsonAsync($"/api/users/{targetId}/logins",
-            new { loginId, mergeSource = true });
+        using var merge = await admin.PostAsJsonAsync($"/api/users/{targetId}/merge",
+            new { sourceUserId = source.GetProperty("id").GetInt64() });
 
         Assert.Equal(HttpStatusCode.OK, merge.StatusCode);
         var merged = await merge.Content.ReadFromJsonAsync<JsonElement>();
