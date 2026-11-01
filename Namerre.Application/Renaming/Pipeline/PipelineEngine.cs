@@ -17,7 +17,7 @@ public sealed class PipelineEngine
     /// <summary>Instance and type ID of the trace step that numbers a colliding name.</summary>
     public const string CollisionStepId = "collision";
 
-    /// <summary>Highest <c> (n)</c> suffix tried before a collision is reported instead.</summary>
+    /// <summary>Highest <c> (n)</c> (or subtitle <c>.n</c>) suffix tried before a collision is reported instead.</summary>
     public const int MaxCollisionNumber = 9999;
 
     private readonly IRenameFileSystem fileSystem;
@@ -103,7 +103,7 @@ public sealed class PipelineEngine
     }
 
     /// <summary>
-    /// Gives each renamed file whose target is taken a free <c>stem (n).ext</c> in the same folder, in request
+    /// Gives each renamed file whose target is taken a free <c>stem (n).ext</c> (see <see cref="Numbered"/>) in the same folder, in request
     /// order, so the first file keeps its name. A path is taken when a file staying in place or an earlier target
     /// holds it, or when it exists and no renamed file leaves it. Files with issues or a manual override keep their
     /// target, and a collision left over is reported as usual.
@@ -153,11 +153,19 @@ public sealed class PipelineEngine
         }
     }
 
+    /// <summary>
+    /// <c>Name (n).ext</c>; a subtitle takes a <c>.n</c> token before its language and flag tokens instead
+    /// (<c>Name.1.en.srt</c>), so it still starts with its video's name and players keep reading its language.
+    /// </summary>
     private static string Numbered(string path, int number)
     {
         var name = FileName(path);
         var extension = Path.GetExtension(name);
-        return path[..^name.Length] + name[..^extension.Length] + $" ({number})" + extension;
+        var stem = name[..^extension.Length];
+        var folder = path[..^name.Length];
+        if (!CompanionFiles.SubtitleExtensions.Contains(extension)) return folder + stem + $" ({number})" + extension;
+        var tokens = CompanionFiles.SubtitleSuffix(stem, extension);
+        return folder + stem[..^tokens.Length] + $".{number}" + tokens + extension;
     }
 
     private PreviewFile PreviewOne(PipelineRequest request, FileInput file, FilePosition position,

@@ -606,6 +606,9 @@ prefix or suffix is added around the name, before the extension. Regex replaceme
 use .NET syntax, including `$1` and `${name}` captures. TMDB matches require explicit
 confirmation and can optionally change the destination folder through templates.
 No files or directories are changed by previews.
+Files with a problem can be left out from the preview itself: **Leave out** on a problem
+row, or **Leave out N files with problems** above the table, removes them from the
+collection and previews again.
 Each step also learns the file's zero-based position in the request and among the files
 of its source folder, the batch and folder sizes, and the file's size, last-modified and
 creation time (creation time is null or approximate on filesystems that don't record it).
@@ -705,7 +708,9 @@ request; `"Report"`, the default, keeps the blocking behaviour). Then, in collec
 the first file keeps its name and each later file whose name is taken, by another file of
 the batch, a file that stays where it is, or an existing file that is not being renamed
 away, gets the first free ` (1)`, ` (2)`, … suffix before the extension (`Name (1).mkv`),
-following the filesystem's case rules. Related files follow their video's numbered name,
+following the filesystem's case rules. Subtitles take a `.1`, `.2`, … token before their
+language and flag tokens instead (`Name.1.en.srt`), so they keep their video's name and
+language, and several subtitles of one episode can share a destination folder. Related files follow their video's numbered name,
 manual overrides are never numbered, and the preview marks each numbered name
 (`numbered: true`). Numbers are chosen when the plan is prepared and stored in it, so
 execution never picks names; if a numbered target appears in the meantime, execution

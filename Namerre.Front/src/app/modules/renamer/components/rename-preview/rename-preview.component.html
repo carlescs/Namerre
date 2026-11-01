@@ -46,6 +46,23 @@
       } @else {
         <p class="error">Fix the problems and name clashes listed below before continuing.</p>
       }
+      @if (excludable().length) {
+        <div class="mb-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            class="px-3 py-1 text-xs"
+            (click)="exclude(excludable())"
+            [disabled]="disabled()"
+          >
+            Leave out {{ excludable().length }}
+            {{ excludable().length === 1 ? 'file' : 'files' }} with problems
+          </button>
+          <span class="text-xs text-slate-500 dark:text-slate-400"
+            >Removes them from the collection and previews the rest again; nothing is changed on
+            disk.</span
+          >
+        </div>
+      }
     }
     @if (unchanged()) {
       <p>No filenames would change. Go back and set up a renaming plugin.</p>
@@ -69,7 +86,7 @@
         </caption>
         <thead class="max-sm:sr-only">
           <tr>
-            <th scope="col" class="w-12 text-right">
+            <th scope="col" class="w-16 whitespace-nowrap text-right">
               <abbr title="Position in the collection — the order counters follow">#</abbr>
             </th>
             <th scope="col">Status</th>
@@ -84,7 +101,7 @@
               class="max-sm:block max-sm:border-t max-sm:border-slate-200 max-sm:p-3 dark:max-sm:border-slate-800"
             >
               <td
-                class="w-12 align-top text-right tabular-nums text-slate-500 max-sm:block max-sm:px-0 max-sm:py-1 max-sm:text-left dark:text-slate-400"
+                class="w-16 whitespace-nowrap align-top text-right tabular-nums text-slate-500 max-sm:block max-sm:px-0 max-sm:py-1 max-sm:text-left dark:text-slate-400"
               >
                 <span class="sm:hidden">File </span>{{ positions().get(file.id) }}
               </td>
@@ -144,6 +161,17 @@
                     {{ issue.message }}
                     <small class="text-slate-500 dark:text-slate-400">({{ issue.code }})</small>
                   </p>
+                }
+                @if (canExclude(file)) {
+                  <button
+                    type="button"
+                    class="mt-2 px-2 py-0.5 text-xs"
+                    (click)="exclude([file])"
+                    [disabled]="disabled()"
+                    [attr.aria-label]="'Leave out ' + file.sourcePath"
+                  >
+                    Leave out
+                  </button>
                 }
               </td>
             </tr>

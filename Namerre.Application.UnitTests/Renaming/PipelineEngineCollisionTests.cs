@@ -172,6 +172,23 @@ public sealed class PipelineEngineCollisionTests
     }
 
     [Fact]
+    public async Task SubtitlesAreNumberedBeforeTheirLanguageTokens()
+    {
+        Exist("a/Show.67e7d01.en.srt", "a/Show.68b944f.en.srt", "a/Show.a2139ce.en.hi.srt", "a/Show.x.srt",
+            "a/Show.y.srt");
+
+        var preview = await Engine().Preview(Request(
+            ["a/Show.67e7d01.en.srt", "a/Show.68b944f.en.srt", "a/Show.a2139ce.en.hi.srt", "a/Show.x.srt",
+                "a/Show.y.srt"],
+            Plugin("hash", "regex", new { pattern = @"\.(?:[0-9a-f]{7}|x|y)(?=\.|$)", replacement = "" }))
+            with { OnCollision = PipelineRequest.CollisionAddNumber }, default);
+
+        Assert.True(preview.CanPrepare);
+        Assert.Equal(["a/Show.en.srt", "a/Show.1.en.srt", "a/Show.en.hi.srt", "a/Show.srt", "a/Show.1.srt"],
+            preview.Files.Select(f => f.TargetPath));
+    }
+
+    [Fact]
     public async Task NamesThatCannotTakeANumberAreReported()
     {
         var stem = new string('n', 236);

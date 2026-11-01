@@ -21,6 +21,8 @@ export class RenamePreviewComponent {
   readonly loading = input(false);
   readonly disabled = input(false);
   readonly previewRequested = output<void>();
+  /** IDs of files to leave out of the collection, so their problems no longer block the run. */
+  readonly filesExcluded = output<string[]>();
   protected readonly awaitingMetadata = awaitingMetadata;
   protected readonly isMatchingIssue = isMatchingIssue;
   protected readonly filter = signal<PreviewFilter>('all');
@@ -49,6 +51,10 @@ export class RenamePreviewComponent {
   protected readonly positions = computed(
     () => new Map(this.result()?.files.map((file, index) => [file.id, index + 1]) ?? []),
   );
+  /** Files whose problem can be cleared by leaving them out; TMDB matching is finished elsewhere. */
+  protected readonly excludable = computed(
+    () => this.result()?.files.filter((file) => this.canExclude(file)) ?? [],
+  );
   protected readonly visibleFiles = computed(() => {
     const filter = this.filter();
     const files = this.result()?.files ?? [];
@@ -58,6 +64,14 @@ export class RenamePreviewComponent {
   protected status(file: PreviewFile): PreviewStatus {
     if (file.issues.length > 0 || file.steps.some((step) => step.error)) return 'problem';
     return file.unchanged ? 'unchanged' : 'rename';
+  }
+
+  protected canExclude(file: PreviewFile): boolean {
+    return this.status(file) === 'problem' && !awaitingMetadata(file);
+  }
+
+  protected exclude(files: readonly PreviewFile[]): void {
+    if (files.length) this.filesExcluded.emit(files.map((file) => file.id));
   }
 
   protected problems(file: PreviewFile) {
