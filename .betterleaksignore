@@ -1,4 +1,4 @@
-# Reviewed Betterleaks false positives (commit:path:rule:line): test-fixture passwords and
+# Reviewed Betterleaks false positives (commit:path:rule:line): test-fixture passwords, UI labels and
 # the README's 'Password=YOUR_TOKEN' placeholder. Add new entries only after reviewing a finding.
 07f3841efecee4f25fb549bef7bc2b6b21248b26:README.md:generic-password:69
 18b0ba07a9f50a392176f117d6680eb3de93b68b:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:120
@@ -19,3 +19,33 @@ f7bb99c57e5133477a61c21d0123b75bb1fe0f74:Namerre.Api.Tests/InstallationTests.cs:
 f7bb99c57e5133477a61c21d0123b75bb1fe0f74:Namerre.Api.Tests/InstallationTests.cs:generic-password:284
 f7bb99c57e5133477a61c21d0123b75bb1fe0f74:Namerre.Front/src/app/auth/auth.spec.ts:generic-password:97
 f7bb99c57e5133477a61c21d0123b75bb1fe0f74:Namerre.Front/src/app/auth/auth.spec.ts:generic-password:98
+c6540b1cf1a9e188b851c57350630b4b9045aad9:Namerre.Front/src/app/auth/account/account.html:generic-password:19
+c6540b1cf1a9e188b851c57350630b4b9045aad9:Namerre.Front/src/app/auth/account/account.html:generic-password:91
+c6540b1cf1a9e188b851c57350630b4b9045aad9:Namerre.Front/src/app/auth/auth.spec.ts:generic-password:186
+c6540b1cf1a9e188b851c57350630b4b9045aad9:Namerre.Front/src/app/auth/auth.spec.ts:generic-password:226
+c6540b1cf1a9e188b851c57350630b4b9045aad9:Namerre.Front/src/app/users/users.html:generic-password:141
+c6540b1cf1a9e188b851c57350630b4b9045aad9:Namerre.Front/src/app/users/users.html:generic-password:157
+c6540b1cf1a9e188b851c57350630b4b9045aad9:Namerre.Front/src/app/users/users.spec.ts:generic-password:100
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/InstallationTests.cs:generic-password:144
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/OidcAuthenticationTests.cs:generic-password:207
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/OidcAuthenticationTests.cs:generic-password:233
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/OidcAuthenticationTests.cs:generic-password:274
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/OidcAuthenticationTests.cs:generic-password:278
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/OidcAuthenticationTests.cs:generic-password:318
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/OidcAuthenticationTests.cs:generic-password:325
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/UsersApiTests.cs:generic-password:110
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/UsersApiTests.cs:generic-password:17
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/UsersApiTests.cs:generic-password:31
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/UsersApiTests.cs:generic-password:38
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/UsersApiTests.cs:generic-password:40
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/UsersApiTests.cs:generic-password:55
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/UsersApiTests.cs:generic-password:71
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.Tests/UsersApiTests.cs:generic-password:91
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.UnitTests/Authentication/UserAccountsTests.cs:generic-password:14
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.UnitTests/Authentication/UserAccountsTests.cs:generic-password:202
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.UnitTests/Authentication/UserAccountsTests.cs:generic-password:220
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.UnitTests/Controllers/AuthControllerTests.cs:generic-password:191
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.UnitTests/Controllers/AuthControllerTests.cs:generic-password:211
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.UnitTests/Controllers/AuthControllerTests.cs:generic-password:227
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.UnitTests/Controllers/AuthControllerTests.cs:generic-password:255
+efcbdf7a23b962664903d59ca20c48bff20a299e:Namerre.Api.UnitTests/Controllers/AuthControllerTests.cs:generic-password:275
