@@ -1,32 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.Extensions.Options;
-using Namerre.Application.Authentication;
-using Namerre.Infrastructure.Configuration;
+using Microsoft.Extensions.Logging;
 
-namespace Namerre.Authentication;
-
-public enum SetupResult
-{
-    Completed,
-    AlreadyConfigured,
-    InvalidToken,
-    WeakPassword
-}
-
-/// <summary>Why a single sign-on identity could not sign in.</summary>
-public enum ExternalSignInFailure
-{
-    None,
-    Disabled,
-    NotLinked,
-    /// <summary>No administrator exists yet; the installation token must create one first.</summary>
-    SetupRequired,
-    Unavailable
-}
-
-/// <summary>A verified single sign-on identity: the provider's stable subject plus a username to show.</summary>
-public sealed record ExternalIdentity(string Issuer, string Subject, string Username);
+namespace Namerre.Application.Authentication;
 
 /// <summary>
 /// Local users and the rules that keep them usable: unique usernames, the password policy, at least one enabled
@@ -45,22 +21,24 @@ public sealed class UserAccounts
     public const int MaximumUsernameLength = 128;
     private readonly object gate = new();
     private readonly IUserStore store;
+    private readonly IPasswordHasher passwords;
     private readonly TimeProvider time;
     private readonly ILogger<UserAccounts> logger;
     private readonly UserRecord? configured;
     private IReadOnlyDictionary<long, UserRecord> users;
 
-    public UserAccounts(IOptions<NamerreOptions> options, IUserStore store, ILogger<UserAccounts> logger,
-        TimeProvider? time = null)
+    public UserAccounts(IAdministratorConfiguration administrator, IUserStore store, IPasswordHasher passwords,
+        ILogger<UserAccounts> logger, TimeProvider? time = null)
     {
         this.store = store;
+        this.passwords = passwords;
         this.logger = logger;
         this.time = time ?? TimeProvider.System;
-        var username = options.Value.Authentication.Username;
-        var passwordHash = options.Value.Authentication.PasswordHash;
+        var username = administrator.Username;
+        var passwordHash = administrator.PasswordHash;
         if (!string.IsNullOrEmpty(username) || !string.IsNullOrEmpty(passwordHash))
         {
-            if (!IsValidUsername(username) || !Passwords.IsValidHash(passwordHash))
+            if (!IsValidUsername(username) || !passwords.IsValidHash(passwordHash))
                 throw new InvalidOperationException(
                     "The administrator credentials are invalid. Configure Namerre:Authentication:Username and Namerre:Authentication:PasswordHash, or restore valid administrator data.");
             configured = new UserRecord(ConfiguredUserId, username!.Trim(), passwordHash, UserRole.Admin, false,
@@ -71,12 +49,17 @@ public sealed class UserAccounts
         if (!RequiresSetup)
             return;
         SetupToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        // Written to the console only, never to the logs, which may be shipped elsewhere.
         Console.Error.WriteLine($"Namerre installation: open the app over HTTPS and enter this one-time setup token: {SetupToken}");
     }
 
     public bool RequiresSetup => configured is null && Volatile.Read(ref users).Count == 0;
     public bool HasConfiguredAdministrator => configured is not null;
-    internal string? SetupToken { get; private set; }
+    /// <summary>
+    /// The one-time installation token printed to the console while <see cref="RequiresSetup"/>. Public for the
+    /// host's tests only: never return it from an endpoint or write it to the logs.
+    /// </summary>
+    public string? SetupToken { get; private set; }
 
     public UserRecord? Find(long id)
         => id == ConfiguredUserId ? configured : Volatile.Read(ref users).GetValueOrDefault(id);
@@ -94,11 +77,11 @@ public sealed class UserAccounts
             if (SetupToken is null || !CryptographicOperations.FixedTimeEquals(
                     Encoding.UTF8.GetBytes(SetupToken), Encoding.UTF8.GetBytes(token)))
                 return SetupResult.InvalidToken;
-            if (!Passwords.IsAcceptable(password))
+            if (!PasswordPolicy.IsAcceptable(password))
                 return SetupResult.WeakPassword;
             if (!IsValidUsername(username))
-                throw InvalidUsername();
-            if (!store.TryCreate(NewUser(username.Trim(), UserRole.Admin, Passwords.HashPassword(password)), out _))
+                return SetupResult.InvalidUsername;
+            if (!store.TryCreate(NewUser(username.Trim(), UserRole.Admin, passwords.Hash(password)), out _))
                 return SetupResult.AlreadyConfigured;
             Reload();
             SetupToken = null;
@@ -113,13 +96,25 @@ public sealed class UserAccounts
     public UserRecord? Authenticate(string username, string password)
     {
         var user = List().FirstOrDefault(u => string.Equals(u.Username, username, StringComparison.Ordinal));
-        var verified = Passwords.Verify(user?.PasswordHash, password);
+        var verified = passwords.Verify(user?.PasswordHash, password);
         return verified && user is { Disabled: false } ? user : null;
     }
 
     /// <summary>Checks the password of a known user, e.g. before a sensitive change.</summary>
     public bool VerifyPassword(UserRecord user, string? password)
-        => password is not null && Passwords.Verify(user.PasswordHash, password);
+        => password is not null && passwords.Verify(user.PasswordHash, password);
+
+    /// <summary>
+    /// Confirms it is really the user before a sensitive change to their own account: a recent sign-in, or their
+    /// password when they have one. Returns the user, who must be editable here.
+    /// </summary>
+    public UserRecord ConfirmOwnChange(long id, bool recentSignIn, string? password)
+    {
+        var user = Editable(id);
+        if (!recentSignIn && !VerifyPassword(user, password))
+            throw AccountException.RecentSignIn();
+        return user;
+    }
 
     public void RecordSignIn(UserRecord user, long? loginId = null)
     {
@@ -201,9 +196,9 @@ public sealed class UserAccounts
             throw InvalidUsername();
         if (password is null && login is null)
             throw AccountException.LastSignInMethod();
-        if (password is not null && !Passwords.IsAcceptable(password))
+        if (password is not null && !PasswordPolicy.IsAcceptable(password))
             throw WeakPassword();
-        var hash = password is null ? null : Passwords.HashPassword(password);
+        var hash = password is null ? null : passwords.Hash(password);
         lock (gate)
         {
             username = username.Trim();
@@ -260,9 +255,11 @@ public sealed class UserAccounts
     public UserRecord SetPassword(UserReference actor, long id, string? currentPassword, string newPassword,
         bool recentSignIn)
     {
-        if (!Passwords.IsAcceptable(newPassword))
+        if (id == ConfiguredUserId && configured is not null)
+            throw AccountException.Configured();
+        if (!PasswordPolicy.IsAcceptable(newPassword))
             throw WeakPassword();
-        var hash = Passwords.HashPassword(newPassword);
+        var hash = passwords.Hash(newPassword);
         lock (gate)
         {
             var user = Editable(id);
@@ -415,7 +412,8 @@ public sealed class UserAccounts
         }
     }
 
-    public void Delete(UserReference actor, long id)
+    /// <summary>Deletes a user and returns it as it was.</summary>
+    public UserRecord Delete(UserReference actor, long id)
     {
         lock (gate)
         {
@@ -428,6 +426,7 @@ public sealed class UserAccounts
             }
             Reload();
             logger.LogInformation("{Actor} deleted user {UserId} ({Username}).", LogText.Clean(actor.Username), id, LogText.Clean(user.Username));
+            return user;
         }
     }
 
@@ -519,5 +518,5 @@ public sealed class UserAccounts
 
     private static AccountException UsernameTaken() => new("UsernameTaken", "That username is already taken.", 409);
 
-    private static AccountException WeakPassword() => new("WeakPassword", Passwords.WeakPasswordMessage);
+    private static AccountException WeakPassword() => new("WeakPassword", PasswordPolicy.WeakPasswordMessage);
 }

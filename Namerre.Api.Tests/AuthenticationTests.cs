@@ -167,7 +167,7 @@ public sealed class AuthenticationTests
             new Claim(ClaimTypes.NameIdentifier, "0"),
             new Claim(ClaimTypes.Name, AuthWebApplicationFactory.Username),
             new Claim(ClaimTypes.Role, "Admin"),
-            new Claim("credential-stamp", factory.Services.GetRequiredService<Namerre.Authentication.UserAccounts>()
+            new Claim("credential-stamp", factory.Services.GetRequiredService<Namerre.Application.Authentication.UserAccounts>()
                 .Find(0)!.Stamp)
         ], CookieAuthenticationDefaults.AuthenticationScheme));
         if (!expired)

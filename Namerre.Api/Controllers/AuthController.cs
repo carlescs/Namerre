@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
+using CMediator.Abstractions;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -21,7 +22,7 @@ namespace Namerre.Controllers;
 [ApiController]
 [Route("api/auth")]
 [TypeFilter(typeof(AccountExceptionFilter))]
-public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
+public sealed class AuthController(ISender sender, OidcLogin oidc,
     IOptionsMonitor<OpenIdConnectOptions> oidcOptions, IAntiforgery antiforgery, ILogger<AuthController> logger,
     IDataProtectionProvider? dataProtection = null, RenameLimits? limits = null, TimeProvider? time = null)
     : ControllerBase
@@ -31,7 +32,7 @@ public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
 
     [AllowAnonymous]
     [HttpGet("session")]
-    public IActionResult Session()
+    public async Task<IActionResult> Session(CancellationToken cancellationToken)
     {
         var tokens = antiforgery.GetAndStoreTokens(HttpContext);
         Response.Cookies.Append("XSRF-TOKEN", tokens.RequestToken!, new CookieOptions
@@ -41,13 +42,13 @@ public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
             SameSite = SameSiteMode.Strict,
             Path = "/"
         });
-        var user = CurrentUser();
+        var user = await CurrentUser(cancellationToken);
         return Ok(new
         {
             username = user?.Username,
             userId = user?.Id,
             role = user?.Role.ToString(),
-            requiresSetup = accounts.RequiresSetup,
+            requiresSetup = await sender.Send(new RequiresSetupQuery(), cancellationToken),
             oidc = oidc.Enabled ? new { displayName = oidc.DisplayName } : null,
             // The configured administrator is changed in server configuration only.
             managedByConfiguration = user?.Id == UserAccounts.ConfiguredUserId,
@@ -85,13 +86,12 @@ public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
     /// </summary>
     [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
     [HttpPost("oidc/link")]
-    public IActionResult LinkSingleSignOn(ConfirmRequest request)
+    public async Task<IActionResult> LinkSingleSignOn(ConfirmRequest request, CancellationToken cancellationToken)
     {
         if (!oidc.Enabled)
             return NotFound();
-        var user = RequireUser();
-        EnsureEditable(user);
-        EnsureConfirmed(user, request.Password);
+        var user = await sender.Send(new ConfirmOwnChangeCommand((await RequireUser(cancellationToken)).Id,
+            UserSession.IsRecent(User, Now), request.Password), cancellationToken);
         var ticket = Protector().ToTimeLimitedDataProtector().Protect(
             string.Join('|', user.Id.ToString(CultureInfo.InvariantCulture), user.Stamp), LinkTicketLifetime);
         return Ok(new { url = "/api/auth/oidc/link?ticket=" + Uri.EscapeDataString(ticket) });
@@ -102,7 +102,7 @@ public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
     {
         if (!oidc.Enabled)
             return NotFound();
-        var user = CurrentUser();
+        var user = await CurrentUser(cancellationToken);
         string[] parts;
         try
         {
@@ -126,14 +126,14 @@ public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
     }
 
     [HttpGet("logins")]
-    public IActionResult Logins() => Ok(RequireUser().Logins.Select(LoginView.From));
+    public async Task<IActionResult> Logins(CancellationToken cancellationToken)
+        => Ok((await RequireUser(cancellationToken)).Logins.Select(LoginView.From));
 
     [HttpDelete("logins/{loginId:long}")]
-    public async Task<IActionResult> Unlink(long loginId)
+    public async Task<IActionResult> Unlink(long loginId, CancellationToken cancellationToken)
     {
-        var user = RequireUser();
-        EnsureEditable(user);
-        var updated = accounts.Unlink(Reference(user), user.Id, loginId);
+        var user = await RequireUser(cancellationToken);
+        var updated = await sender.Send(new UnlinkLoginCommand(Reference(user), user.Id, loginId), cancellationToken);
         await RenewAsync(updated);
         return NoContent();
     }
@@ -141,19 +141,23 @@ public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
     [AllowAnonymous]
     [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
     [HttpPost("setup")]
-    public IActionResult Setup(SetupRequest request)
+    public async Task<IActionResult> Setup(SetupRequest request, CancellationToken cancellationToken)
     {
-        if (!UserAccounts.IsValidUsername(request.Username))
-            return BadRequest(new { message = "Enter an administrator username." });
         try
         {
-            var result = accounts.CompleteSetup(request.Token, request.Username, request.Password);
-            if (result == SetupResult.AlreadyConfigured)
-                return Conflict(new { message = "The administrator is already configured. Sign in instead." });
-            if (result == SetupResult.InvalidToken)
-                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Invalid setup token." });
-            if (result == SetupResult.WeakPassword)
-                return BadRequest(new { message = Passwords.WeakPasswordMessage });
+            var result = await sender.Send(new CompleteSetupCommand(request.Token, request.Username, request.Password),
+                cancellationToken);
+            switch (result)
+            {
+                case SetupResult.InvalidUsername:
+                    return BadRequest(new { message = "Enter an administrator username." });
+                case SetupResult.AlreadyConfigured:
+                    return Conflict(new { message = "The administrator is already configured. Sign in instead." });
+                case SetupResult.InvalidToken:
+                    return StatusCode(StatusCodes.Status403Forbidden, new { message = "Invalid setup token." });
+                case SetupResult.WeakPassword:
+                    return BadRequest(new { message = PasswordPolicy.WeakPasswordMessage });
+            }
             logger.LogInformation("Administrator installation completed.");
             return NoContent();
         }
@@ -169,9 +173,10 @@ public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
     [AllowAnonymous]
     [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
     [HttpPost("login")]
-    public async Task<IActionResult> Login(LoginRequest request)
+    public async Task<IActionResult> Login(LoginRequest request, CancellationToken cancellationToken)
     {
-        var verified = accounts.Authenticate(request.Username, request.Password);
+        var verified = await sender.Send(new PasswordSignInCommand(request.Username, request.Password),
+            cancellationToken);
         if (verified is null)
         {
             // The attempted username is not logged: people sometimes type a password into it.
@@ -181,7 +186,6 @@ public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
         }
 
         await SignInAsync(UserSession.Create(verified, UserSession.PasswordMethod, null, Now));
-        accounts.RecordSignIn(verified);
         NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "password"), new("namerre.auth.outcome", "success"));
         logger.LogInformation("User {UserId} ({Username}) signed in from {RemoteAddress}", verified.Id,
             LogText.Clean(verified.Username), HttpContext.Connection.RemoteIpAddress);
@@ -191,10 +195,10 @@ public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
     /// <summary>Confirms the password again, so sensitive changes in the next few minutes need no further prompt.</summary>
     [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
     [HttpPost("reauthenticate")]
-    public async Task<IActionResult> Reauthenticate(ConfirmRequest request)
+    public async Task<IActionResult> Reauthenticate(ConfirmRequest request, CancellationToken cancellationToken)
     {
-        var user = RequireUser();
-        if (!accounts.VerifyPassword(user, request.Password))
+        var user = await RequireUser(cancellationToken);
+        if (!await sender.Send(new VerifyPasswordQuery(user.Id, request.Password), cancellationToken))
             return StatusCode(StatusCodes.Status403Forbidden, new { code = "InvalidPassword", message = "The password is incorrect." });
         await RenewAsync(user, Now);
         return NoContent();
@@ -206,24 +210,22 @@ public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
     /// </summary>
     [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
     [HttpPost("password")]
-    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request, CancellationToken cancellationToken)
     {
-        var user = RequireUser();
-        EnsureEditable(user);
-        var updated = accounts.SetPassword(Reference(user), user.Id, request.CurrentPassword, request.NewPassword,
-            UserSession.IsRecent(User, Now));
+        var user = await RequireUser(cancellationToken);
+        var updated = await sender.Send(new SetPasswordCommand(Reference(user), user.Id, request.CurrentPassword,
+            request.NewPassword, UserSession.IsRecent(User, Now)), cancellationToken);
         // The credential stamp changed, which signs out every other session; keep this one.
         await RenewAsync(updated);
         return NoContent();
     }
 
     [HttpDelete("password")]
-    public async Task<IActionResult> RemovePassword()
+    public async Task<IActionResult> RemovePassword(CancellationToken cancellationToken)
     {
-        var user = RequireUser();
-        EnsureEditable(user);
-        EnsureConfirmed(user, null);
-        var updated = accounts.RemovePassword(Reference(user), user.Id);
+        var user = await RequireUser(cancellationToken);
+        var updated = await sender.Send(new RemoveOwnPasswordCommand(Reference(user), UserSession.IsRecent(User, Now)),
+            cancellationToken);
         await RenewAsync(updated);
         return NoContent();
     }
@@ -292,25 +294,15 @@ public sealed class AuthController(UserAccounts accounts, OidcLogin oidc,
         }
     }
 
-    private UserRecord? CurrentUser()
-        => User.Identity?.IsAuthenticated == true && UserSession.UserId(User) is { } id ? accounts.Find(id) : null;
+    private async Task<UserRecord?> CurrentUser(CancellationToken cancellationToken)
+        => User.Identity?.IsAuthenticated == true && UserSession.UserId(User) is { } id
+            ? await sender.Send(new GetUserQuery(id), cancellationToken)
+            : null;
 
-    private UserRecord RequireUser() => CurrentUser() ?? throw AccountException.NotFound();
+    private async Task<UserRecord> RequireUser(CancellationToken cancellationToken)
+        => await CurrentUser(cancellationToken) ?? throw AccountException.NotFound();
 
     private static UserReference Reference(UserRecord user) => new(user.Id, user.Username);
-
-    private static void EnsureEditable(UserRecord user)
-    {
-        if (user.Id == UserAccounts.ConfiguredUserId)
-            throw AccountException.Configured();
-    }
-
-    /// <summary>Requires a recent sign-in, or the user's password when they have one.</summary>
-    private void EnsureConfirmed(UserRecord user, string? password)
-    {
-        if (!UserSession.IsRecent(User, Now) && !accounts.VerifyPassword(user, password))
-            throw AccountException.RecentSignIn();
-    }
 
     private IDataProtector Protector()
         => (dataProtection ?? HttpContext.RequestServices.GetRequiredService<IDataProtectionProvider>())

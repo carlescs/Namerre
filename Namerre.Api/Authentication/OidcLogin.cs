@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using Namerre.Application.Authentication;
 using Namerre.Infrastructure.Configuration;
 
 namespace Namerre.Authentication;

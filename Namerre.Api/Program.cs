@@ -1,5 +1,6 @@
 using Namerre;
 using Namerre.Application;
+using Namerre.Application.Authentication;
 using Namerre.Authentication;
 using Namerre.Hosting;
 using Namerre.Infrastructure;

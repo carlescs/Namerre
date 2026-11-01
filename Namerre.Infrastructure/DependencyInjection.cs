@@ -49,6 +49,8 @@ public static class DependencyInjection
             provider.GetRequiredService<IHostEnvironment>().ContentRootPath,
             maxQueuedJobs: provider.GetRequiredService<RenameLimits>().MaxQueuedJobs));
         services.AddSingleton<IUserStore, UserStore>();
+        services.AddSingleton<IPasswordHasher, PasswordHasher>();
+        services.AddSingleton<IAdministratorConfiguration, AdministratorConfiguration>();
         services.AddSingleton<IPresetStore, PresetStore>();
         // TmdbResilience bounds each lookup (15 s overall); HttpClient's own 100 s default remains only as a backstop.
         services.AddHttpClient<TmdbClient>()

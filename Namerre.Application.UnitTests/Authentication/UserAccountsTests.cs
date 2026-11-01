@@ -1,19 +1,14 @@
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Namerre.Application.Authentication;
-using Namerre.Authentication;
-using Namerre.Infrastructure.Configuration;
 using Xunit;
-using AuthenticationOptions = Namerre.Infrastructure.Configuration.AuthenticationOptions;
 
-namespace Namerre.Api.UnitTests.Authentication;
+namespace Namerre.Application.UnitTests.Authentication;
 
 public sealed class UserAccountsTests
 {
     private const string Issuer = "https://keycloak.example/realms/media";
     private const string Password = "correct horse battery";
-    // Hashing is deliberately slow, so share one hash across tests.
-    private static readonly string Hash = Passwords.HashPassword(Password);
+    private static readonly string Hash = TestPasswordHasher.Instance.Hash(Password);
     private static readonly UserReference Someone = new(999, "someone");
     private readonly InMemoryUserStore store = new();
 
@@ -36,8 +31,7 @@ public sealed class UserAccountsTests
     [Theory]
     [InlineData("admin", "")]
     [InlineData("", "valid")]
-    [InlineData("admin", "not base64!")]
-    [InlineData("admin", "AQIDBA==")]
+    [InlineData("admin", "not a hash")]
     public void InvalidConfiguredCredentialsFailClosedAtStartup(string username, string hash)
     {
         var exception = Assert.Throws<InvalidOperationException>(() =>
@@ -47,14 +41,8 @@ public sealed class UserAccountsTests
     }
 
     [Fact]
-    public void OverlongUsernamesAndWeakerHashWorkFactorsAreRejected()
-    {
-        var bytes = Convert.FromBase64String(Hash);
-        bytes[5] = 0; bytes[6] = 0; bytes[7] = 0x27; bytes[8] = 0x10; // 10,000 iterations
-
-        Assert.Throws<InvalidOperationException>(() => Accounts(new string('a', 129), Hash));
-        Assert.Throws<InvalidOperationException>(() => Accounts("admin", Convert.ToBase64String(bytes)));
-    }
+    public void OverlongConfiguredUsernamesAreRejected()
+        => Assert.Throws<InvalidOperationException>(() => Accounts(new string('a', 129), Hash));
 
     [Fact]
     public void SetupCreatesTheFirstAdministratorOnceWithTheConsoleToken()
@@ -414,9 +402,7 @@ public sealed class UserAccountsTests
         Assert.Equal(alice, accounts.Find(alice.Id));
     }
 
-    private UserAccounts Accounts(string? username = null, string? hash = null) => new(Options.Create(
-        new NamerreOptions
-        {
-            Authentication = new AuthenticationOptions { Username = username, PasswordHash = hash }
-        }), store, NullLogger<UserAccounts>.Instance);
+    private UserAccounts Accounts(string? username = null, string? hash = null)
+        => new(new TestAdministrator(username, hash), store, TestPasswordHasher.Instance,
+            NullLogger<UserAccounts>.Instance);
 }

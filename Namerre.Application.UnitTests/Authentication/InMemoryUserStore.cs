@@ -1,8 +1,11 @@
 using Namerre.Application.Authentication;
 
-namespace Namerre.Api.UnitTests.Authentication;
+namespace Namerre.Testing;
 
-/// <summary>A stateful <see cref="IUserStore"/> with the same uniqueness and compare-and-swap rules as the database.</summary>
+/// <summary>
+/// A stateful <see cref="IUserStore"/> with the same uniqueness and compare-and-swap rules as the database. Also linked
+/// into Namerre.Api.UnitTests.
+/// </summary>
 internal sealed class InMemoryUserStore : IUserStore
 {
     private readonly List<UserRecord> users = [];

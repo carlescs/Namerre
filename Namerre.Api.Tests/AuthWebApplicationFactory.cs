@@ -2,7 +2,7 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
-using Namerre.Authentication;
+using Namerre.Infrastructure.Authentication;
 using Xunit;
 
 namespace Namerre.Api.Tests;
@@ -11,7 +11,7 @@ public sealed class AuthWebApplicationFactory : WebApplicationFactory<Program>
 {
     public const string Username = "test-admin";
     public const string Password = "test-password-not-for-production";
-    private static readonly string PasswordHash = Passwords.HashPassword(Password);
+    private static readonly string PasswordHash = new PasswordHasher().Hash(Password);
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
         => builder.ConfigureAppConfiguration((_, configuration) =>

@@ -1,5 +1,6 @@
 using CMediator;
 using Microsoft.Extensions.DependencyInjection;
+using Namerre.Application.Authentication;
 using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Metadata;
@@ -36,6 +37,7 @@ public static class DependencyInjection
         services.AddSingleton<TmdbSuggester>();
         services.AddSingleton<PresetService>();
         services.AddSingleton<IWatchFolders, WatchFolderService>();
+        services.AddSingleton<UserAccounts>();
 
         return services;
     }

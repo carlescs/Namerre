@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Namerre.Application.Authentication;
-using Namerre.Authentication;
+using Namerre.Infrastructure.Authentication;
 using Namerre.Infrastructure.Renaming;
 using Xunit;
 
@@ -210,7 +210,7 @@ public sealed class InstallationTests : IDisposable
                 INSERT INTO "Administrators" ("Id", "Username", "PasswordHash") VALUES (1, $username, $hash);
                 """;
             seed.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("$username", Username));
-            seed.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("$hash", Passwords.HashPassword(Password)));
+            seed.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("$hash", new PasswordHasher().Hash(Password)));
             seed.ExecuteNonQuery();
         }
 

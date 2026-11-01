@@ -20,4 +20,10 @@
     <ProjectReference Include="..\Namerre.Api\Namerre.Api.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The in-memory user store lives in Namerre.Testing in Namerre.Application.UnitTests. -->
+    <Compile Include="..\Namerre.Application.UnitTests\Authentication\InMemoryUserStore.cs" Link="Authentication\InMemoryUserStore.cs" />
+    <Using Include="Namerre.Testing" />
+  </ItemGroup>
+
 </Project>
