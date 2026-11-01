@@ -12,14 +12,12 @@ public sealed class RenameHub : Hub
 {
     public const string Path = "/api/hubs/rename";
 
-    // Notifications only go to the current credentials' group, so connections opened before a
-    // password change stop receiving them even though the socket outlives the cookie check.
-    public static string StampGroup(string stamp) => "stamp:" + stamp;
-
+    // Notifications only go to the groups of current sessions (see UserSession.Group), so connections opened
+    // before a password or role change stop receiving them even though the socket outlives the cookie check.
     public override async Task OnConnectedAsync()
     {
         await Groups.AddToGroupAsync(Context.ConnectionId,
-            StampGroup(Context.User?.FindFirst(AdminAccount.StampClaim)?.Value ?? ""), Context.ConnectionAborted);
+            UserSession.Group(Context.User ?? new()), Context.ConnectionAborted);
         await base.OnConnectedAsync();
     }
 }

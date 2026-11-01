@@ -31,7 +31,7 @@ public static class DependencyInjection
         services.AddSignalR();
         services.AddSingleton<IRenameNotifier, HubRenameNotifier>();
         services.AddControllersWithViews();
-        services.AddAdminAuthentication();
+        services.AddUserAuthentication();
         // Keys that protect session and antiforgery cookies live with the database, so sessions survive restarts and
         // container replacement instead of depending on wherever the default key location happens to be.
         services.AddDataProtection().SetApplicationName("Namerre");

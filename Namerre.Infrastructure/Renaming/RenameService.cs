@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using Namerre.Application.Authentication;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Plans;
 using Namerre.Application.Renaming.Previews;
@@ -13,7 +14,7 @@ namespace Namerre.Infrastructure.Renaming;
 
 public sealed class RenameService(RenameStore store, IRenameFileSystem fileSystem, PipelineEngine pipeline,
     ILogger<RenameService> logger, IRenameNotifier? notifier = null,
-    ILibraryNotifier? libraryNotifier = null) : IRenameService
+    ILibraryNotifier? libraryNotifier = null, ICurrentUser? currentUser = null) : IRenameService
 {
     /// <summary>Most runs one bulk deletion accepts; also caps the "select all pages" candidate list.</summary>
     public const int MaxRunsPerDeletion = 1000;
@@ -70,11 +71,12 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             var id = NewId();
             var snapshot = System.Text.Json.JsonSerializer.Deserialize<PipelineRequest>(
                 System.Text.Json.JsonSerializer.Serialize(request, RenameStore.Json), RenameStore.Json)!;
-            var plan = new PlanView(id, 1, "Preparing", 0, snapshot, [], [], DateTimeOffset.UtcNow, Origin: origin);
+            var plan = new PlanView(id, 1, "Preparing", 0, snapshot, [], [], DateTimeOffset.UtcNow, Origin: origin,
+                CreatedBy: origin is null ? currentUser?.Current : null);
             Enqueue(id, "Plan", plan.Status, plan, "Prepare");
             Notify("Plan", id, plan.Status);
             logger.LogInformation("Queued plan {PlanId} for {FileCount} files with {StepCount} steps from {Origin}", id,
-                request.Files.Count, request.Plugins.Count, origin ?? "user");
+                request.Files.Count, request.Plugins.Count, origin ?? plan.CreatedBy?.Username ?? "user");
             return Accepted(id, plan.Status, true);
         }
         finally { gate.Release(); }
@@ -102,7 +104,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             var run = CreateRun(plan.Id, null, "Rename", plan.Files.Select(f =>
                 new RunFile(f.Id, f.SourcePath, f.TargetPath, Staging(f.SourcePath), f.Hash, "Pending",
                     CompanionOf: f.CompanionOf)).ToArray(),
-                plan.Pipeline.DeleteEmptyFolders) with { Origin = plan.Origin };
+                plan.Pipeline.DeleteEmptyFolders) with { Origin = plan.Origin, CreatedBy = currentUser?.Current ?? plan.CreatedBy };
             Enqueue(run.Id, "Run", run.Status, run, "Execute", operation);
             Notify("Run", run.Id, run.Status);
             logger.LogInformation("Queued {Kind} run {RunId} of plan {PlanId} for {FileCount} files", run.Kind, run.Id,
@@ -210,7 +212,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             // Unless the request decides, a rollback inherits the cleanup choice, so folders the rename created and
             // filled are removed again.
             var run = CreateRun(parent.PlanId, parent.Id, "Rollback", files,
-                request.DeleteEmptyFolders ?? parent.DeleteEmptyFolders);
+                request.DeleteEmptyFolders ?? parent.DeleteEmptyFolders) with { CreatedBy = currentUser?.Current };
             Enqueue(run.Id, "Run", run.Status, run, "Execute", key);
             Notify("Run", run.Id, run.Status);
             logger.LogInformation("Queued {Kind} run {RunId} of run {ParentRunId} for {FileCount} files", run.Kind, run.Id,
@@ -245,7 +247,7 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             var preview = await BuildRecovery(run, cancellationToken);
             if (!preview.CanRecover)
                 throw new RenameException("RecoveryBlocked", "Recovery evidence is ambiguous, changed or blocked. No files were moved.", 409);
-            run = run with { Status = "RecoveryQueued" };
+            run = run with { Status = "RecoveryQueued", RecoveredBy = currentUser?.Current ?? run.RecoveredBy };
             RememberOrigin(id);
             store.RequeueRecovery(run, key);
             Notify("Run", id, run.Status);

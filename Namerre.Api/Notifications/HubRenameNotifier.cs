@@ -5,8 +5,8 @@ using Namerre.Authentication;
 namespace Namerre.Notifications;
 
 /// <summary>
-/// Broadcasts <see cref="RenameChange"/> signals to every connection signed in with the current
-/// administrator credentials or current single sign-on settings; there is a single administrator.
+/// Broadcasts <see cref="RenameChange"/> signals to every connection whose session is still current: an enabled user
+/// with an unchanged credential stamp (and unchanged single sign-on settings). Run history is shared by all users.
 /// Sends are fire-and-forget so the rename worker never waits on a slow client.
 /// </summary>
 public sealed class HubRenameNotifier(IHubContext<RenameHub> hub, IServiceProvider services,
@@ -20,12 +20,16 @@ public sealed class HubRenameNotifier(IHubContext<RenameHub> hub, IServiceProvid
     {
         try
         {
-            // Resolved on send so the rename worker does not load the administrator at startup.
-            List<string> groups = [RenameHub.StampGroup(services.GetRequiredService<AdminAccount>().Stamp)];
-            // Single sign-on sessions carry their own stamp (see OidcLogin).
+            // Resolved on send so the rename worker does not load users at startup.
             var oidc = services.GetRequiredService<OidcLogin>();
-            if (oidc.Enabled)
-                groups.Add(RenameHub.StampGroup(oidc.Stamp));
+            List<string> groups = [];
+            foreach (var user in services.GetRequiredService<UserAccounts>().List().Where(u => !u.Disabled))
+            {
+                groups.Add(UserSession.Group(user.Stamp, null));
+                // Single sign-on sessions also carry the settings stamp (see OidcLogin).
+                if (oidc.Enabled)
+                    groups.Add(UserSession.Group(user.Stamp, oidc.Stamp));
+            }
             await hub.Clients.Groups(groups).SendAsync(Method, change);
         }
         catch (Exception exception)

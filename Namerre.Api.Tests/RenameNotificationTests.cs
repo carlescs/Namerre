@@ -114,7 +114,7 @@ public sealed class RenameNotificationTests : IDisposable
         await AuthWebApplicationFactory.RefreshCsrf(revoked);
         using (var setup = await revoked.PostAsJsonAsync("/api/auth/setup", new
         {
-            token = factory.Services.GetRequiredService<AdminAccount>().SetupToken, username, password
+            token = factory.Services.GetRequiredService<UserAccounts>().SetupToken, username, password
         }))
             setup.EnsureSuccessStatusCode();
         foreach (var client in new[] { revoked, current })
@@ -170,13 +170,10 @@ public sealed class RenameNotificationTests : IDisposable
                 ["Namerre:Authentication:Oidc:ClientId"] = "namerre",
                 ["Namerre:Authentication:Oidc:RequiredRole"] = "namerre-admin"
             })));
-        var principal = factory.Services.GetRequiredService<OidcLogin>().CreateSessionPrincipal(new ClaimsPrincipal(
-            new ClaimsIdentity(
-            [
-                new Claim("sub", "subject-1"),
-                new Claim("preferred_username", "alice"),
-                new Claim("realm_access", """{"roles":["namerre-admin"]}""")
-            ], "oidc")))!;
+        var oidc = factory.Services.GetRequiredService<OidcLogin>();
+        var (user, _, _) = factory.Services.GetRequiredService<UserAccounts>()
+            .SignInExternal(new ExternalIdentity(oidc.Issuer, "subject-1", "alice"), autoProvision: true);
+        var principal = UserSession.Create(user!, UserSession.SingleSignOnMethod, oidc.Stamp, DateTimeOffset.UtcNow);
         var ticketFormat = factory.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
             .Get(CookieAuthenticationDefaults.AuthenticationScheme).TicketDataFormat;
         var cookies = new CookieContainer();

@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
+using Namerre.Application.Authentication;
 using Namerre.Infrastructure.Diagnostics;
 
 namespace Namerre.Authentication;
@@ -19,10 +20,15 @@ public static class AuthenticationSetup
     internal const int LoginLimitPerClient = 5;
     internal const int LoginLimitShared = 60;
 
-    public static IServiceCollection AddAdminAuthentication(this IServiceCollection services)
+    /// <summary>Authorization policy for administrator-only endpoints.</summary>
+    public const string AdminPolicy = "RequireAdmin";
+
+    public static IServiceCollection AddUserAuthentication(this IServiceCollection services)
     {
-        services.AddSingleton<AdminAccount>();
+        services.AddSingleton<UserAccounts>();
         services.AddSingleton<OidcLogin>();
+        services.AddHttpContextAccessor();
+        services.AddSingleton<ICurrentUser, HttpCurrentUser>();
         services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
             .AddCookie(options =>
             {
@@ -47,7 +53,7 @@ public static class AuthenticationSetup
                 {
                     var services = context.HttpContext.RequestServices;
                     if (context.Principal is null || !IsValidSession(context.Principal,
-                            services.GetRequiredService<AdminAccount>(), services.GetRequiredService<OidcLogin>()))
+                            services.GetRequiredService<UserAccounts>(), services.GetRequiredService<OidcLogin>()))
                         context.RejectPrincipal();
                     return Task.CompletedTask;
                 };
@@ -56,7 +62,8 @@ public static class AuthenticationSetup
         // The handler is always registered so its options can bind; the scheme provider hides it unless configured.
         services.AddSingleton<IAuthenticationSchemeProvider, OidcAwareSchemeProvider>();
         services.AddOptions<OpenIdConnectOptions>(OidcLogin.Scheme).Configure<OidcLogin>(ConfigureOidc);
-        services.AddAuthorization();
+        services.AddAuthorization(options =>
+            options.AddPolicy(AdminPolicy, policy => policy.RequireRole(nameof(UserRole.Admin))));
         services.AddAntiforgery(options =>
         {
             options.HeaderName = "X-XSRF-TOKEN";
@@ -105,13 +112,18 @@ public static class AuthenticationSetup
         return new IPAddress(bytes) + "/64";
     }
 
-    internal static bool IsValidSession(ClaimsPrincipal principal, AdminAccount account,
-        OidcLogin oidc)
+    /// <summary>
+    /// A session stays valid while its user exists, is enabled and keeps the same credential stamp (and, for single
+    /// sign-on sessions, while single sign-on settings are unchanged). The stamp changes with the user's role,
+    /// password and links, so the role claim never outlives a change.
+    /// </summary>
+    internal static bool IsValidSession(ClaimsPrincipal principal, UserAccounts accounts, OidcLogin oidc)
     {
-        if (principal.FindFirst(OidcLogin.MethodClaim)?.Value == OidcLogin.Scheme)
-            return oidc.IsValidSession(principal);
-        return !account.RequiresSetup &&
-            principal.FindFirst(AdminAccount.StampClaim)?.Value == account.Stamp;
+        if (UserSession.UserId(principal) is not { } id || accounts.Find(id) is not { Disabled: false } user ||
+            principal.FindFirst(UserSession.StampClaim)?.Value != user.Stamp ||
+            principal.FindFirst(ClaimTypes.Role)?.Value != user.Role.ToString())
+            return false;
+        return !UserSession.IsSingleSignOn(principal) || oidc.IsValidSession(principal);
     }
 
     private static void ConfigureOidc(OpenIdConnectOptions options, OidcLogin oidc)
@@ -145,27 +157,7 @@ public static class AuthenticationSetup
                 context.Properties!.StoreTokens([new AuthenticationToken { Name = OidcLogin.IdTokenName, Value = idToken }]);
             return Task.CompletedTask;
         };
-        options.Events.OnTicketReceived = context =>
-        {
-            var services = context.HttpContext.RequestServices;
-            var principal = services.GetRequiredService<OidcLogin>().CreateSessionPrincipal(context.Principal);
-            if (principal is null)
-            {
-                services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(OidcLogin)).LogWarning(
-                    "Single sign-on rejected subject {Subject}: the required role is missing.",
-                    context.Principal?.FindFirst("sub")?.Value);
-                NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "oidc"), new("namerre.auth.outcome", "denied"));
-                // Failing here would still sign in, so end the request explicitly.
-                context.Response.Redirect("/?signInError=access-denied");
-                context.HandleResponse();
-                return Task.CompletedTask;
-            }
-            NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "oidc"), new("namerre.auth.outcome", "success"));
-            context.Principal = principal;
-            context.Properties!.IsPersistent = false;
-            context.Properties.RedirectUri = "/";
-            return Task.CompletedTask;
-        };
+        options.Events.OnTicketReceived = OnTicketReceived;
         options.Events.OnRemoteFailure = context =>
         {
             context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(OidcLogin))
@@ -175,6 +167,95 @@ public static class AuthenticationSetup
             context.HandleResponse();
             return Task.CompletedTask;
         };
+    }
+
+    /// <summary>
+    /// Turns a validated single sign-on into a session of the linked local user, or links the identity when the
+    /// challenge was started by <c>AuthController.LinkSingleSignOn</c>. Failing here would still sign in, so every
+    /// refusal ends the request with a redirect.
+    /// </summary>
+    private static Task OnTicketReceived(TicketReceivedContext context)
+    {
+        var services = context.HttpContext.RequestServices;
+        var oidc = services.GetRequiredService<OidcLogin>();
+        var accounts = services.GetRequiredService<UserAccounts>();
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(OidcLogin));
+        var now = services.GetService<TimeProvider>()?.GetUtcNow() ?? DateTimeOffset.UtcNow;
+        var properties = context.Properties!;
+        var linking = properties.Items.TryGetValue(OidcLogin.LinkUserItem, out var linkUser);
+
+        Task Refuse(string location, string outcome)
+        {
+            NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "oidc"), new("namerre.auth.outcome", outcome));
+            context.Response.Redirect(location);
+            context.HandleResponse();
+            return Task.CompletedTask;
+        }
+
+        var identity = oidc.Read(context.Principal);
+        if (identity is null)
+        {
+            logger.LogWarning("Single sign-on rejected subject {Subject}: the required role is missing.",
+                context.Principal?.FindFirst("sub")?.Value);
+            return Refuse(linking ? "/account?linkError=access-denied" : "/?signInError=access-denied", "denied");
+        }
+
+        UserRecord user;
+        long? loginId;
+        if (linking)
+        {
+            try
+            {
+                var id = long.Parse(linkUser!, System.Globalization.CultureInfo.InvariantCulture);
+                var current = accounts.Find(id);
+                if (current is null || current.Disabled)
+                    return Refuse("/account?linkError=failed", "denied");
+                user = accounts.Link(new UserReference(current.Id, current.Username), id, identity,
+                    (properties.Items.TryGetValue(OidcLogin.LinkStampItem, out var stamp) ? stamp : null) ?? "");
+                loginId = user.Logins.Single(l => l.Issuer == identity.Issuer && l.Subject == identity.Subject).Id;
+            }
+            catch (AccountException exception)
+            {
+                logger.LogWarning("Linking single sign-on was refused: {Reason}", exception.Code);
+                return Refuse(exception.Code == "LoginTaken" || exception.Code == "AlreadyLinked"
+                    ? "/account?linkError=taken"
+                    : "/account?linkError=failed", "denied");
+            }
+            catch (UserStorageException exception)
+            {
+                logger.LogError(exception, "Unable to save a single sign-on link.");
+                return Refuse("/account?linkError=failed", "failure");
+            }
+            context.ReturnUri = "/account?linked=1";
+        }
+        else
+        {
+            var (resolved, resolvedLogin, failure) = accounts.SignInExternal(identity, oidc.Options.AutoProvision);
+            if (resolved is null)
+            {
+                logger.LogWarning("Single sign-on rejected subject {Subject} from issuer {Issuer}: {Reason}.",
+                    identity.Subject, identity.Issuer, failure);
+                return Refuse(failure switch
+                {
+                    ExternalSignInFailure.NotLinked => "/?signInError=not-linked",
+                    ExternalSignInFailure.Unavailable => "/?signInError=unavailable",
+                    _ => "/?signInError=access-denied"
+                }, failure == ExternalSignInFailure.Unavailable ? "failure" : "denied");
+            }
+            user = resolved;
+            loginId = resolvedLogin;
+            // Only fixed return addresses, which avoids open redirects.
+            context.ReturnUri = context.ReturnUri == "/account" ? "/account" : "/";
+        }
+
+        accounts.RecordSignIn(user, loginId);
+        NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "oidc"), new("namerre.auth.outcome", "success"));
+        logger.LogInformation("User {UserId} ({Username}) signed in with single sign-on.", user.Id, user.Username);
+        context.Principal = UserSession.Create(user, UserSession.SingleSignOnMethod, oidc.Stamp, now);
+        properties.IsPersistent = false;
+        properties.Items.Remove(OidcLogin.LinkUserItem);
+        properties.Items.Remove(OidcLogin.LinkStampItem);
+        return Task.CompletedTask;
     }
 }
 

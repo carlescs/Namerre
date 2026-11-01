@@ -12,7 +12,7 @@ using Microsoft.Extensions.Options;
 
 if (args is ["--hash-password"])
 {
-    AdminAccount.GeneratePasswordHash();
+    Passwords.GeneratePasswordHash();
     return;
 }
 
@@ -24,7 +24,7 @@ builder.Services.AddApi();
 builder.AddOptionalTelemetry();
 
 var app = builder.Build();
-_ = app.Services.GetRequiredService<AdminAccount>();
+_ = app.Services.GetRequiredService<UserAccounts>();
 _ = app.Services.GetRequiredService<OidcLogin>();
 
 if (!string.IsNullOrWhiteSpace(app.Services.GetRequiredService<IOptions<NamerreOptions>>().Value.DataPath))
