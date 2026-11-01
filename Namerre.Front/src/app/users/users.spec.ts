@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { Auth } from '../auth/auth';
 import { stubDialogsThatToggle } from '../dialogs.testing';
 import { Users } from './users';
@@ -226,5 +226,26 @@ describe('Users', () => {
     expect(element.querySelector('[role="status"]')?.textContent).toContain(
       'Merged alice into admin',
     );
+  });
+
+  it('sends a non-administrator back to the workspace without loading users', async () => {
+    TestBed.inject(Auth).role.set('User');
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    const fixture = TestBed.createComponent(Users);
+    await fixture.whenStable();
+    expect(navigate).toHaveBeenCalledWith('/');
+    http.expectNone('/api/users');
+  });
+
+  it('leaves when the session stops being an administrator while the page is open', async () => {
+    const { fixture } = await render();
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    const auth = TestBed.inject(Auth);
+    auth.role.set(null);
+    await fixture.whenStable();
+    expect(navigate).not.toHaveBeenCalled();
+    auth.role.set('User');
+    await fixture.whenStable();
+    expect(navigate).toHaveBeenCalledWith('/');
   });
 });

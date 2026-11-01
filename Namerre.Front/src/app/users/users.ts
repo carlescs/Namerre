@@ -4,13 +4,14 @@ import {
   Component,
   computed,
   type ElementRef,
+  effect,
   inject,
   type OnInit,
   signal,
   viewChild,
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom, type Observable } from 'rxjs';
 import { Auth, type LinkedLogin, minimumPasswordLength, type UserRole } from '../auth/auth';
 import { openModal } from '../workflow-mode/workflow-onboarding';
@@ -38,6 +39,7 @@ const optionalPassword = [Validators.minLength(minimumPasswordLength), Validator
 export class Users implements OnInit {
   protected readonly auth = inject(Auth);
   private readonly api = inject(UsersApi);
+  private readonly router = inject(Router);
   protected readonly users = signal<UserView[] | null>(null);
   protected readonly selectedId = signal<number | null>(null);
   protected readonly selected = computed(
@@ -85,8 +87,17 @@ export class Users implements OnInit {
     source: new FormControl<MoveSource>('keep', { nonNullable: true }),
   });
 
+  constructor() {
+    // The route guard only runs on navigation: when the session changes under this page (an
+    // administrator signs out and someone else signs in on the same tab), send non-administrators
+    // back to the workspace.
+    effect(() => {
+      if (this.auth.role() !== null && !this.auth.isAdmin()) void this.router.navigateByUrl('/');
+    });
+  }
+
   ngOnInit(): void {
-    void this.load();
+    if (this.auth.isAdmin()) void this.load();
   }
 
   protected isSelf(user: UserView): boolean {
