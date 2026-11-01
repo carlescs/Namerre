@@ -84,6 +84,7 @@ engine and the editor; set for TMDB).
 - Plugins return `PathParts`; the engine rejects extension changes other than case (only
   `ExtensionCasePlugin` makes those), empty stems and separators, then validates the path.
 - With `PipelineRequest.OnCollision = "AddNumber"` the engine gives taken targets a ` (n)` suffix
+  (subtitles a `.n` token before their language tokens, `Name.1.en.srt`)
   (`PreviewFile.Numbered`, `collision` trace step) before related files are named; prepare stores
   the result.
 - With `PipelineRequest.IncludeCompanions`, `CompanionFiles` pairs subtitles, `.nfo` and artwork with

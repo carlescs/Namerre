@@ -97,6 +97,7 @@
       [loading]="loadingPreview()"
       [disabled]="!validCollection() || suggesting() || preparing() || executing()"
       (previewRequested)="refreshPreview()"
+      (filesExcluded)="excludeFiles($event)"
     >
       @if (mode() === 'advanced') {
         <label class="flex items-start gap-2 text-sm">
@@ -109,7 +110,7 @@
             [disabled]="preparing() || executing()"
           />
           <span>
-            Add a number when names collide, e.g. Name (1).ext.
+            Add a number when names collide, e.g. Name (1).ext or, for subtitles, Name.1.en.srt.
             <span class="block text-xs text-slate-500 dark:text-slate-400"
               >Applies to files that would get the same name or a name that is already taken. The
               numbers are fixed when the plan is prepared; nothing is ever overwritten.</span

@@ -98,4 +98,53 @@ describe('RenamePreviewComponent', () => {
     expect(text()).not.toContain('That name is taken');
     fixture.destroy();
   });
+  it('leaves out problem files one at a time or all together, but not files awaiting a match', async () => {
+    const fixture = await create();
+    const clash = {
+      code: 'DuplicateTarget',
+      message: 'Multiple files resolve to this destination.',
+    };
+    fixture.componentRef.setInput('result', {
+      canPrepare: false,
+      files: [
+        file({
+          id: 'a.1.en.srt',
+          sourcePath: 'a.1.en.srt',
+          targetPath: 'A.en.srt',
+          unchanged: false,
+          issues: [clash],
+        }),
+        file({
+          id: 'a.2.en.srt',
+          sourcePath: 'a.2.en.srt',
+          targetPath: 'A.en.srt',
+          unchanged: false,
+          issues: [clash],
+        }),
+        file({
+          id: 'b.mkv',
+          sourcePath: 'b.mkv',
+          issues: [{ code: 'MetadataRequired', message: 'Match.' }],
+        }),
+        file({ id: 'c.mkv', sourcePath: 'c.mkv', targetPath: 'C.mkv', unchanged: false }),
+      ],
+    } satisfies PreviewResult);
+    const excluded = vi.fn();
+    fixture.componentInstance.filesExcluded.subscribe(excluded);
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    const buttons = () => Array.from(root.querySelectorAll('button')) as HTMLButtonElement[];
+    const rowButtons = buttons().filter((button) => button.textContent?.trim() === 'Leave out');
+    expect(rowButtons.map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Leave out a.1.en.srt',
+      'Leave out a.2.en.srt',
+    ]);
+    rowButtons[1].click();
+    expect(excluded).toHaveBeenLastCalledWith(['a.2.en.srt']);
+    const all = buttons().find((button) => button.textContent?.includes('with problems'));
+    expect(all?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Leave out 2 files with problems');
+    all?.click();
+    expect(excluded).toHaveBeenLastCalledWith(['a.1.en.srt', 'a.2.en.srt']);
+    fixture.destroy();
+  });
 });

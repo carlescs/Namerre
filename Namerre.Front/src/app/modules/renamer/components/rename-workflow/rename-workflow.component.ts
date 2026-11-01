@@ -489,6 +489,11 @@ export class RenameWorkflowComponent {
     this.invalidate();
   }
 
+  /** Leaves files out of the collection from the preview; the changed collection previews again. */
+  protected excludeFiles(paths: readonly string[]): void {
+    for (const path of paths) this.fileRemoved.emit(path);
+  }
+
   protected refreshPreview(): void {
     clearTimeout(this.debounce);
     this.request?.unsubscribe();
