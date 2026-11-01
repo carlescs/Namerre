@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Namerre.Application.Folders;
 using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application.Renaming;
@@ -10,12 +8,8 @@ using Namerre.Application.Renaming.Plans;
 using Namerre.Application.Renaming.Plugins;
 using Namerre.Application.Renaming.Presets;
 using Namerre.Application.Renaming.Runs;
-using Namerre.Application.WatchFolders;
-using Namerre.Infrastructure.Configuration;
-using Namerre.Infrastructure.Diagnostics;
-using Namerre.Infrastructure.Renaming;
 
-namespace Namerre.Infrastructure.WatchFolders;
+namespace Namerre.Application.WatchFolders;
 
 /// <summary>
 /// Renames new files in the configured watch folders with their preset. Each scan first advances the folder's
@@ -26,16 +20,13 @@ namespace Namerre.Infrastructure.WatchFolders;
 /// <see cref="WatchFolderSettings.MaxAttempts"/> until it changes. TMDB steps only run with an explicit
 /// <see cref="WatchFolderSettings.TmdbAutoConfirm"/> threshold: a suggestion below it fails the file.
 /// </summary>
-public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameStore store, RenameService renames,
-    PipelineEngine pipeline, PresetService presets, IPresetStore presetStore, TmdbSuggester suggester,
-    IFolderBrowser folders, IRenameFileSystem fileSystem, ILogger<WatchFolderService> logger, TimeProvider? clock = null)
+public sealed class WatchFolderService(IWatchFolderConfiguration configuration, IWatchedFileStore files,
+    IRenameService renames, PipelineEngine pipeline, PresetService presets, IPresetStore presetStore,
+    TmdbSuggester suggester, IFolderBrowser folders, IRenameFileSystem fileSystem, IWatchFolderDiagnostics diagnostics,
+    ILogger<WatchFolderService> logger, TimeProvider? clock = null)
     : IWatchFolders
 {
     public const string OriginPrefix = "watch:";
-    public const string Queued = "Queued";
-    public const string Done = "Done";
-    public const string Failed = "Failed";
-    public const string Ignored = "Ignored";
     /// <summary>Longest wait between attempts of a failing file.</summary>
     public static readonly TimeSpan MaxBackOff = TimeSpan.FromHours(24);
     private const int MaxProblemsListed = 100;
@@ -43,8 +34,7 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
     private readonly ConcurrentDictionary<string, FolderState> states = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim scanning = new(1);
 
-    private IReadOnlyList<WatchFolderSettings> Settings
-        => options.Value.WatchFolders.Select(folder => folder.ToSettings()).ToArray();
+    private IReadOnlyList<WatchFolderSettings> Settings => configuration.Folders;
 
     /// <summary>Scans every folder whose interval has passed; the worker calls this every few seconds.</summary>
     public async Task Scan(CancellationToken cancellationToken)
@@ -58,14 +48,13 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
                 var now = time.GetUtcNow();
                 if (state.LastScanAt is { } last && now - last < settings.Interval) continue;
                 state.LastScanAt = now;
-                System.Diagnostics.Activity? activity = null;
+                IWatchScan? scan = null;
                 try
                 {
-                    if (Paused(settings.Name)) continue;
-                    activity = NamerreTelemetry.Source.StartActivity("watch.scan");
-                    activity?.SetTag("namerre.watch.folder", settings.Name);
+                    if (files.IsPaused(settings.Name)) continue;
+                    scan = diagnostics.StartScan(settings.Name);
                     var previous = state.Error;
-                    state.Error = await ScanFolder(settings, state, cancellationToken);
+                    state.Error = await ScanFolder(settings, state, scan, cancellationToken);
                     if (state.Error is not null && state.Error != previous)
                         logger.LogWarning("Watch folder {Folder} cannot run: {Problem}", settings.Name, state.Error);
                 }
@@ -74,18 +63,18 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
                 {
                     // Busy TMDB, a full queue or pending recovery: nothing is held against the files; try next interval.
                     state.Error = exception.Message;
-                    activity.Fail(exception);
+                    scan?.Fail(exception);
                     logger.LogInformation("Watch folder {Folder} postponed: {Code}", settings.Name, exception.Code);
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
-                    or FolderBrowserException or DbUpdateException)
+                    or FolderBrowserException or WatchFolderStoreException)
                 {
                     state.Error = exception is FolderBrowserException browser
                         ? browser.Message : "The folder or the database could not be read. The next scan tries again.";
-                    activity.Fail(exception);
+                    scan?.Fail(exception);
                     logger.LogWarning(exception, "Watch folder {Folder} scan failed", settings.Name);
                 }
-                finally { activity?.Dispose(); }
+                finally { scan?.Dispose(); }
             }
         }
         finally { scanning.Release(); }
@@ -96,14 +85,7 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
     public WatchFolderStatus SetPaused(string name, bool paused)
     {
         var settings = Find(name);
-        store.Use(db =>
-        {
-            var key = PausedKey(settings.Name);
-            var row = db.Settings.SingleOrDefault(s => s.Key == key);
-            if (paused && row is null) db.Settings.Add(new RenameSetting { Key = key, Value = "true" });
-            if (!paused && row is not null) db.Settings.Remove(row);
-            return db.SaveChanges();
-        });
+        files.SetPaused(settings.Name, paused);
         // Resuming scans right away instead of waiting out the interval.
         if (!paused) State(settings.Name).LastScanAt = null;
         return Status(settings);
@@ -112,15 +94,14 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
     public WatchFolderStatus Retry(string name, string path)
     {
         var settings = Find(name);
-        var removed = store.Use(db => db.WatchedFiles
-            .Where(f => f.Folder == settings.Name && f.Path == path && (f.Status == Failed || f.Status == Ignored))
-            .ExecuteDelete());
-        if (removed == 0) throw new RenameException("NotFound", "This file has no failure to retry.", 404);
+        if (files.Remove(settings.Name, path, WatchFileState.Failed, WatchFileState.Ignored) == 0)
+            throw new RenameException("NotFound", "This file has no failure to retry.", 404);
         State(settings.Name).LastScanAt = null;
         return Status(settings);
     }
 
-    private async Task<string?> ScanFolder(WatchFolderSettings settings, FolderState state, CancellationToken cancellationToken)
+    private async Task<string?> ScanFolder(WatchFolderSettings settings, FolderState state, IWatchScan scan,
+        CancellationToken cancellationToken)
     {
         // One batch at a time per folder: the next one starts when this one has finished.
         if (await Advance(settings, cancellationToken)) return null;
@@ -134,7 +115,7 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
             return $"Preset {preset.Name} has a TMDB step, which needs explicit confirmation. Set TmdbMediaType and "
                 + "TmdbAutoConfirm on the watch folder to accept suggestions above a confidence, or remove the step.";
         var candidates = await Stable(settings, state, cancellationToken);
-        System.Diagnostics.Activity.Current?.SetTag("namerre.watch.candidates", candidates.Count);
+        scan.Candidates(candidates.Count);
         if (candidates.Count == 0) return null;
         await Process(settings, preset, tmdb, candidates, cancellationToken);
         return null;
@@ -143,8 +124,7 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
     /// <summary>Moves the batch in flight forward; true while one is still running.</summary>
     private async Task<bool> Advance(WatchFolderSettings settings, CancellationToken cancellationToken)
     {
-        var queued = store.Use(db => db.WatchedFiles.AsNoTracking()
-            .Where(f => f.Folder == settings.Name && f.Status == Queued).ToList());
+        var queued = files.List(settings.Name, WatchFileState.Queued);
         if (queued.Count == 0) return false;
         foreach (var batch in queued.GroupBy(f => (f.PlanId, f.RunId)))
         {
@@ -152,7 +132,7 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
             if (batch.Key.RunId is null)
             {
                 PlanView plan;
-                try { plan = store.Get<PlanView>(batch.Key.PlanId!, "Plan"); }
+                try { plan = await renames.GetPlan(batch.Key.PlanId!, cancellationToken); }
                 catch (RenameException exception) when (exception.Code == "NotFound")
                 {
                     Fail(settings, rows, "The prepared plan was deleted.");
@@ -165,12 +145,12 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
                     // The plan ID doubles as the operation ID, so a retried execution never starts a second run.
                     var accepted = await renames.Execute(plan.Id,
                         new ExecuteRequest(plan.Version, Guid.ParseExact(plan.Id, "N").ToString()), cancellationToken);
-                    Update(settings, rows, row => row.RunId = accepted.Id);
+                    files.Save(rows.Select(row => row with { RunId = accepted.Id }).ToArray());
                 }
                 continue;
             }
             RunView run;
-            try { run = store.Get<RunView>(batch.Key.RunId, "Run"); }
+            try { run = await renames.GetRun(batch.Key.RunId, cancellationToken); }
             catch (RenameException exception) when (exception.Code == "NotFound")
             {
                 Fail(settings, rows, "The run was deleted.");
@@ -180,7 +160,7 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
             else if (run.Status is "RecoveryRequired" or "Recovered" or "RecoveryQueued" or "Recovering")
                 Fail(settings, rows, run.Error ?? "The run was interrupted. Inspect it in the run history.");
         }
-        return store.Use(db => db.WatchedFiles.Any(f => f.Folder == settings.Name && f.Status == Queued));
+        return files.Count(settings.Name, WatchFileState.Queued) > 0;
     }
 
     /// <summary>Files whose fingerprint has been stable long enough and that are due, in path order.</summary>
@@ -189,8 +169,7 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
     {
         var now = time.GetUtcNow();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var rows = store.Use(db => db.WatchedFiles.AsNoTracking().Where(f => f.Folder == settings.Name)
-            .ToDictionary(f => f.Path, StringComparer.Ordinal));
+        var rows = files.List(settings.Name).ToDictionary(f => f.Path, StringComparer.Ordinal);
         var result = new List<(string, long, long)>();
         await foreach (var file in Files(settings.Path, settings.Recursive, cancellationToken))
         {
@@ -202,8 +181,9 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
                 continue;
             }
             if (now - observed.Since < settings.StableFor) continue;
-            if (rows.TryGetValue(file.Path, out var row) && row.Size == file.Size && row.ModifiedTicks == file.Ticks
-                && (row.Status is Done or Ignored or Queued || (row.Status == Failed && row.NextAttemptAt > now)))
+            if (rows.TryGetValue(file.Path, out var row) && row.Matches(file.Size, file.Ticks)
+                && (row.State is WatchFileState.Done or WatchFileState.Ignored or WatchFileState.Queued
+                    || (row.State == WatchFileState.Failed && row.NextAttemptAt > now)))
                 continue;
             result.Add((file.Path, file.Size, file.Ticks));
         }
@@ -275,17 +255,16 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
         var ready = preview.Files.Where(f => !failures.ContainsKey(f.Id)).ToArray();
         var unchanged = ready.All(f => f.Unchanged);
         var now = time.GetUtcNow();
-        store.Use(db =>
-        {
-            foreach (var (path, error) in failures) FailRow(db, settings, path, fingerprints[path], error, now);
-            // Names the preset leaves as they are need no run.
-            if (unchanged)
-                foreach (var file in ready) Upsert(db, settings.Name, file.Id, fingerprints[file.Id], Done, now);
-            return db.SaveChanges();
-        });
+        var changes = new List<WatchedFile>();
+        foreach (var (path, error) in failures) changes.Add(FailRow(settings, path, fingerprints[path], error, now));
+        // Names the preset leaves as they are need no run.
+        if (unchanged)
+            foreach (var file in ready)
+                changes.Add(Record(settings.Name, file.Id, fingerprints[file.Id], WatchFileState.Done, now));
+        files.Save(changes);
         if (failures.Count > 0)
             logger.LogInformation("Watch folder {Folder}: {Count} files cannot be renamed", settings.Name, failures.Count);
-        if (unchanged) Count(settings, "unchanged", ready.Length);
+        if (unchanged) diagnostics.Files(settings.Name, WatchOutcome.Unchanged, ready.Length);
         if (ready.Length == 0 || unchanged) return;
         var ids = ready.Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
         var subset = request with
@@ -294,90 +273,67 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
             Selections = (request.Selections ?? []).Where(s => ids.Contains(s.FileId)).ToArray()
         };
         var accepted = await renames.Prepare(subset, OriginPrefix + settings.Name, cancellationToken);
-        store.Use(db =>
-        {
-            foreach (var id in ids)
-            {
-                var row = Upsert(db, settings.Name, id, fingerprints[id], Queued, now);
-                row.PlanId = accepted.Id;
-                row.RunId = null;
-            }
-            return db.SaveChanges();
-        });
-        Count(settings, "prepared", ids.Count);
+        files.Save(ids.Select(id => Record(settings.Name, id, fingerprints[id], WatchFileState.Queued, now)
+            with { PlanId = accepted.Id, RunId = null }).ToArray());
+        diagnostics.Files(settings.Name, WatchOutcome.Prepared, ids.Count);
         logger.LogInformation("Watch folder {Folder} prepared plan {Plan} for {Count} files", settings.Name, accepted.Id, ids.Count);
     }
 
-    private void Finish(WatchFolderSettings settings, List<WatchedFileRow> rows, RunView run)
+    private void Finish(WatchFolderSettings settings, List<WatchedFile> rows, RunView run)
     {
         var now = time.GetUtcNow();
-        store.Use(db =>
+        var done = new List<WatchedFile>();
+        var removals = new List<(string, string)>();
+        foreach (var row in rows)
         {
-            foreach (var row in rows)
+            // The renamed file is recorded under its new path, so a target inside the folder is not taken again.
+            var target = run.Files.FirstOrDefault(f => f.Id == row.Path)?.TargetPath ?? row.Path;
+            (long, long) fingerprint = (row.Size, row.ModifiedTicks);
+            try
             {
-                // The renamed file is recorded under its new path, so a target inside the folder is not taken again.
-                var target = run.Files.FirstOrDefault(f => f.Id == row.Path)?.TargetPath ?? row.Path;
-                (long, long) fingerprint = (row.Size, row.ModifiedTicks);
-                try
-                {
-                    var facts = fileSystem.Facts(target);
-                    fingerprint = (facts.Size, facts.ModifiedUtc.UtcTicks);
-                }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
-                    or RenameException or ArgumentException) { }
-                if (target != row.Path)
-                    db.WatchedFiles.Where(f => f.Folder == row.Folder && f.Path == row.Path).ExecuteDelete();
-                var done = Upsert(db, settings.Name, target, fingerprint, Done, now);
-                done.PlanId = run.PlanId;
-                done.RunId = run.Id;
+                var facts = fileSystem.Facts(target);
+                fingerprint = (facts.Size, facts.ModifiedUtc.UtcTicks);
             }
-            return db.SaveChanges();
-        });
-        Count(settings, "completed", rows.Count);
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                or RenameException or ArgumentException) { }
+            if (target != row.Path) removals.Add((row.Folder, row.Path));
+            done.Add(Record(settings.Name, target, fingerprint, WatchFileState.Done, now)
+                with { PlanId = run.PlanId, RunId = run.Id });
+        }
+        files.Save(done, removals);
+        diagnostics.Files(settings.Name, WatchOutcome.Completed, rows.Count);
         logger.LogInformation("Watch folder {Folder} renamed {Count} files in run {RunId}", settings.Name, rows.Count, run.Id);
     }
 
-    private void Fail(WatchFolderSettings settings, List<WatchedFileRow> rows, string error)
+    private void Fail(WatchFolderSettings settings, List<WatchedFile> rows, string error)
     {
         var now = time.GetUtcNow();
-        store.Use(db =>
-        {
-            foreach (var row in rows) FailRow(db, settings, row.Path, (row.Size, row.ModifiedTicks), error, now);
-            return db.SaveChanges();
-        });
+        files.Save(rows.Select(row => FailRow(settings, row.Path, (row.Size, row.ModifiedTicks), error, now)).ToArray());
         logger.LogWarning("Watch folder {Folder}: a batch of {Count} files failed: {Error}", settings.Name, rows.Count, error);
     }
 
-    private void Update(WatchFolderSettings settings, List<WatchedFileRow> rows, Action<WatchedFileRow> change)
-        => store.Use(db =>
-        {
-            var paths = rows.Select(r => r.Path).ToArray();
-            foreach (var row in db.WatchedFiles.Where(f => f.Folder == settings.Name && paths.Contains(f.Path))) change(row);
-            return db.SaveChanges();
-        });
-
-    private void FailRow(RenameDbContext db, WatchFolderSettings settings, string path,
-        (long Size, long Ticks) fingerprint, string error, DateTimeOffset now)
+    private WatchedFile FailRow(WatchFolderSettings settings, string path, (long Size, long Ticks) fingerprint,
+        string error, DateTimeOffset now)
     {
-        var existing = db.WatchedFiles.SingleOrDefault(f => f.Folder == settings.Name && f.Path == path);
+        var existing = files.Get(settings.Name, path);
         // A changed file starts counting again.
-        var attempts = (existing is not null && existing.Size == fingerprint.Size
-            && existing.ModifiedTicks == fingerprint.Ticks ? existing.Attempts : 0) + 1;
-        var row = Upsert(db, settings.Name, path, fingerprint, attempts >= settings.MaxAttempts ? Ignored : Failed, now);
-        row.Attempts = attempts;
-        row.Error = error.Length > 500 ? error[..500] : error;
-        row.PlanId = null;
-        row.RunId = null;
-        row.NextAttemptAt = row.Status == Ignored ? null : now + BackOff(settings.Interval, attempts);
-        Count(settings, row.Status == Ignored ? "ignored" : "failed", 1);
-        if (row.Status == Ignored)
+        var attempts = (existing is not null && existing.Matches(fingerprint.Size, fingerprint.Ticks)
+            ? existing.Attempts : 0) + 1;
+        var state = attempts >= settings.MaxAttempts ? WatchFileState.Ignored : WatchFileState.Failed;
+        var row = Record(settings.Name, path, fingerprint, state, now, existing) with
+        {
+            Attempts = attempts,
+            Error = error.Length > 500 ? error[..500] : error,
+            PlanId = null,
+            RunId = null,
+            NextAttemptAt = state == WatchFileState.Ignored ? null : now + BackOff(settings.Interval, attempts)
+        };
+        diagnostics.Files(settings.Name, state == WatchFileState.Ignored ? WatchOutcome.Ignored : WatchOutcome.Failed, 1);
+        if (state == WatchFileState.Ignored)
             logger.LogWarning("Watch folder {Folder} ignores {Path} after {Attempts} failed attempts until it changes",
                 settings.Name, path, attempts);
+        return row;
     }
-
-    private static void Count(WatchFolderSettings settings, string outcome, int files)
-        => NamerreTelemetry.WatchFiles.Add(files, new KeyValuePair<string, object?>("namerre.watch.folder", settings.Name),
-            new KeyValuePair<string, object?>("namerre.watch.outcome", outcome));
 
     private static string Percent(double value)
         => Math.Round(value * 100).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%";
@@ -386,49 +342,30 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
     public static TimeSpan BackOff(TimeSpan interval, int attempts)
         => TimeSpan.FromTicks((long)Math.Min(MaxBackOff.Ticks, interval.Ticks * Math.Pow(2, Math.Max(0, attempts - 1))));
 
-    private static WatchedFileRow Upsert(RenameDbContext db, string folder, string path, (long Size, long Ticks) fingerprint,
-        string status, DateTimeOffset now)
+    /// <summary>The file's record moved to <paramref name="state"/>; progress and errors reset when it is queued or done.</summary>
+    private WatchedFile Record(string folder, string path, (long Size, long Ticks) fingerprint, WatchFileState state,
+        DateTimeOffset now, WatchedFile? existing = null)
     {
-        var row = db.WatchedFiles.Local.FirstOrDefault(f => f.Folder == folder && f.Path == path)
-            ?? db.WatchedFiles.SingleOrDefault(f => f.Folder == folder && f.Path == path);
-        if (row is null)
+        var row = (existing ?? files.Get(folder, path) ?? new WatchedFile(folder, path, 0, 0, state)) with
         {
-            row = new WatchedFileRow { Folder = folder, Path = path };
-            db.WatchedFiles.Add(row);
-        }
-        row.Size = fingerprint.Size;
-        row.ModifiedTicks = fingerprint.Ticks;
-        row.Status = status;
-        row.UpdatedAt = now;
-        if (status is Done or Queued)
-        {
-            row.Attempts = 0;
-            row.Error = null;
-            row.NextAttemptAt = null;
-        }
-        return row;
+            Size = fingerprint.Size,
+            ModifiedTicks = fingerprint.Ticks,
+            State = state,
+            UpdatedAt = now
+        };
+        return state is WatchFileState.Done or WatchFileState.Queued
+            ? row with { Attempts = 0, Error = null, NextAttemptAt = null } : row;
     }
 
     private WatchFolderStatus Status(WatchFolderSettings settings)
     {
         var state = State(settings.Name);
-        var (inFlight, completed, problems) = store.Use(db =>
-        {
-            var files = db.WatchedFiles.AsNoTracking().Where(f => f.Folder == settings.Name);
-            return (files.Count(f => f.Status == Queued), files.Count(f => f.Status == Done),
-                files.Where(f => f.Status == Failed || f.Status == Ignored).AsEnumerable()
-                    .OrderByDescending(f => f.UpdatedAt).Take(MaxProblemsListed)
-                    .Select(f => new WatchedFileProblem(f.Path, f.Status, f.Attempts, f.Error, f.NextAttemptAt, f.UpdatedAt))
-                    .ToArray());
-        });
-        return new(settings.Name, settings.Path, settings.Preset, Paused(settings.Name), state.LastScanAt, inFlight,
-            completed, state.Error, problems, settings.TmdbAutoConfirm);
-    }
-
-    private bool Paused(string name)
-    {
-        var key = PausedKey(name);
-        return store.Use(db => db.Settings.AsNoTracking().Any(s => s.Key == key));
+        var problems = files.Problems(settings.Name, MaxProblemsListed)
+            .Select(f => new WatchedFileProblem(f.Path, f.State.ToString(), f.Attempts, f.Error, f.NextAttemptAt, f.UpdatedAt))
+            .ToArray();
+        return new(settings.Name, settings.Path, settings.Preset, files.IsPaused(settings.Name), state.LastScanAt,
+            files.Count(settings.Name, WatchFileState.Queued), files.Count(settings.Name, WatchFileState.Done),
+            state.Error, problems, settings.TmdbAutoConfirm);
     }
 
     private WatchFolderSettings Find(string name)
@@ -436,8 +373,6 @@ public sealed class WatchFolderService(IOptions<NamerreOptions> options, RenameS
             ?? throw new RenameException("NotFound", "The requested resource was not found.", 404);
 
     private FolderState State(string name) => states.GetOrAdd(name, _ => new FolderState());
-
-    private static string PausedKey(string name) => "watch-paused:" + name.ToLowerInvariant();
 
     private sealed class FolderState
     {

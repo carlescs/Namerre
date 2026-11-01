@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="10.1.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.5.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="NSubstitute" Version="6.2.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -18,8 +19,7 @@
 
   <ItemGroup>
     <!-- The Simple mode's built-in presets are frontend data; SimplePresetTests previews each one. -->
-    <None Include="..\Namerre.Front\src\app\modules\renamer\simple-presets.json" Link="simple-presets.json"
-          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Namerre.Front\src\app\modules\renamer\simple-presets.json" Link="simple-presets.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

@@ -10,6 +10,8 @@ public interface IRenameService
 {
     Task<PreviewResult> Preview(PipelineRequest request, CancellationToken cancellationToken);
     Task<JobAccepted> Prepare(PipelineRequest request, CancellationToken cancellationToken);
+    /// <summary>Prepares a plan that records where it came from, e.g. <c>watch:&lt;folder&gt;</c>.</summary>
+    Task<JobAccepted> Prepare(PipelineRequest request, string? origin, CancellationToken cancellationToken);
     Task<PlanView> GetPlan(string id, CancellationToken cancellationToken);
     Task<JobAccepted> Execute(string id, ExecuteRequest request, CancellationToken cancellationToken);
     Task<RunPage> GetRuns(int page, int pageSize, CancellationToken cancellationToken);
