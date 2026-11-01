@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="10.1.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.5.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="NSubstitute" Version="6.2.0" />
@@ -29,7 +30,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- TestPipeline (Renaming/TestPipeline.cs) lives in Namerre.Testing and is also linked into Namerre.Api.Tests. -->
+    <!-- Shared test helpers live in Namerre.Testing: TestPipeline (Renaming/TestPipeline.cs) is also linked into
+         Namerre.Api.Tests, InMemoryUserStore (Authentication/InMemoryUserStore.cs) into Namerre.Api.UnitTests. -->
     <Using Include="Namerre.Testing" />
   </ItemGroup>
 

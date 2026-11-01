@@ -1,7 +1,7 @@
-using Namerre.Authentication;
+using Namerre.Application.Authentication;
 using Xunit;
 
-namespace Namerre.Api.UnitTests.Authentication;
+namespace Namerre.Application.UnitTests.Authentication;
 
 public sealed class LogTextTests
 {

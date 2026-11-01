@@ -74,6 +74,9 @@ before changing a feature, and update it with the change.
   `api/` and send CMediator requests via `ISender`. Request and handler live in separate files
   (`XQuery.cs` + `XQueryHandler.cs`) in a feature folder with a matching namespace. Renaming handlers
   stay thin; logic belongs in `Namerre.Infrastructure/Renaming/RenameService.cs`.
+  Account handlers (`Application/Authentication`, `Application/Users`) stay thin too; the rules belong
+  in `Application/Authentication/UserAccounts`, and the auth controllers keep only cookie/claims/OIDC
+  plumbing.
 - DTOs: one type per file in the feature folder; only shared ones and the `IRenameService` /
   `ITmdbMetadata` contracts stay in `Application/Renaming`.
 - Execution order is the request's plugin order, never catalog order. Run state changes must satisfy

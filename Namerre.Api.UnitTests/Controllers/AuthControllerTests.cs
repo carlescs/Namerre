@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using CMediator.Abstractions;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -7,15 +8,18 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Namerre.Api.UnitTests.Authentication;
+using Namerre.Application;
 using Namerre.Application.Authentication;
 using Namerre.Application.Renaming;
 using Namerre.Authentication;
 using Namerre.Controllers;
+using Namerre.Infrastructure.Authentication;
 using Namerre.Infrastructure.Configuration;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -26,7 +30,8 @@ namespace Namerre.Api.UnitTests.Controllers;
 
 public sealed class AuthControllerTests
 {
-    private static readonly string Hash = Passwords.HashPassword("password");
+    private static readonly PasswordHasher Hasher = new();
+    private static readonly string Hash = Hasher.Hash("password");
     private readonly InMemoryUserStore store = new();
     private readonly ManualTime time = new(new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero));
     private readonly IAntiforgery antiforgery = Substitute.For<IAntiforgery>();
@@ -35,13 +40,13 @@ public sealed class AuthControllerTests
         Substitute.For<IConfigurationManager<OpenIdConnectConfiguration>>();
 
     [Fact]
-    public void SessionIssuesXsrfCookieAndReportsSetupState()
+    public async Task SessionIssuesXsrfCookieAndReportsSetupState()
     {
         antiforgery.GetAndStoreTokens(Arg.Any<HttpContext>())
             .Returns(new AntiforgeryTokenSet("request-token", "cookie-token", "form", "X-XSRF-TOKEN"));
         var controller = Controller(Unconfigured());
 
-        var result = Assert.IsType<OkObjectResult>(controller.Session());
+        var result = Assert.IsType<OkObjectResult>(await controller.Session(CancellationToken.None));
 
         var cookie = controller.Response.Headers.SetCookie.ToString();
         Assert.Contains("XSRF-TOKEN=request-token", cookie);
@@ -53,7 +58,7 @@ public sealed class AuthControllerTests
     }
 
     [Fact]
-    public void SessionReportsTheSignedInAdministrator()
+    public async Task SessionReportsTheSignedInAdministrator()
     {
         antiforgery.GetAndStoreTokens(Arg.Any<HttpContext>())
             .Returns(new AntiforgeryTokenSet("t", "c", "form", "X-XSRF-TOKEN"));
@@ -61,7 +66,7 @@ public sealed class AuthControllerTests
         var controller = Controller(account);
         SignIn(controller, account.Find(UserAccounts.ConfiguredUserId)!);
 
-        var result = Assert.IsType<OkObjectResult>(controller.Session());
+        var result = Assert.IsType<OkObjectResult>(await controller.Session(CancellationToken.None));
 
         Assert.Equivalent(new
         {
@@ -73,45 +78,48 @@ public sealed class AuthControllerTests
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public void SetupRequiresAUsername(string username)
+    public async Task SetupRequiresAUsername(string username)
     {
         var account = Unconfigured();
 
-        Assert.IsType<BadRequestObjectResult>(Controller(account).Setup(
-            new SetupRequest(account.SetupToken!, username, "password")));
+        var result = Assert.IsType<BadRequestObjectResult>(await Controller(account).Setup(
+            new SetupRequest(account.SetupToken!, username, "a long enough password"), CancellationToken.None));
+
+        Assert.Equivalent(new { message = "Enter an administrator username." }, result.Value);
         Assert.True(account.RequiresSetup);
     }
 
     [Fact]
-    public void SetupWithInvalidTokenIsForbidden()
+    public async Task SetupWithInvalidTokenIsForbidden()
     {
-        var result = Controller(Unconfigured()).Setup(new SetupRequest(new string('0', 64), "admin", "password"));
+        var result = await Controller(Unconfigured()).Setup(
+            new SetupRequest(new string('0', 64), "admin", "password"), CancellationToken.None);
 
         Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(result).StatusCode);
     }
 
     [Fact]
-    public void SetupAfterConfigurationConflicts()
-        => Assert.IsType<ConflictObjectResult>(Controller(Configured())
-            .Setup(new SetupRequest(new string('0', 64), "admin", "password")));
+    public async Task SetupAfterConfigurationConflicts()
+        => Assert.IsType<ConflictObjectResult>(await Controller(Configured())
+            .Setup(new SetupRequest(new string('0', 64), "admin", "password"), CancellationToken.None));
 
     [Fact]
-    public void SuccessfulSetupReturnsNoContent()
+    public async Task SuccessfulSetupReturnsNoContent()
     {
         var account = Unconfigured();
 
-        Assert.IsType<NoContentResult>(Controller(account).Setup(
-            new SetupRequest(account.SetupToken!, "admin", "a long enough password")));
+        Assert.IsType<NoContentResult>(await Controller(account).Setup(
+            new SetupRequest(account.SetupToken!, "admin", "a long enough password"), CancellationToken.None));
         Assert.False(account.RequiresSetup);
     }
 
     [Fact]
-    public void SetupWithAShortPasswordIsABadRequest()
+    public async Task SetupWithAShortPasswordIsABadRequest()
     {
         var account = Unconfigured();
 
-        var result = Assert.IsType<BadRequestObjectResult>(Controller(account).Setup(
-            new SetupRequest(account.SetupToken!, "admin", "password")));
+        var result = Assert.IsType<BadRequestObjectResult>(await Controller(account).Setup(
+            new SetupRequest(account.SetupToken!, "admin", "password"), CancellationToken.None));
 
         Assert.Equivalent(new { message = "Use a password of at least 12 characters." }, result.Value);
         Assert.True(account.RequiresSetup);
@@ -127,12 +135,13 @@ public sealed class AuthControllerTests
 
     [Theory]
     [MemberData(nameof(StorageFailures))]
-    public void StorageFailuresDuringSetupAreServiceUnavailable(Exception failure)
+    public async Task StorageFailuresDuringSetupAreServiceUnavailable(Exception failure)
     {
         var account = Unconfigured();
         store.Failure = failure;
 
-        var result = Controller(account).Setup(new SetupRequest(account.SetupToken!, "admin", "a long enough password"));
+        var result = await Controller(account).Setup(
+            new SetupRequest(account.SetupToken!, "admin", "a long enough password"), CancellationToken.None);
 
         Assert.Equal(StatusCodes.Status503ServiceUnavailable, Assert.IsType<ObjectResult>(result).StatusCode);
         Assert.True(account.RequiresSetup);
@@ -143,7 +152,7 @@ public sealed class AuthControllerTests
     [InlineData("other", "password")]
     public async Task LoginWithInvalidCredentialsIsUnauthorized(string username, string password)
     {
-        var result = await Controller(Configured()).Login(new LoginRequest(username, password));
+        var result = await Controller(Configured()).Login(new LoginRequest(username, password), CancellationToken.None);
 
         Assert.IsType<UnauthorizedObjectResult>(result);
         await authentication.DidNotReceiveWithAnyArgs().SignInAsync(default!, default, default!, default);
@@ -155,7 +164,7 @@ public sealed class AuthControllerTests
         var account = Configured();
         var controller = Controller(account);
 
-        Assert.IsType<NoContentResult>(await controller.Login(new LoginRequest("admin", "password")));
+        Assert.IsType<NoContentResult>(await controller.Login(new LoginRequest("admin", "password"), CancellationToken.None));
 
         await authentication.Received(1).SignInAsync(controller.HttpContext,
             CookieAuthenticationDefaults.AuthenticationScheme,
@@ -185,7 +194,7 @@ public sealed class AuthControllerTests
         SignIn(controller, user);
 
         Assert.IsType<NoContentResult>(await controller.ChangePassword(
-            new ChangePasswordRequest("password", "new password")));
+            new ChangePasswordRequest("password", "new password"), CancellationToken.None));
 
         var changed = account.Find(user.Id)!;
         Assert.NotNull(account.Authenticate("alice", "new password"));
@@ -205,7 +214,8 @@ public sealed class AuthControllerTests
         SignIn(controller, user);
 
         var error = await Assert.ThrowsAsync<AccountException>(() =>
-            controller.ChangePassword(new ChangePasswordRequest("wrong", "new password")));
+            controller.ChangePassword(
+            new ChangePasswordRequest("wrong", "new password"), CancellationToken.None));
 
         Assert.Equal(StatusCodes.Status403Forbidden, error.Status);
         Assert.NotNull(account.Authenticate("alice", "password"));
@@ -220,7 +230,8 @@ public sealed class AuthControllerTests
         SignIn(controller, user);
 
         var error = await Assert.ThrowsAsync<AccountException>(() =>
-            controller.ChangePassword(new ChangePasswordRequest("password", "too short")));
+            controller.ChangePassword(
+            new ChangePasswordRequest("password", "too short"), CancellationToken.None));
 
         Assert.Equal((StatusCodes.Status400BadRequest, "Use a password of at least 12 characters."),
             (error.Status, error.Message));
@@ -235,7 +246,8 @@ public sealed class AuthControllerTests
         SignIn(controller, account.Find(UserAccounts.ConfiguredUserId)!);
 
         var error = await Assert.ThrowsAsync<AccountException>(() =>
-            controller.ChangePassword(new ChangePasswordRequest("password", "new password")));
+            controller.ChangePassword(
+            new ChangePasswordRequest("password", "new password"), CancellationToken.None));
 
         Assert.Equal(StatusCodes.Status409Conflict, error.Status);
     }
@@ -249,7 +261,8 @@ public sealed class AuthControllerTests
         store.Failure = new UserStorageException("db");
 
         await Assert.ThrowsAsync<UserStorageException>(() =>
-            controller.ChangePassword(new ChangePasswordRequest("password", "new password")));
+            controller.ChangePassword(
+            new ChangePasswordRequest("password", "new password"), CancellationToken.None));
 
         store.Failure = null;
         Assert.NotNull(account.Authenticate("alice", "password"));
@@ -266,10 +279,11 @@ public sealed class AuthControllerTests
         time.Advance(TimeSpan.FromMinutes(11));
 
         var stale = await Assert.ThrowsAsync<AccountException>(() =>
-            controller.ChangePassword(new ChangePasswordRequest(null, "a brand new password")));
+            controller.ChangePassword(
+            new ChangePasswordRequest(null, "a brand new password"), CancellationToken.None));
         SignIn(controller, user!, UserSession.SingleSignOnMethod, oidc.Stamp);
         Assert.IsType<NoContentResult>(await controller.ChangePassword(
-            new ChangePasswordRequest(null, "a brand new password")));
+            new ChangePasswordRequest(null, "a brand new password"), CancellationToken.None));
 
         Assert.Equal("RecentSignInRequired", stale.Code);
         Assert.NotNull(account.Authenticate("alice", "a brand new password"));
@@ -290,18 +304,18 @@ public sealed class AuthControllerTests
         SignIn(controller, user);
 
         Assert.Equal("LastSignInMethod",
-            (await Assert.ThrowsAsync<AccountException>(controller.RemovePassword)).Code);
+            (await Assert.ThrowsAsync<AccountException>(() => controller.RemovePassword(CancellationToken.None))).Code);
 
         user = account.Link(new UserReference(user.Id, "alice"), user.Id,
             new ExternalIdentity(oidc.Issuer, "sub-1", "alice"));
         SignIn(controller, user);
         time.Advance(TimeSpan.FromMinutes(11));
         Assert.Equal("RecentSignInRequired",
-            (await Assert.ThrowsAsync<AccountException>(controller.RemovePassword)).Code);
+            (await Assert.ThrowsAsync<AccountException>(() => controller.RemovePassword(CancellationToken.None))).Code);
 
-        Assert.IsType<NoContentResult>(await controller.Reauthenticate(new ConfirmRequest("password")));
+        Assert.IsType<NoContentResult>(await controller.Reauthenticate(new ConfirmRequest("password"), CancellationToken.None));
         SignIn(controller, account.Find(user.Id)!);
-        Assert.IsType<NoContentResult>(await controller.RemovePassword());
+        Assert.IsType<NoContentResult>(await controller.RemovePassword(CancellationToken.None));
         Assert.False(account.Find(user.Id)!.HasPassword);
     }
 
@@ -314,9 +328,10 @@ public sealed class AuthControllerTests
         SignIn(controller, user);
         time.Advance(TimeSpan.FromMinutes(11));
 
-        Assert.Equal("RecentSignInRequired", Assert.Throws<AccountException>(() =>
-            controller.LinkSingleSignOn(new ConfirmRequest("wrong"))).Code);
-        var link = Assert.IsType<OkObjectResult>(controller.LinkSingleSignOn(new ConfirmRequest("password")));
+        Assert.Equal("RecentSignInRequired", (await Assert.ThrowsAsync<AccountException>(() =>
+            controller.LinkSingleSignOn(new ConfirmRequest("wrong"), CancellationToken.None))).Code);
+        var link = Assert.IsType<OkObjectResult>(
+            await controller.LinkSingleSignOn(new ConfirmRequest("password"), CancellationToken.None));
         var url = (string)link.Value!.GetType().GetProperty("url")!.GetValue(link.Value)!;
         var ticket = Uri.UnescapeDataString(url["/api/auth/oidc/link?ticket=".Length..]);
 
@@ -344,11 +359,11 @@ public sealed class AuthControllerTests
         SignIn(controller, user!, UserSession.SingleSignOnMethod, oidc.Stamp);
 
         Assert.Equal("LastSignInMethod",
-            (await Assert.ThrowsAsync<AccountException>(() => controller.Unlink(loginId!.Value))).Code);
+            (await Assert.ThrowsAsync<AccountException>(() => controller.Unlink(loginId!.Value, CancellationToken.None))).Code);
 
         account.SetPassword(new UserReference(user!.Id, "alice"), user.Id, null, "a brand new password", true);
         SignIn(controller, account.Find(user.Id)!, UserSession.SingleSignOnMethod, oidc.Stamp);
-        Assert.IsType<NoContentResult>(await controller.Unlink(loginId!.Value));
+        Assert.IsType<NoContentResult>(await controller.Unlink(loginId!.Value, CancellationToken.None));
         Assert.Empty(account.Find(user.Id)!.Logins);
     }
 
@@ -360,31 +375,30 @@ public sealed class AuthControllerTests
             null);
         // Store the short legacy password directly: existing passwords keep working until they are changed.
         store.Tamper(user.Id, u => u with { PasswordHash = Hash });
-        account = new UserAccounts(Options.Create(new NamerreOptions()), store, NullLogger<UserAccounts>.Instance,
-            time);
+        account = Unconfigured();
         return (account, account.Find(user.Id)!);
     }
 
-    private UserAccounts Configured() => new(Options.Create(new NamerreOptions
+    private UserAccounts Configured() => new(new AdministratorConfiguration(Options.Create(new NamerreOptions
     {
         Authentication = new AuthenticationOptions { Username = "admin", PasswordHash = Hash }
-    }), store, NullLogger<UserAccounts>.Instance, time);
+    })), store, Hasher, NullLogger<UserAccounts>.Instance, time);
 
-    private UserAccounts Unconfigured() => new(Options.Create(new NamerreOptions()), store,
-        NullLogger<UserAccounts>.Instance, time);
+    private UserAccounts Unconfigured() => new(new AdministratorConfiguration(Options.Create(new NamerreOptions())),
+        store, Hasher, NullLogger<UserAccounts>.Instance, time);
 
     private void SignIn(AuthController controller, UserRecord user, string method = UserSession.PasswordMethod,
         string? oidcStamp = null)
         => controller.ControllerContext.HttpContext.User = UserSession.Create(user, method, oidcStamp, time.GetUtcNow());
 
     [Fact]
-    public void SessionAdvertisesConfiguredSingleSignOn()
+    public async Task SessionAdvertisesConfiguredSingleSignOn()
     {
         antiforgery.GetAndStoreTokens(Arg.Any<HttpContext>())
             .Returns(new AntiforgeryTokenSet("t", "c", "form", "X-XSRF-TOKEN"));
         var controller = Controller(Configured(), Oidc());
 
-        var result = Assert.IsType<OkObjectResult>(controller.Session());
+        var result = Assert.IsType<OkObjectResult>(await controller.Session(CancellationToken.None));
 
         Assert.Equivalent(new { oidc = new { displayName = "Keycloak" } }, result.Value);
     }
@@ -442,12 +456,19 @@ public sealed class AuthControllerTests
         }
     }));
 
+    /// <summary>The controller over the real account requests, sent through the mediator.</summary>
     private AuthController Controller(UserAccounts account, OidcLogin? oidc = null)
     {
-        var services = new ServiceCollection().AddSingleton(authentication).BuildServiceProvider();
+        var services = new ServiceCollection()
+            .AddApplication()
+            .AddSingleton(account)
+            .AddSingleton(Substitute.For<IUserHistory>())
+            .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
+            .AddSingleton(authentication)
+            .BuildServiceProvider();
         var oidcOptions = Substitute.For<IOptionsMonitor<OpenIdConnectOptions>>();
         oidcOptions.Get(OidcLogin.Scheme).Returns(new OpenIdConnectOptions { ConfigurationManager = providerMetadata });
-        return new AuthController(account, oidc ?? new OidcLogin(Options.Create(new NamerreOptions())), oidcOptions,
+        return new AuthController(services.GetRequiredService<ISender>(), oidc ?? new OidcLogin(Options.Create(new NamerreOptions())), oidcOptions,
             antiforgery, NullLogger<AuthController>.Instance, new EphemeralDataProtectionProvider(), time: time)
         {
             ControllerContext = new ControllerContext

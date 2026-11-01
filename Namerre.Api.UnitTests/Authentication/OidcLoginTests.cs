@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.Extensions.Options;
 using Namerre.Application.Authentication;
 using Namerre.Authentication;
+using Namerre.Infrastructure.Authentication;
 using Namerre.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -99,10 +100,11 @@ public sealed class OidcLoginTests
     {
         var oidc = Create(Valid());
         var store = new InMemoryUserStore();
-        var accounts = new UserAccounts(Options.Create(new NamerreOptions
+        var hasher = new PasswordHasher();
+        var accounts = new UserAccounts(new AdministratorConfiguration(Options.Create(new NamerreOptions
         {
-            Authentication = new AuthenticationOptions { Username = "root", PasswordHash = Passwords.HashPassword("a long password") }
-        }), store, NullLogger<UserAccounts>.Instance);
+            Authentication = new AuthenticationOptions { Username = "root", PasswordHash = hasher.Hash("a long password") }
+        })), store, hasher, NullLogger<UserAccounts>.Instance);
         var (user, _, _) = accounts.SignInExternal(new ExternalIdentity(oidc.Issuer, "1", "alice"), true);
         var principal = UserSession.Create(user!, UserSession.SingleSignOnMethod, oidc.Stamp, DateTimeOffset.UtcNow);
         var local = UserSession.Create(user!, UserSession.PasswordMethod, null, DateTimeOffset.UtcNow);

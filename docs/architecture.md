@@ -20,7 +20,10 @@ Controllers (`Namerre.Api/Controllers`, namespace `Namerre.Controllers`, routes 
 `api/` — `RenamingController` uses per-action routes like `api/rename-plans/{id}`) send CMediator
 requests via `ISender`. Each request and its handler live in separate files (`XQuery.cs` +
 `XQueryHandler.cs`), grouped by feature folder with a matching namespace
-(`Application/Renaming/{Plugins,Previews,Plans,Runs,Rollback,Recovery,Metadata}`).
+(`Application/Renaming/{Plugins,Previews,Plans,Runs,Rollback,Recovery,Metadata}`, `Application/Folders`,
+`Application/WatchFolders`, `Application/Authentication`, `Application/Users`). There is no exception:
+`AuthController` and `UsersController` send account requests too, and keep only HTTP concerns (cookie
+sign-in/out and renewal, claims, antiforgery, OIDC challenges and link tickets).
 
 Renaming handlers are thin pass-throughs to `IRenameService` (the run export handler also formats
 through `Runs/RunExportWriter`: RFC 4180 CSV with BOM and formula-injection guard, or JSON); the real
@@ -181,10 +184,23 @@ Everything app-specific is under the `Namerre` section, bound to `NamerreOptions
 Every session belongs to a local user (`Application/Authentication`: `UserRecord`,
 `UserLoginRecord`, `UserRole` `Admin`/`User`, `IUserStore`, `ICurrentUser`).
 
-- Account rules live in `Namerre.Api/Authentication/UserAccounts` (a singleton caching users in
-  memory, mutations under one lock, compare-and-swap on each user's random credential stamp):
-  unique NOCASE usernames, `Passwords` policy, at least one enabled admin, no
-  self-demotion/disable/delete, and an enabled user always keeps a password or a linked identity.
+- Account rules live in `Application/Authentication/UserAccounts` (a singleton registered by
+  `AddApplication()`, caching users in memory, mutations under one lock, compare-and-swap on each
+  user's random credential stamp): unique NOCASE usernames, `PasswordPolicy` (12 characters for new
+  passwords), at least one enabled admin, no self-demotion/disable/delete, confirmation of sensitive
+  own changes (`ConfirmOwnChange`: a recent sign-in or the password), and an enabled user always
+  keeps a password or a linked identity. It depends only on ports: `IUserStore`, `IPasswordHasher`
+  (`Infrastructure/Authentication/PasswordHasher`, Identity V3 PBKDF2-SHA512 at 210,000 iterations)
+  and `IAdministratorConfiguration` (`AdministratorConfiguration` over `Namerre:Authentication`), so
+  `Namerre.Application.UnitTests` covers the rules with an in-memory store and a fast test hasher.
+- Controllers reach the rules through thin requests: own account and setup in
+  `Application/Authentication` (`RequiresSetupQuery`, `GetUserQuery`, `CompleteSetupCommand`,
+  `PasswordSignInCommand`, `VerifyPasswordQuery`, `ConfirmOwnChangeCommand`, `SetPasswordCommand`,
+  `RemoveOwnPasswordCommand`, `UnlinkLoginCommand`), administration in `Application/Users`
+  (`ListUsersQuery`, `CreateUserCommand`, `UpdateUserCommand`, `RemovePasswordCommand`,
+  `LinkLoginCommand`, `MoveLoginCommand`, `MergeUsersCommand`, `DeleteUserCommand`). Authentication
+  plumbing that runs outside a controller — cookie validation, the OIDC ticket handler and
+  `HubRenameNotifier` — uses `UserAccounts` directly.
 - Every access change (role, disabled, password, link) replaces the stamp, which
   `AuthenticationSetup.IsValidSession` checks on each request, so sessions end at once.
 - `UserSession` builds the cookie principal from the local user (ID, name, role claim, stamp,
@@ -195,16 +211,17 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
   `User` when `Oidc:AutoProvision` allows (never matching by username), or links the identity when
   the challenge carries the protected link items from `AuthController.LinkSingleSignOn` (needs a
   recent sign-in or the password).
-- Moving a link can merge its user into the target (`UserAccounts.Merge`, then
+- Moving a link can merge its user into the target (`MergeUsersCommand`: `UserAccounts.Merge`, then
   `IUserHistory.Reattribute`, implemented by `RenameService` under its job gate, rewrites
-  `CreatedBy`/`RecoveredBy`).
+  `CreatedBy`/`RecoveredBy`; a failure there is `HistoryNotMerged` (503) and keeps the merge).
 - History is per user: `RenameDocument.OwnerId` (the plan's `CreatedBy`; a run, rollbacks included,
   takes its plan's owner; null for watch folders and pre-user history) scopes every plan/run read in
   `RenameService` through `Viewer` (null for administrators and background work, from
   `ICurrentUser.IsAdmin`), so someone else's record is `NotFound`, and `HubRenameNotifier` only
   nudges administrators and the owner (`RenameChange.OwnerId`, never serialized).
 - `AuthenticationSetup.AdminPolicy` (`RequireAdmin`) guards `api/users`, watch folders and run
-  deletion; `AccountException` maps refusals to `{ code, message }`. `HttpCurrentUser` feeds
+  deletion; `AccountException` (Application) carries refusals, which `AccountExceptionFilter` maps to
+  `{ code, message }` with the exception's status. `HttpCurrentUser` feeds
   `RenameService`, which records `CreatedBy` on plans/runs and `RecoveredBy` on recoveries.
 
 ## Hosting
@@ -251,8 +268,8 @@ routes in `src/app/app.routes.ts`. Use same-origin `/api/...` URLs.
 
 ## Tests and release pipeline
 
-`Namerre.Infrastructure.UnitTests` covers `TmdbMetadata` (stub `HttpMessageHandler`) and
-`BoundedFileSystem` against temp directories; `Namerre.Api.Tests` holds HTTP integration tests
+`Namerre.Infrastructure.UnitTests` covers `TmdbMetadata` (stub `HttpMessageHandler`),
+`BoundedFileSystem` against temp directories and the `PasswordHasher` hash format; `Namerre.Api.Tests` holds HTTP integration tests
 (`AuthWebApplicationFactory`).
 
 CI (`.github/workflows/ci.yml`: backend build/tests on Ubuntu and Windows, frontend lint/tests,

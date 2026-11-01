@@ -1,4 +1,4 @@
-namespace Namerre.Authentication;
+namespace Namerre.Application.Authentication;
 
 /// <summary>Makes user-supplied text safe to log: line breaks are removed so a value cannot forge log entries.</summary>
 public static class LogText

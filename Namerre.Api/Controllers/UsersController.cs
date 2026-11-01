@@ -1,7 +1,9 @@
 using System.ComponentModel.DataAnnotations;
+using CMediator.Abstractions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Namerre.Application.Authentication;
+using Namerre.Application.Users;
 using Namerre.Authentication;
 
 namespace Namerre.Controllers;
@@ -11,33 +13,39 @@ namespace Namerre.Controllers;
 [Route("api/users")]
 [Authorize(Policy = AuthenticationSetup.AdminPolicy)]
 [TypeFilter(typeof(AccountExceptionFilter))]
-public sealed class UsersController(UserAccounts accounts, OidcLogin oidc, IUserHistory history,
-    ILogger<UsersController> logger) : ControllerBase
+public sealed class UsersController(ISender sender, OidcLogin oidc) : ControllerBase
 {
     [HttpGet]
-    public IActionResult List() => Ok(accounts.List().Select(UserView.From));
+    public async Task<IActionResult> List(CancellationToken cancellationToken)
+        => Ok((await sender.Send(new ListUsersQuery(), cancellationToken)).Select(UserView.From));
 
     [HttpGet("{id:long}")]
-    public IActionResult Get(long id) => Ok(UserView.From(accounts.Find(id) ?? throw AccountException.NotFound()));
+    public async Task<IActionResult> Get(long id, CancellationToken cancellationToken)
+        => Ok(UserView.From(await sender.Send(new GetUserQuery(id), cancellationToken)
+            ?? throw AccountException.NotFound()));
 
     [HttpPost]
-    public IActionResult Create(CreateUserRequest request)
+    public async Task<IActionResult> Create(CreateUserRequest request, CancellationToken cancellationToken)
     {
-        var user = accounts.Create(Actor, request.Username, request.Role ?? UserRole.User, request.Password,
-            Identity(request.Subject, request.DisplayName));
+        var user = await sender.Send(new CreateUserCommand(Actor, request.Username, request.Role ?? UserRole.User,
+            request.Password, Identity(request.Subject, request.DisplayName)), cancellationToken);
         return Created($"/api/users/{user.Id}", UserView.From(user));
     }
 
     [HttpPatch("{id:long}")]
-    public IActionResult Update(long id, UpdateUserRequest request)
-        => Ok(UserView.From(accounts.Update(Actor, id, request.Role, request.Disabled)));
+    public async Task<IActionResult> Update(long id, UpdateUserRequest request, CancellationToken cancellationToken)
+        => Ok(UserView.From(await sender.Send(new UpdateUserCommand(Actor, id, request.Role, request.Disabled),
+            cancellationToken)));
 
     [HttpPut("{id:long}/password")]
-    public IActionResult SetPassword(long id, SetPasswordRequest request)
-        => Ok(UserView.From(accounts.SetPassword(Actor, id, null, request.Password, recentSignIn: false)));
+    public async Task<IActionResult> SetPassword(long id, SetPasswordRequest request,
+        CancellationToken cancellationToken)
+        => Ok(UserView.From(await sender.Send(new SetPasswordCommand(Actor, id, null, request.Password),
+            cancellationToken)));
 
     [HttpDelete("{id:long}/password")]
-    public IActionResult RemovePassword(long id) => Ok(UserView.From(accounts.RemovePassword(Actor, id)));
+    public async Task<IActionResult> RemovePassword(long id, CancellationToken cancellationToken)
+        => Ok(UserView.From(await sender.Send(new RemovePasswordCommand(Actor, id), cancellationToken)));
 
     /// <summary>
     /// Links a single sign-on identity: a new one by its subject, or one already linked to another user by its
@@ -45,12 +53,14 @@ public sealed class UsersController(UserAccounts accounts, OidcLogin oidc, IUser
     /// leaves. To take over that user entirely, use <see cref="Merge"/>.
     /// </summary>
     [HttpPost("{id:long}/logins")]
-    public IActionResult Link(long id, LinkRequest request)
+    public async Task<IActionResult> Link(long id, LinkRequest request, CancellationToken cancellationToken)
     {
         if (request.LoginId is { } moved)
-            return Ok(UserView.From(accounts.MoveLogin(Actor, moved, id, request.DeleteSource)));
-        return Ok(UserView.From(accounts.Link(Actor, id, Identity(request.Subject, request.DisplayName)
-            ?? throw new AccountException("InvalidLink", "Enter the identity's subject or choose a linked identity."))));
+            return Ok(UserView.From(await sender.Send(new MoveLoginCommand(Actor, moved, id, request.DeleteSource),
+                cancellationToken)));
+        var identity = Identity(request.Subject, request.DisplayName)
+            ?? throw new AccountException("InvalidLink", "Enter the identity's subject or choose a linked identity.");
+        return Ok(UserView.From(await sender.Send(new LinkLoginCommand(Actor, id, identity), cancellationToken)));
     }
 
     /// <summary>
@@ -60,37 +70,23 @@ public sealed class UsersController(UserAccounts accounts, OidcLogin oidc, IUser
     /// </summary>
     [HttpPost("{id:long}/merge")]
     public async Task<IActionResult> Merge(long id, MergeUserRequest request, CancellationToken cancellationToken)
-    {
-        var source = accounts.Find(request.SourceUserId) ?? throw AccountException.NotFound();
-        var merged = accounts.Merge(Actor, source.Id, id);
-        try
-        {
-            // The users are merged already; history keeps the source's name if this fails.
-            await history.Reattribute(source.Id, new UserReference(merged.Id, merged.Username), cancellationToken);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            logger.LogError(exception, "Unable to attribute the history of merged user {SourceId} to user {UserId}.",
-                source.Id, merged.Id);
-            throw new AccountException("HistoryNotMerged",
-                $"{source.Username} was merged into {merged.Username}, but their run history still shows {source.Username}.",
-                503);
-        }
-        return Ok(UserView.From(merged));
-    }
+        => Ok(UserView.From(await sender.Send(new MergeUsersCommand(Actor, request.SourceUserId, id),
+            cancellationToken)));
 
     [HttpDelete("{id:long}/logins/{loginId:long}")]
-    public IActionResult Unlink(long id, long loginId) => Ok(UserView.From(accounts.Unlink(Actor, id, loginId)));
+    public async Task<IActionResult> Unlink(long id, long loginId, CancellationToken cancellationToken)
+        => Ok(UserView.From(await sender.Send(new UnlinkLoginCommand(Actor, id, loginId), cancellationToken)));
 
     [HttpDelete("{id:long}")]
-    public IActionResult Delete(long id)
+    public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken)
     {
-        accounts.Delete(Actor, id);
+        await sender.Send(new DeleteUserCommand(Actor, id), cancellationToken);
         return NoContent();
     }
 
     private UserReference Actor => UserSession.Reference(User) ?? throw AccountException.NotFound();
 
+    /// <summary>An identity of the configured provider; its issuer comes from the server's settings.</summary>
     private ExternalIdentity? Identity(string? subject, string? displayName)
     {
         if (string.IsNullOrWhiteSpace(subject))

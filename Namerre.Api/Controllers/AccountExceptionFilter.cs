@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Namerre.Application.Authentication;
-using Namerre.Authentication;
 
 namespace Namerre.Controllers;
 

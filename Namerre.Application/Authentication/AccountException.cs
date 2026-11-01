@@ -1,8 +1,10 @@
-namespace Namerre.Authentication;
+namespace Namerre.Application.Authentication;
 
-/// <summary>An account rule refused a change; <see cref="Code"/> and the message are returned to the client.</summary>
-public sealed class AccountException(string code, string message, int status = StatusCodes.Status400BadRequest)
-    : Exception(message)
+/// <summary>
+/// An account rule refused a change; <see cref="Code"/> and the message are returned to the client with
+/// <see cref="Status"/> as the HTTP status.
+/// </summary>
+public sealed class AccountException(string code, string message, int status = 400) : Exception(message)
 {
     public string Code { get; } = code;
     public int Status { get; } = status;

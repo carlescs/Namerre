@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Namerre.Application.Renaming.Pipeline;
 using Namerre.Application;
+using Namerre.Application.Authentication;
 using Namerre.Application.Folders;
 using Namerre.Application.Renaming;
 using Namerre.Application.Renaming.Metadata;
@@ -110,6 +111,10 @@ public sealed class ApplicationRegistrationTests
         services.AddSingleton<IWatchFolderConfiguration>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddSingleton<IWatchedFileStore>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddSingleton<IWatchFolderDiagnostics>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
+        services.AddSingleton<IUserStore>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
+        services.AddSingleton<IPasswordHasher>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
+        services.AddSingleton<IAdministratorConfiguration>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
+        services.AddSingleton<IUserHistory>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddLogging();
         using var provider = services.BuildServiceProvider(
             new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
