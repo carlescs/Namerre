@@ -4,7 +4,7 @@ import { Component, computed, inject, type OnInit, signal } from '@angular/core'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { firstValueFrom, type Observable } from 'rxjs';
 import { Auth, type LinkedLogin, minimumPasswordLength, type UserRole } from '../auth/auth';
-import { UsersApi, type UserView } from './users-api';
+import { type MoveSource, UsersApi, type UserView } from './users-api';
 
 /** An identity linked to some user, offered to move to another one. */
 interface LinkedElsewhere {
@@ -70,7 +70,7 @@ export class Users implements OnInit {
   });
   protected readonly moveForm = new FormGroup({
     loginId: new FormControl<number | null>(null, { validators: [Validators.required] }),
-    deleteSource: new FormControl(false, { nonNullable: true }),
+    source: new FormControl<MoveSource>('keep', { nonNullable: true }),
   });
 
   ngOnInit(): void {
@@ -90,7 +90,7 @@ export class Users implements OnInit {
     this.confirmingDelete.set(false);
     this.passwordForm.reset();
     this.linkForm.reset();
-    this.moveForm.reset({ loginId: null, deleteSource: false });
+    this.moveForm.reset({ loginId: null, source: 'keep' });
     this.error.set('');
     this.status.set('');
   }
@@ -152,13 +152,16 @@ export class Users implements OnInit {
   }
 
   protected async move(user: UserView): Promise<void> {
-    const { loginId, deleteSource } = this.moveForm.getRawValue();
+    const { loginId, source } = this.moveForm.getRawValue();
     if (loginId === null) return;
+    const owner = this.movable().find((entry) => entry.login.id === Number(loginId))?.owner;
     const updated = await this.apply(
-      this.api.moveLogin(user.id, Number(loginId), deleteSource),
-      `Moved the identity to ${user.username}${deleteSource ? ' and deleted the user it left' : ''}.`,
+      this.api.moveLogin(user.id, Number(loginId), source),
+      source === 'merge'
+        ? `Merged ${owner?.username ?? 'the user'} into ${user.username}, with its identities and run history.`
+        : `Moved the identity to ${user.username}${source === 'delete' ? ' and deleted the user it left' : ''}.`,
     );
-    if (updated) this.moveForm.reset({ loginId: null, deleteSource: false });
+    if (updated) this.moveForm.reset({ loginId: null, source: 'keep' });
   }
 
   protected unlink(user: UserView, login: LinkedLogin): Promise<unknown> {

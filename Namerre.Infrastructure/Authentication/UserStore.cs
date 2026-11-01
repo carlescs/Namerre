@@ -112,6 +112,21 @@ public sealed class UserStore(RenameStore store) : IUserStore
         return true;
     });
 
+    public bool TryMergeUser(long fromUserId, string fromStamp, long toUserId, string toStamp, string newStamp)
+        => Run(db =>
+        {
+            using var transaction = db.Database.BeginTransaction();
+            if (!Restamp(db, toUserId, toStamp, newStamp) ||
+                db.Users.Count(u => u.Id == fromUserId && u.Stamp == fromStamp) != 1)
+                return false;
+            db.UserLogins.Where(l => l.UserId == fromUserId)
+                .ExecuteUpdate(setters => setters.SetProperty(l => l.UserId, toUserId));
+            if (db.Users.Where(u => u.Id == fromUserId && u.Stamp == fromStamp).ExecuteDelete() != 1)
+                return false;
+            transaction.Commit();
+            return true;
+        });
+
     public bool TryDelete(long userId, string expectedStamp) => Run(db =>
         db.Users.Where(u => u.Id == userId && u.Stamp == expectedStamp).ExecuteDelete() == 1);
 

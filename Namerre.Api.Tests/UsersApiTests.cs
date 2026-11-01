@@ -132,6 +132,54 @@ public sealed class UsersApiTests : IDisposable
         Assert.Contains(",frank,", csv);
     }
 
+    [Fact]
+    public async Task MergingAUserMovesItsIdentitiesAndRunHistory()
+    {
+        File.WriteAllText(Path.Combine(Root, "alpha.txt"), "A");
+        using var factory = Factory(new()
+        {
+            ["Namerre:Authentication:Oidc:Authority"] = "https://keycloak.test/realms/media",
+            ["Namerre:Authentication:Oidc:ClientId"] = "namerre",
+            ["Namerre:Authentication:Oidc:RequiredRole"] = "namerre-user"
+        });
+        using var admin = await Installed(factory);
+        using var created = await admin.PostAsJsonAsync("/api/users",
+            new { username = "frank-2", password = "frank-long-password", subject = "sub-frank" }); // betterleaks:allow
+        var source = await created.Content.ReadFromJsonAsync<JsonElement>();
+        using var target = await admin.PostAsJsonAsync("/api/users",
+            new { username = "frank", password = "frank-real-password" }); // betterleaks:allow
+        var targetId = (await target.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt64();
+
+        using (var provisioned = await SignIn(factory, "frank-2", "frank-long-password"))
+        {
+            var request = new PipelineRequest([new FileInput("0", "alpha.txt")],
+                [new PluginInstance("upper", "case", 1, true, JsonSerializer.SerializeToElement(new { mode = "upper" }))]);
+            using var prepare = await provisioned.PostAsJsonAsync("/api/rename-plans", request);
+            var accepted = (await prepare.Content.ReadFromJsonAsync<JobAccepted>())!;
+            var plan = await Poll(() => provisioned.GetFromJsonAsync<PlanView>("/api/rename-plans/" + accepted.Id),
+                p => p!.Status != "Preparing");
+            using var execute = await provisioned.PostAsJsonAsync($"/api/rename-plans/{plan!.Id}/execute",
+                new ExecuteRequest(plan.Version, Guid.NewGuid().ToString("N")));
+            var runId = (await execute.Content.ReadFromJsonAsync<JobAccepted>())!.Id;
+            await Poll(() => admin.GetFromJsonAsync<RunView>("/api/rename-runs/" + runId),
+                r => r!.Status is not ("Queued" or "Running"));
+        }
+
+        var loginId = source.GetProperty("logins")[0].GetProperty("id").GetInt64();
+        using var merge = await admin.PostAsJsonAsync($"/api/users/{targetId}/logins",
+            new { loginId, mergeSource = true });
+
+        Assert.Equal(HttpStatusCode.OK, merge.StatusCode);
+        var merged = await merge.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, merged.GetProperty("logins").GetArrayLength());
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await admin.GetAsync($"/api/users/{source.GetProperty("id").GetInt64()}")).StatusCode);
+        var run = Assert.Single((await admin.GetFromJsonAsync<RunPage>("/api/rename-runs"))!.Items);
+        Assert.Equal((targetId, "frank"), (run.CreatedBy!.Id, run.CreatedBy.Username));
+        var plan2 = (await admin.GetFromJsonAsync<PlanView>("/api/rename-plans/" + run.PlanId))!;
+        Assert.Equal("frank", plan2.CreatedBy!.Username);
+    }
+
     private static async Task<T> Poll<T>(Func<Task<T>> read, Func<T, bool> done)
     {
         for (var i = 0; i < 100; i++)
@@ -179,7 +227,7 @@ public sealed class UsersApiTests : IDisposable
         return client;
     }
 
-    private WebApplicationFactory<Program> Factory()
+    private WebApplicationFactory<Program> Factory(Dictionary<string, string?>? settings = null)
         => new AuthWebApplicationFactory().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration(
             (_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -187,7 +235,7 @@ public sealed class UsersApiTests : IDisposable
                 ["Namerre:Authentication:PasswordHash"] = "",
                 ["Namerre:RootPath"] = Root,
                 ["Namerre:DataPath"] = Data
-            })));
+            }).AddInMemoryCollection(settings ?? [])));
 
     public void Dispose()
     {

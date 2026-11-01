@@ -319,7 +319,7 @@ The user management API is `api/users` (administrators only): `GET` lists users 
 sign-in methods, `POST` creates one (`username`, `role`, and a `password`, a single sign-on
 `subject`, or both), `PATCH /{id}` changes `role` or `disabled`, `PUT`/`DELETE /{id}/password`
 sets or removes the password, `POST /{id}/logins` links an identity (`subject`) or moves one
-(`loginId`, optional `deleteSource`), `DELETE /{id}/logins/{loginId}` unlinks it and
+(`loginId`, optional `deleteSource` or `mergeSource`), `DELETE /{id}/logins/{loginId}` unlinks it and
 `DELETE /{id}` deletes the user. Users manage their own account under `api/auth`: `POST password`
 (`currentPassword` may be omitted only by a user without a password, after a recent sign-in),
 `DELETE password`, `POST reauthenticate`, `POST oidc/link` (returns the address that starts linking),
@@ -409,8 +409,11 @@ Every single sign-on resolves to a local user, keyed on the provider's issuer an
   the provider to sign in again and attaches the returned identity. An identity that already
   belongs to another user is refused.
 - **Linking by an administrator.** On the **Users** page, link an identity by its subject (the
-  `sub` claim, e.g. the Keycloak user ID), or move an identity from another user, optionally
-  deleting that user (for example one created automatically before the link).
+  `sub` claim, e.g. the Keycloak user ID), or move an identity from another user. The user it
+  leaves can be kept, deleted (its runs keep its name), or **merged** into the target: all of its
+  identities move too, its plans and runs are attributed to the target, and it is deleted with its
+  password. The target keeps its own role and password. Merging follows the deletion rules (not
+  yourself, not the last administrator).
 - **Passwords for single sign-on users.** A user who only signs in with single sign-on can set a
   password on **Account** after a recent single sign-on (there is no current password to
   confirm). Users can also unlink identities or remove their password, but never their last

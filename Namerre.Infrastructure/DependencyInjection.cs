@@ -62,6 +62,7 @@ public static class DependencyInjection
         services.AddHostedService(provider => provider.GetRequiredService<LibraryNotifier>());
         services.AddSingleton<RenameService>();
         services.AddSingleton<IRenameService>(provider => provider.GetRequiredService<RenameService>());
+        services.AddSingleton<IUserHistory>(provider => provider.GetRequiredService<RenameService>());
         services.AddHostedService<RenameWorker>();
         // Backlog gauges; only created when telemetry export asks for them.
         services.AddSingleton<RenameStateMetrics>();

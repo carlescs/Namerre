@@ -392,6 +392,8 @@ public sealed class InstallationTests : IDisposable
         public bool TryRemoveLogin(long userId, string expectedStamp, string newStamp, long loginId) => throw Failure();
         public bool TryMoveLogin(long loginId, long fromUserId, string fromStamp, long toUserId, string toStamp,
             string newStamp, bool deleteSource) => throw Failure();
+        public bool TryMergeUser(long fromUserId, string fromStamp, long toUserId, string toStamp,
+            string newStamp) => throw Failure();
         public bool TryDelete(long userId, string expectedStamp) => throw Failure();
         public void RecordSignIn(long userId, long? loginId, DateTimeOffset at) => throw Failure();
         private static UserStorageException Failure() => new("Database is read-only.", new IOException("read-only"));

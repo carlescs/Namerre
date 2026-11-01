@@ -14,7 +14,7 @@ namespace Namerre.Infrastructure.Renaming;
 
 public sealed class RenameService(RenameStore store, IRenameFileSystem fileSystem, PipelineEngine pipeline,
     ILogger<RenameService> logger, IRenameNotifier? notifier = null,
-    ILibraryNotifier? libraryNotifier = null, ICurrentUser? currentUser = null) : IRenameService
+    ILibraryNotifier? libraryNotifier = null, ICurrentUser? currentUser = null) : IRenameService, IUserHistory
 {
     /// <summary>Most runs one bulk deletion accepts; also caps the "select all pages" candidate list.</summary>
     public const int MaxRunsPerDeletion = 1000;
@@ -78,6 +78,22 @@ public sealed class RenameService(RenameStore store, IRenameFileSystem fileSyste
             logger.LogInformation("Queued plan {PlanId} for {FileCount} files with {StepCount} steps from {Origin}", id,
                 request.Files.Count, request.Plugins.Count, origin ?? plan.CreatedBy?.Username ?? "user");
             return Accepted(id, plan.Status, true);
+        }
+        finally { gate.Release(); }
+    }
+
+    /// <summary>Re-attributes history under the job gate, so a running job cannot write back an older copy.</summary>
+    public async Task<int> Reattribute(long fromUserId, UserReference to, CancellationToken cancellationToken)
+    {
+        if (!store.IsConfigured)
+            return 0;
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var changed = store.ReattributeUser(fromUserId, to);
+            logger.LogInformation("Attributed {Count} plans and runs of user {FromUserId} to user {UserId}", changed,
+                fromUserId, to.Id);
+            return changed;
         }
         finally { gate.Release(); }
     }

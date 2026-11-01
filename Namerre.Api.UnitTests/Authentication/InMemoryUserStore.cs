@@ -93,6 +93,22 @@ internal sealed class InMemoryUserStore : IUserStore
         return true;
     }
 
+    public bool TryMergeUser(long fromUserId, string fromStamp, long toUserId, string toStamp, string newStamp)
+    {
+        Write();
+        var from = users.FindIndex(u => u.Id == fromUserId && u.Stamp == fromStamp);
+        var to = users.FindIndex(u => u.Id == toUserId && u.Stamp == toStamp);
+        if (from < 0 || to < 0)
+            return false;
+        users[to] = users[to] with
+        {
+            Stamp = newStamp,
+            Logins = [.. users[to].Logins, .. users[from].Logins.Select(l => l with { UserId = toUserId })]
+        };
+        users.RemoveAt(from);
+        return true;
+    }
+
     public bool TryDelete(long userId, string expectedStamp)
     {
         Write();

@@ -171,6 +171,50 @@ public sealed class RenameStore(BoundedFileSystem fileSystem, string? dataPath, 
         }
     }
 
+    /// <summary>
+    /// Replaces <c>CreatedBy</c> and <c>RecoveredBy</c> references to a user on every plan and run, in one transaction.
+    /// </summary>
+    public int ReattributeUser(long fromUserId, Application.Authentication.UserReference to)
+    {
+        Initialize();
+        lock (gate)
+        {
+            using var db = Open();
+            using var transaction = db.Database.BeginTransaction();
+            // Cheap prefilter; the typed check below decides.
+            var marker = $"\"id\":{fromUserId.ToString(System.Globalization.CultureInfo.InvariantCulture)},";
+            var candidates = db.Documents.AsNoTracking()
+                .Where(d => (d.Kind == "Plan" || d.Kind == "Run") && d.Json.Contains(marker))
+                .Select(d => new { d.Id, d.Kind, d.Status, d.Json }).ToArray();
+            var changed = 0;
+            foreach (var candidate in candidates)
+            {
+                if (candidate.Kind == "Plan")
+                {
+                    var plan = JsonSerializer.Deserialize<PlanView>(candidate.Json, Json)!;
+                    if (plan.CreatedBy?.Id != fromUserId)
+                        continue;
+                    Write(db, candidate.Id, candidate.Kind, candidate.Status, plan with { CreatedBy = to });
+                }
+                else
+                {
+                    var run = JsonSerializer.Deserialize<RunView>(candidate.Json, Json)!;
+                    if (run.CreatedBy?.Id != fromUserId && run.RecoveredBy?.Id != fromUserId)
+                        continue;
+                    Write(db, candidate.Id, candidate.Kind, candidate.Status, run with
+                    {
+                        CreatedBy = run.CreatedBy?.Id == fromUserId ? to : run.CreatedBy,
+                        RecoveredBy = run.RecoveredBy?.Id == fromUserId ? to : run.RecoveredBy
+                    });
+                }
+                changed++;
+            }
+            db.SaveChanges();
+            transaction.Commit();
+            return changed;
+        }
+    }
+
     public void Save<T>(string id, string kind, string status, T value)
     {
         Initialize();

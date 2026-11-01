@@ -378,6 +378,38 @@ public sealed class UserAccounts
         }
     }
 
+    /// <summary>The user an identity is linked to, or null.</summary>
+    public UserRecord? OwnerOfLogin(long loginId)
+        => Volatile.Read(ref users).Values.FirstOrDefault(u => u.Logins.Any(l => l.Id == loginId));
+
+    /// <summary>
+    /// Merges <paramref name="sourceId"/> into <paramref name="targetId"/>, e.g. a user created automatically on
+    /// first sign-in into the person's existing user: every identity of the source moves to the target and the
+    /// source is deleted with its password. The target keeps its own role and password. The caller re-attributes
+    /// the source's history (<see cref="IUserHistory"/>). Returns the merged target.
+    /// </summary>
+    public UserRecord Merge(UserReference actor, long sourceId, long targetId)
+    {
+        lock (gate)
+        {
+            var target = Editable(targetId);
+            var source = Editable(sourceId);
+            if (source.Id == target.Id)
+                throw new AccountException("SameUser", "Choose two different users to merge.", 409);
+            EnsureDeletable(actor, source);
+            if (!store.TryMergeUser(source.Id, source.Stamp, target.Id, target.Stamp, NewStamp()))
+            {
+                Reload();
+                throw AccountException.Changed();
+            }
+            Reload();
+            logger.LogInformation(
+                "{Actor} merged user {SourceId} ({SourceName}) with {LoginCount} single sign-on identities into user {UserId} ({Username}).",
+                actor.Username, source.Id, source.Username, source.Logins.Count, target.Id, target.Username);
+            return Find(targetId)!;
+        }
+    }
+
     public void Delete(UserReference actor, long id)
     {
         lock (gate)

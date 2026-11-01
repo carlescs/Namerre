@@ -175,7 +175,9 @@ method, sign-in time; SSO sessions add the `OidcLogin.Stamp`) and defines the li
 (issuer = configured authority, `sub`); `OidcLogin.Read` checks `RequiredRole`, then `AuthenticationSetup.OnTicketReceived`
 resolves the linked user, provisions a `User` when `Oidc:AutoProvision` allows (never matching by username), or links
 the identity when the challenge carries the protected link items from `AuthController.LinkSingleSignOn` (needs a recent
-sign-in or the password). `AuthenticationSetup.AdminPolicy` (`RequireAdmin`) guards `api/users`, watch folders and run
+sign-in or the password). Moving a link can merge its user into the target (`UserAccounts.Merge`, then
+`IUserHistory.Reattribute`, implemented by `RenameService` under its job gate, rewrites `CreatedBy`/`RecoveredBy`).
+`AuthenticationSetup.AdminPolicy` (`RequireAdmin`) guards `api/users`, watch folders and run
 deletion; `AccountException` maps refusals to `{ code, message }`. `HttpCurrentUser` feeds `RenameService`, which records
 `CreatedBy` on plans/runs and `RecoveredBy` on recoveries.
 

@@ -226,12 +226,24 @@
                     </option>
                   }
                 </select>
-                <label class="mt-2 flex items-center gap-2 text-sm">
-                  <input type="checkbox" formControlName="deleteSource" />
-                  Delete the user it leaves, e.g. one created automatically on first sign-in
-                </label>
+                <fieldset class="mt-2 grid gap-1 text-sm">
+                  <legend class="mb-1">The user it leaves</legend>
+                  <label class="flex items-center gap-2">
+                    <input type="radio" formControlName="source" value="keep" />
+                    Keep it
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <input type="radio" formControlName="source" value="delete" />
+                    Delete it; its runs keep its name
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <input type="radio" formControlName="source" value="merge" />
+                    Merge it into {{ user.username }}: move all its identities and run history, then
+                    delete it
+                  </label>
+                </fieldset>
                 <button class="mt-3" type="submit" [disabled]="busy() || moveForm.invalid">
-                  Move identity
+                  {{ moveForm.controls.source.value === 'merge' ? 'Merge user' : 'Move identity' }}
                 </button>
               </form>
             }

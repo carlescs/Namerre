@@ -155,4 +155,26 @@ describe('Users', () => {
     await settle(fixture);
     http.expectOne('/api/users').flush([admin, alice]);
   });
+
+  it('merges the user an identity comes from, with its identities and run history', async () => {
+    const { fixture, element } = await render();
+    (element.querySelector('[aria-label="Manage admin"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    const select = element.querySelector('#move-login') as HTMLSelectElement;
+    select.value = select.options[1].value;
+    select.dispatchEvent(new Event('change'));
+    const merge = element.querySelector('input[type="radio"][value="merge"]') as HTMLInputElement;
+    merge.click();
+    await fixture.whenStable();
+    buttonNamed(element, 'Merge user').click();
+    const request = http.expectOne('/api/users/1/logins');
+    expect(request.request.body).toEqual({ loginId: 5, deleteSource: false, mergeSource: true });
+    request.flush({ ...admin, logins: alice.logins });
+    await settle(fixture);
+    http.expectOne('/api/users').flush([{ ...admin, logins: alice.logins }]);
+    await settle(fixture);
+    expect(element.querySelector('[role="status"]')?.textContent).toContain(
+      'Merged alice into admin',
+    );
+  });
 });

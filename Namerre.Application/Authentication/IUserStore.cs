@@ -21,6 +21,11 @@ public interface IUserStore
     /// <summary>Moves a link to another user, optionally deleting the user it came from, in one transaction.</summary>
     bool TryMoveLogin(long loginId, long fromUserId, string fromStamp, long toUserId, string toStamp,
         string newStamp, bool deleteSource);
+    /// <summary>
+    /// Merges one user into another in one transaction: every link of the source moves to the target, the target is
+    /// restamped and the source is deleted (with its password). False when either user changed.
+    /// </summary>
+    bool TryMergeUser(long fromUserId, string fromStamp, long toUserId, string toStamp, string newStamp);
     bool TryDelete(long userId, string expectedStamp);
     void RecordSignIn(long userId, long? loginId, DateTimeOffset at);
 }

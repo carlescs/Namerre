@@ -339,6 +339,44 @@ public sealed class UserAccountsTests
     }
 
     [Fact]
+    public void MergingMovesEveryIdentityToTheTargetAndDeletesTheSource()
+    {
+        var accounts = Accounts("root", Hash);
+        var alice = accounts.Create(Someone, "alice", UserRole.Admin, Password, null);
+        var provisioned = accounts.Create(Someone, "alice-2", UserRole.User, "another long password",
+            new(Issuer, "sub-1", "alice"));
+        provisioned = accounts.Link(Someone, provisioned.Id, new("https://other.example", "sub-9", "alice"));
+
+        var merged = accounts.Merge(Someone, provisioned.Id, alice.Id);
+
+        Assert.Equal(["sub-1", "sub-9"], merged.Logins.Select(l => l.Subject));
+        Assert.Equal((UserRole.Admin, true), (merged.Role, merged.HasPassword));
+        Assert.NotEqual(alice.Stamp, merged.Stamp);
+        Assert.Null(accounts.Find(provisioned.Id));
+        Assert.Equal(alice.Id, accounts.Authenticate("alice", Password)!.Id);
+        // The source's password goes with it.
+        Assert.Null(accounts.Authenticate("alice-2", "another long password")); // betterleaks:allow
+        Assert.Equal(alice.Id, accounts.SignInExternal(new(Issuer, "sub-1", "alice"), true).User!.Id);
+    }
+
+    [Fact]
+    public void MergingFollowsTheDeletionRules()
+    {
+        var accounts = Accounts();
+        var admin = accounts.Create(Someone, "admin", UserRole.Admin, Password, null);
+        var user = accounts.Create(Someone, "user", UserRole.User, Password, null);
+        var self = new UserReference(admin.Id, "admin");
+
+        Assert.Equal("OwnAccount", Assert.Throws<AccountException>(() => accounts.Merge(self, admin.Id, user.Id)).Code);
+        Assert.Equal("LastAdmin", Assert.Throws<AccountException>(() =>
+            accounts.Merge(Someone, admin.Id, user.Id)).Code);
+        Assert.Equal("SameUser", Assert.Throws<AccountException>(() =>
+            accounts.Merge(Someone, user.Id, user.Id)).Code);
+        Assert.Equal("ManagedByConfiguration", Assert.Throws<AccountException>(() =>
+            Accounts("root", Hash).Merge(Someone, UserAccounts.ConfiguredUserId, user.Id)).Code);
+    }
+
+    [Fact]
     public void ConcurrentChangesAreDetected()
     {
         var accounts = Accounts("root", Hash);

@@ -16,6 +16,12 @@ export interface UserView {
   logins: LinkedLogin[];
 }
 
+/**
+ * What happens to the user an identity is moved away from: `keep` it, `delete` it, or `merge` it into the
+ * target (all its identities and its run history move too, then it is deleted).
+ */
+export type MoveSource = 'keep' | 'delete' | 'merge';
+
 export interface CreateUser {
   username: string;
   role: UserRole;
@@ -54,9 +60,13 @@ export class UsersApi {
     return this.http.post<UserView>(`/api/users/${id}/logins`, { subject, displayName });
   }
 
-  /** Moves an identity linked to another user here, optionally deleting the user it leaves. */
-  moveLogin(id: number, loginId: number, deleteSource: boolean) {
-    return this.http.post<UserView>(`/api/users/${id}/logins`, { loginId, deleteSource });
+  /** Moves an identity linked to another user here, keeping, deleting or merging the user it leaves. */
+  moveLogin(id: number, loginId: number, source: MoveSource) {
+    return this.http.post<UserView>(`/api/users/${id}/logins`, {
+      loginId,
+      deleteSource: source === 'delete',
+      mergeSource: source === 'merge',
+    });
   }
 
   unlink(id: number, loginId: number) {

@@ -11,7 +11,8 @@ namespace Namerre.Controllers;
 [Route("api/users")]
 [Authorize(Policy = AuthenticationSetup.AdminPolicy)]
 [TypeFilter(typeof(AccountExceptionFilter))]
-public sealed class UsersController(UserAccounts accounts, OidcLogin oidc) : ControllerBase
+public sealed class UsersController(UserAccounts accounts, OidcLogin oidc, IUserHistory history,
+    ILogger<UsersController> logger) : ControllerBase
 {
     [HttpGet]
     public IActionResult List() => Ok(accounts.List().Select(UserView.From));
@@ -40,13 +41,34 @@ public sealed class UsersController(UserAccounts accounts, OidcLogin oidc) : Con
 
     /// <summary>
     /// Links a single sign-on identity: a new one by its subject, or one already linked to another user by its
-    /// <see cref="LinkRequest.LoginId"/> (moving it, and optionally deleting the user it leaves).
+    /// <see cref="LinkRequest.LoginId"/>. Moving keeps the user it leaves, deletes it (<see cref="LinkRequest.DeleteSource"/>)
+    /// or merges it into this one (<see cref="LinkRequest.MergeSource"/>: all its identities and its run history).
     /// </summary>
     [HttpPost("{id:long}/logins")]
-    public IActionResult Link(long id, LinkRequest request)
+    public async Task<IActionResult> Link(long id, LinkRequest request, CancellationToken cancellationToken)
     {
-        if (request.LoginId is { } loginId)
-            return Ok(UserView.From(accounts.MoveLogin(Actor, loginId, id, request.DeleteSource)));
+        if (request.LoginId is { } loginId && request.MergeSource)
+        {
+            var source = accounts.OwnerOfLogin(loginId)
+                ?? throw new AccountException("LoginNotFound", "The identity is not linked to any user.", 404);
+            var merged = accounts.Merge(Actor, source.Id, id);
+            try
+            {
+                // The users are merged already; history keeps the source's name if this fails.
+                await history.Reattribute(source.Id, new UserReference(merged.Id, merged.Username), cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogError(exception, "Unable to attribute the history of merged user {SourceId} to user {UserId}.",
+                    source.Id, merged.Id);
+                throw new AccountException("HistoryNotMerged",
+                    $"{source.Username} was merged into {merged.Username}, but their run history still shows {source.Username}.",
+                    503);
+            }
+            return Ok(UserView.From(merged));
+        }
+        if (request.LoginId is { } moved)
+            return Ok(UserView.From(accounts.MoveLogin(Actor, moved, id, request.DeleteSource)));
         return Ok(UserView.From(accounts.Link(Actor, id, Identity(request.Subject, request.DisplayName)
             ?? throw new AccountException("InvalidLink", "Enter the identity's subject or choose a linked identity."))));
     }
@@ -102,4 +124,5 @@ public sealed record LinkRequest(
     [StringLength(256)] string? Subject,
     [StringLength(256)] string? DisplayName,
     long? LoginId,
-    bool DeleteSource = false);
+    bool DeleteSource = false,
+    bool MergeSource = false);
