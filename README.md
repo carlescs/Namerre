@@ -98,7 +98,8 @@ Application settings live in one `Namerre` section in `Namerre.Api\appsettings.j
     "Limits": {
       "MaxFilesPerRun": 200,
       "MaxStepsPerRun": 32,
-      "MaxQueuedJobs": 32
+      "MaxQueuedJobs": 32,
+      "MaxConcurrentPreviews": 4
     },
     "Integrations": {
       "Jellyfin": { "Url": "", "ApiKey": "" },
@@ -1053,7 +1054,8 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 By default a run accepts up to 200 files and 32 plugin instances, and the durable queue
 accepts up to 32 queued jobs, reporting overload explicitly. `Namerre:Limits` changes them
-(`MaxFilesPerRun` up to 2000, `MaxStepsPerRun` up to 64, `MaxQueuedJobs` up to 256, for
+(`MaxFilesPerRun` up to 2000, `MaxStepsPerRun` up to 64, `MaxQueuedJobs` up to 256,
+`MaxConcurrentPreviews` up to 16, for
 example `Namerre__Limits__MaxFilesPerRun=500`); a value outside 1 to its ceiling stops
 startup. Larger runs mean longer preparation, since every file is hashed or checked, and
 larger journal writes while they execute. Signed-in sessions receive the effective limits
@@ -1061,7 +1063,8 @@ larger journal writes while they execute. Signed-in sessions receive the effecti
 bounds do not prescribe which types to use or their order; repeated instances are
 independently configured. Larger collections can still be browsed, but must be split
 before preparing a run.
-Up to four previews and four TMDB calls can run concurrently.
+Up to `MaxConcurrentPreviews` previews (default four; further ones get a 429 "PreviewBusy") and four TMDB
+calls can run concurrently.
 Regex matching has a 100 ms timeout. Each TMDB lookup gets 15 seconds overall and 5 seconds per attempt;
 transient failures (network errors, timeouts, 408 and 5xx responses) are retried twice with backoff, TMDB rate
 limits (429) are reported immediately, and after repeated failures TMDB calls pause for 30 seconds.

@@ -22,9 +22,17 @@ public sealed class RenameLimitsTests
     public void LimitsMustStayBetweenOneAndTheirCeiling(int files, int steps, int queued, bool valid)
         => Assert.Equal(valid, new RenameLimits(files, steps, queued).IsValid);
 
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(16, true)]
+    [InlineData(0, false)]
+    [InlineData(17, false)]
+    public void ConcurrentPreviewsMustStayBetweenOneAndTheirCeiling(int previews, bool valid)
+        => Assert.Equal(valid, new RenameLimits(MaxConcurrentPreviews: previews).IsValid);
+
     [Fact]
     public void DefaultsAreTheHistoricLimits()
-        => Assert.Equal(new RenameLimits(200, 32, 32), RenameLimits.Default);
+        => Assert.Equal(new RenameLimits(200, 32, 32, 4), RenameLimits.Default);
 
     [Fact]
     public void TheEngineEnforcesConfiguredFileAndStepLimits()

@@ -33,7 +33,7 @@ public static class DependencyInjection
             options => options.Limits.ToLimits().IsValid,
             "Namerre:Limits values must be between 1 and their ceilings: MaxFilesPerRun "
             + $"{RenameLimits.CeilingFiles}, MaxStepsPerRun {RenameLimits.CeilingSteps}, "
-            + $"MaxQueuedJobs {RenameLimits.CeilingQueuedJobs}."));
+            + $"MaxQueuedJobs {RenameLimits.CeilingQueuedJobs}, MaxConcurrentPreviews {RenameLimits.CeilingConcurrentPreviews}."));
         services.AddSingleton(provider =>
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.Limits.ToLimits());
         services.AddSingleton<IValidateOptions<NamerreOptions>, NamerreOptionsValidator>();

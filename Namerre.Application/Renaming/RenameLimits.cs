@@ -6,18 +6,22 @@ namespace Namerre.Application.Renaming;
 /// hashing and plan snapshots bounded.
 /// </summary>
 public sealed record RenameLimits(int MaxFilesPerRun = RenameLimits.DefaultFiles,
-    int MaxStepsPerRun = RenameLimits.DefaultSteps, int MaxQueuedJobs = RenameLimits.DefaultQueuedJobs)
+    int MaxStepsPerRun = RenameLimits.DefaultSteps, int MaxQueuedJobs = RenameLimits.DefaultQueuedJobs,
+    int MaxConcurrentPreviews = RenameLimits.DefaultConcurrentPreviews)
 {
     public const int DefaultFiles = 200;
     public const int DefaultSteps = 32;
     public const int DefaultQueuedJobs = 32;
+    public const int DefaultConcurrentPreviews = 4;
     public const int CeilingFiles = 2000;
     public const int CeilingSteps = 64;
     public const int CeilingQueuedJobs = 256;
+    public const int CeilingConcurrentPreviews = 16;
 
     public static RenameLimits Default { get; } = new();
 
     /// <summary>Whether every limit is between 1 and its ceiling.</summary>
     public bool IsValid => MaxFilesPerRun is >= 1 and <= CeilingFiles && MaxStepsPerRun is >= 1 and <= CeilingSteps
-        && MaxQueuedJobs is >= 1 and <= CeilingQueuedJobs;
+        && MaxQueuedJobs is >= 1 and <= CeilingQueuedJobs
+        && MaxConcurrentPreviews is >= 1 and <= CeilingConcurrentPreviews;
 }
