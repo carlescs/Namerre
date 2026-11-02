@@ -35,6 +35,11 @@ public sealed class ReleaseTagsPlugin() : RenamePlugin<ReleaseTagsPlugin.Options
     private const string Separators = " ._-";
     private const char Removed = '\0';
 
+    // NamingRules.RegexTimeout (100 ms) guards against user-written patterns. These patterns are built in, and extra
+    // tokens are escaped, so none can backtrack catastrophically: this limit only stops a stall. A cold first match
+    // on a busy machine can exceed 100 ms of wall-clock time and would otherwise fail with a spurious RegexTimeout.
+    private static readonly TimeSpan MatchTimeout = TimeSpan.FromSeconds(1);
+
     // Regex fragments per category; each must match a whole token on its own.
     private static readonly IReadOnlyDictionary<string, string[]> Tags = new Dictionary<string, string[]>
     {
@@ -96,7 +101,7 @@ public sealed class ReleaseTagsPlugin() : RenamePlugin<ReleaseTagsPlugin.Options
 
     private static string Replace(string input, string pattern)
         => Regex.Replace(input, pattern, Removed.ToString(), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
-            NamingRules.RegexTimeout);
+            MatchTimeout);
 
     /// <summary>
     /// Replaces each run of separators and removed tokens with its first separator in <c>" ._-"</c> order (a space
@@ -105,7 +110,7 @@ public sealed class ReleaseTagsPlugin() : RenamePlugin<ReleaseTagsPlugin.Options
     private static string Tidy(string text)
     {
         var runs = Regex.Matches(text, @"[ ._\-]*\0[ ._\-\0]*", RegexOptions.None,
-            NamingRules.RegexTimeout);
+            MatchTimeout);
         var result = text;
         foreach (var run in runs.Reverse())
         {

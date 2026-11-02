@@ -1075,7 +1075,8 @@ independently configured. Larger collections can still be browsed, but must be s
 before preparing a run.
 Up to `MaxConcurrentPreviews` previews (default four; further ones get a 429 "PreviewBusy") and four TMDB
 calls can run concurrently.
-Regex matching has a 100 ms timeout. Each TMDB lookup gets 15 seconds overall and 5 seconds per attempt;
+Regex patterns you write (regular-expression replacement, step conditions) have a 100 ms match timeout;
+the built-in release-tag patterns get 1 second, since they cannot backtrack catastrophically. Each TMDB lookup gets 15 seconds overall and 5 seconds per attempt;
 transient failures (network errors, timeouts, 408 and 5xx responses) are retried twice with backoff, TMDB rate
 limits (429) are reported immediately, and after repeated failures TMDB calls pause for 30 seconds.
 History is paginated (at most 100 runs per page) and is not automatically pruned.
