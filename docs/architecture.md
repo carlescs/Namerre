@@ -176,7 +176,7 @@ Everything app-specific is under the `Namerre` section, bound to `NamerreOptions
   signed-in `GET api/auth/session` reports them to the frontend's `WorkloadLimits`. Defaults:
   ≤200 files and ≤32 plugin instances per run, ≤32 queued jobs, ≤4 concurrent previews
   (`MaxConcurrentPreviews`; ceilings 2000/64/256/16); fixed regex
-  timeout 100 ms, TMDB lookups 15 s overall (5 s per attempt).
+  timeout 100 ms for user patterns (1 s for `ReleaseTagsPlugin`'s built-in ones), TMDB lookups 15 s overall (5 s per attempt).
 - `Authentication`, incl. optional `Oidc` single sign-on, e.g. Keycloak — see
   `Namerre.Api/Authentication/OidcLogin.cs`; the OIDC scheme is hidden by `OidcAwareSchemeProvider`
   unless `Authority` is set.
