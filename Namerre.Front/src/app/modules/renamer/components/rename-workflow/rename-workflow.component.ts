@@ -345,10 +345,7 @@ export class RenameWorkflowComponent {
 
   protected back(): void {
     if (this.preparing() || this.executing()) return;
-    this.suggestionRequest?.unsubscribe();
-    this.suggesting.set(false);
-    this.pendingSuggestions = false;
-    this.matching.set(null);
+    this.leaveForEarlierStage();
     switch (this.stage()) {
       case 'plugins':
       case 'preset':
@@ -365,6 +362,22 @@ export class RenameWorkflowComponent {
         this.goTo('preview');
         break;
     }
+  }
+
+  /** Jumps straight to a completed stage from the progress list. */
+  protected goToStep(index: number): void {
+    const target = this.stages()[index];
+    if (!target || index >= this.stageIndex() || this.preparing() || this.executing()) return;
+    this.leaveForEarlierStage();
+    this.goTo(target.id as WizardStage);
+  }
+
+  /** Stops any pending TMDB suggestions and closes the picker before moving backwards. */
+  private leaveForEarlierStage(): void {
+    this.suggestionRequest?.unsubscribe();
+    this.suggesting.set(false);
+    this.pendingSuggestions = false;
+    this.matching.set(null);
   }
 
   protected canReview(): boolean {

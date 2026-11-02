@@ -1,30 +1,37 @@
 <nav class="surface mb-6 p-2" aria-label="Renaming progress">
   <ol class="grid grid-cols-2 gap-1 lg:flex">
     @for (item of stages(); track item.id; let i = $index) {
-      <li
-        class="step lg:flex-1"
-        [class.step-active]="item.id === stage()"
-        [class.step-complete]="i < stageIndex()"
-        [attr.aria-current]="item.id === stage() ? 'step' : null"
-      >
-        <span class="step-number" aria-hidden="true">
-          @if (i < stageIndex()) {
-            <svg
-              class="size-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="m5 12 4 4L19 6" />
-            </svg>
-          } @else {
-            {{ i + 1 }}
-          }
-        </span>
-        <span class="text-xs font-semibold">{{ item.title }}</span>
+      <li class="min-w-0 lg:flex-1">
         @if (i < stageIndex()) {
-          <span class="sr-only">Completed</span>
+          <button
+            type="button"
+            class="step step-complete step-link w-full text-left"
+            (click)="goToStep(i)"
+            [disabled]="preparing() || executing()"
+          >
+            <span class="step-number" aria-hidden="true">
+              <svg
+                class="size-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="m5 12 4 4L19 6" />
+              </svg>
+            </span>
+            <span class="text-xs font-semibold">{{ item.title }}</span>
+            <span class="sr-only">Completed, go back to this step</span>
+          </button>
+        } @else {
+          <div
+            class="step"
+            [class.step-active]="item.id === stage()"
+            [attr.aria-current]="item.id === stage() ? 'step' : null"
+          >
+            <span class="step-number" aria-hidden="true">{{ i + 1 }}</span>
+            <span class="text-xs font-semibold">{{ item.title }}</span>
+          </div>
         }
       </li>
     }
