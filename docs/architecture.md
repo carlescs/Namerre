@@ -260,6 +260,8 @@ routes in `src/app/app.routes.ts`. Use same-origin `/api/...` URLs.
   the resource-style renaming endpoints (`/api/rename-plugins`, `/api/rename-previews`,
   `/api/rename-plans`, …). The workflow is a staged wizard (`rename-workflow` component) across
   file selection, plugin configuration, TMDB matching, preview, confirmation and run history.
+  Completed stages in its progress list are buttons (`goToStep`) that jump back with the same
+  cleanup as **Back**; forward moves only go through `next()` and its checks.
 - **Modes.** Chosen per browser through the `WorkflowMode` service (`src/app/workflow-mode`,
   `localStorage` like `Theme`; switch in the header options menu (`settings-menu`), first-run
   onboarding, and a warning before a switch to Simple discards steps). **Advanced** is the full

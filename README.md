@@ -542,6 +542,11 @@ preset builds (or there are none); otherwise Namerre warns that the advanced ste
 discarded and lets you keep Advanced or start a fresh pipeline (the files stay selected).
 Queued or running jobs are never affected by the mode: it only changes the editing screens.
 
+In either mode, the progress bar above the wizard lists every stage: click a completed stage to
+jump straight back to it (like pressing **Back** repeatedly; nothing you entered is lost). Later
+stages are reached with the **Next** buttons, and the progress bar is locked while a plan is being
+prepared or a run is executing.
+
 ### Files and steps
 
 Add files using the existing folder picker, optionally including subfolders.

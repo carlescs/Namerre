@@ -212,6 +212,33 @@ describe('RenameWorkflowComponent', () => {
     http.expectNone('/api/rename-plans');
   });
 
+  it('jumps straight to a completed step from the progress list', async () => {
+    const steps = () =>
+      Array.from(
+        fixture.nativeElement.querySelectorAll(
+          'nav[aria-label="Renaming progress"] button',
+        ) as NodeListOf<HTMLButtonElement>,
+      );
+    expect(steps()).toHaveLength(1);
+    button('Next: review filenames').click();
+    http.expectOne('/api/rename-previews').flush(preview);
+    await fixture.whenStable();
+    expect(heading().textContent).toBe('Review filenames');
+    expect(steps().map((step) => step.textContent?.trim().split(/\s+/)[0])).toEqual([
+      'Select',
+      'Configure',
+    ]);
+    steps()[0].click();
+    await fixture.whenStable();
+    expect(heading().textContent).toBe('Select files');
+    expect(
+      fixture.nativeElement.querySelector('.wizard-screens').classList.contains('backwards'),
+    ).toBe(true);
+    expect(document.activeElement).toBe(heading());
+    expect(steps()).toHaveLength(0);
+    http.expectNone('/api/rename-previews');
+  });
+
   it('keeps preview separate from final confirmation and prevents navigating during preparation', async () => {
     await showPreview();
     expect(heading().textContent).toBe('Review filenames');
