@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.AspNetCore.DataProtection.Repositories;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Namerre.Application.Renaming;
 using Namerre.Authentication;
@@ -28,6 +29,7 @@ public static class DependencyInjection
                 foreach (var network in settings.Value.ReverseProxy.KnownNetworks)
                     options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));
             });
+        services.TryAddSingleton(TimeProvider.System);
         services.AddSignalR();
         services.AddSingleton<IRenameNotifier, HubRenameNotifier>();
         services.AddControllersWithViews();

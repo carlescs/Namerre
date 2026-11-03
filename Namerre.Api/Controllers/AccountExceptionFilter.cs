@@ -7,15 +7,15 @@ namespace Namerre.Controllers;
 /// <summary>Returns refused account changes as <c>{ code, message }</c> and storage failures as 503.</summary>
 public sealed class AccountExceptionFilter(ILogger<AccountExceptionFilter> logger) : IExceptionFilter
 {
+    public static ObjectResult Result(AccountException exception)
+        => new(new { code = exception.Code, message = exception.Message }) { StatusCode = exception.Status };
+
     public void OnException(ExceptionContext context)
     {
         switch (context.Exception)
         {
             case AccountException exception:
-                context.Result = new ObjectResult(new { code = exception.Code, message = exception.Message })
-                {
-                    StatusCode = exception.Status
-                };
+                context.Result = Result(exception);
                 context.ExceptionHandled = true;
                 break;
             case UserStorageException exception:

@@ -8,11 +8,15 @@ using Namerre.Authentication;
 
 namespace Namerre.Controllers;
 
-/// <summary>User management for administrators: accounts, roles, passwords, single sign-on links and passkeys.</summary>
+/// <summary>
+/// User management for administrators: accounts, roles, passwords, single sign-on links and passkeys. Reading is open
+/// to any administrator session; every change needs a recent sign-in (<see cref="RecentSignInFilter"/>).
+/// </summary>
 [ApiController]
 [Route("api/users")]
 [Authorize(Policy = AuthenticationSetup.AdminPolicy)]
 [TypeFilter(typeof(AccountExceptionFilter))]
+[TypeFilter(typeof(RecentSignInFilter))]
 public sealed class UsersController(ISender sender, OidcLogin oidc) : ControllerBase
 {
     [HttpGet]
