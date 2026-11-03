@@ -130,6 +130,72 @@ public sealed class AccountRequestTests : IDisposable
     }
 
     [Fact]
+    public async Task UnlinkingAnOwnLoginNeedsARecentSignIn()
+    {
+        var alice = Accounts.Create(Someone, "alice", UserRole.User, Password, new(Issuer, "sub-1", "alice"));
+        var self = new UserReference(alice.Id, alice.Username);
+        var loginId = alice.Logins[0].Id;
+
+        Assert.Equal("RecentSignInRequired", (await Assert.ThrowsAsync<AccountException>(() => Sender.Send(
+            new UnlinkOwnLoginCommand(self, loginId, false), CancellationToken.None))).Code);
+        var unchanged = Accounts.Find(alice.Id)!;
+        Assert.Single(unchanged.Logins);
+        Assert.Equal(alice.Stamp, unchanged.Stamp);
+
+        var unlinked = await Sender.Send(new UnlinkOwnLoginCommand(self, loginId, true), CancellationToken.None);
+        Assert.Empty(unlinked.Logins);
+        Assert.NotEqual(alice.Stamp, unlinked.Stamp);
+    }
+
+    [Fact]
+    public async Task OwnLoginsAreUnlinkedForTheActorOnly()
+    {
+        var alice = Accounts.Create(Someone, "alice", UserRole.User, Password, new(Issuer, "sub-1", "alice"));
+        var bob = Accounts.Create(Someone, "bob", UserRole.User, Password, new(Issuer, "sub-2", "bob"));
+
+        // Another user's login is not found, even with a recent sign-in.
+        await Assert.ThrowsAsync<AccountException>(() => Sender.Send(
+            new UnlinkOwnLoginCommand(new UserReference(alice.Id, "alice"), bob.Logins[0].Id, true),
+            CancellationToken.None));
+        Assert.Single(Accounts.Find(bob.Id)!.Logins);
+    }
+
+    [Fact]
+    public async Task RemovingAnOwnPasskeyNeedsARecentSignIn()
+    {
+        var alice = Accounts.Create(Someone, "alice", UserRole.User, Password, null);
+        var self = new UserReference(alice.Id, alice.Username);
+        var withPasskey = Accounts.AddPasskey(self, alice.Id, alice.Stamp, new NewPasskey([1], [42], [5, 5], 0),
+            "Phone");
+        var passkeyId = withPasskey.Passkeys[0].Id;
+
+        Assert.Equal("RecentSignInRequired", (await Assert.ThrowsAsync<AccountException>(() => Sender.Send(
+            new RemoveOwnPasskeyCommand(self, passkeyId, false), CancellationToken.None))).Code);
+        var unchanged = Accounts.Find(alice.Id)!;
+        Assert.Single(unchanged.Passkeys);
+        Assert.Equal(withPasskey.Stamp, unchanged.Stamp);
+
+        var removed = await Sender.Send(new RemoveOwnPasskeyCommand(self, passkeyId, true), CancellationToken.None);
+        Assert.Empty(removed.Passkeys);
+        Assert.NotEqual(withPasskey.Stamp, removed.Stamp);
+    }
+
+    [Fact]
+    public async Task AdministratorsStillUnlinkAndRemoveForOthersWithoutTheirConfirmation()
+    {
+        var alice = Accounts.Create(Someone, "alice", UserRole.User, Password, new(Issuer, "sub-1", "alice"));
+        var withPasskey = Accounts.AddPasskey(Someone, alice.Id, alice.Stamp, new NewPasskey([1], [42], [5, 5], 0),
+            null);
+
+        var updated = await Sender.Send(new RemovePasskeyCommand(Someone, alice.Id, withPasskey.Passkeys[0].Id),
+            CancellationToken.None);
+        updated = await Sender.Send(new UnlinkLoginCommand(Someone, alice.Id, updated.Logins[0].Id),
+            CancellationToken.None);
+        Assert.Empty(updated.Passkeys);
+        Assert.Empty(updated.Logins);
+    }
+
+    [Fact]
     public async Task AdministratorsManageUsersThroughTheMediator()
     {
         var alice = await Sender.Send(new CreateUserCommand(Someone, "alice", UserRole.User, Password, null),

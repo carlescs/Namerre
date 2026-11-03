@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Namerre.Application.Authentication;
+using Namerre.Authentication;
 using Xunit;
 
 namespace Namerre.Api.Tests;
@@ -115,6 +116,35 @@ public sealed class PasskeyApiTests : IDisposable
         (ticket, answer) = await Challenge(carol);
         Assert.Equal(HttpStatusCode.NoContent,
             (await carol.PostAsJsonAsync("/api/auth/passkey/reauthenticate", Body(ticket, answer))).StatusCode);
+    }
+
+    [Fact]
+    public async Task RemovingYourOwnPasskeyNeedsARecentSignIn()
+    {
+        var clock = new ManualClock(DateTimeOffset.UtcNow);
+        using var factory = Factory(clock: clock);
+        using var admin = await Installed(factory);
+        await CreateUser(admin, "carol");
+        using var carol = await SignIn(factory, "carol", UserPassword);
+        await Register(carol);
+        var session = await carol.GetFromJsonAsync<JsonElement>("/api/auth/session");
+        var id = Assert.Single(session.GetProperty("passkeys").EnumerateArray()).GetProperty("id").GetInt64();
+
+        clock.Advance(UserSession.RecentSignIn + TimeSpan.FromMinutes(1));
+
+        // An old session cannot remove a sign-in method, which would end the user's other sessions.
+        await AssertCode(await carol.DeleteAsync($"/api/auth/passkeys/{id}"), HttpStatusCode.Forbidden,
+            "RecentSignInRequired");
+        session = await carol.GetFromJsonAsync<JsonElement>("/api/auth/session");
+        Assert.Equal(1, session.GetProperty("passkeys").GetArrayLength());
+
+        var (ticket, answer) = await Challenge(carol);
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await carol.PostAsJsonAsync("/api/auth/passkey/reauthenticate", Body(ticket, answer))).StatusCode);
+        await AuthWebApplicationFactory.RefreshCsrf(carol);
+        Assert.Equal(HttpStatusCode.NoContent, (await carol.DeleteAsync($"/api/auth/passkeys/{id}")).StatusCode);
+        session = await carol.GetFromJsonAsync<JsonElement>("/api/auth/session");
+        Assert.Equal(0, session.GetProperty("passkeys").GetArrayLength());
     }
 
     [Fact]
@@ -235,7 +265,8 @@ public sealed class PasskeyApiTests : IDisposable
         return client;
     }
 
-    private WebApplicationFactory<Program> Factory(Dictionary<string, string?>? settings = null)
+    private WebApplicationFactory<Program> Factory(Dictionary<string, string?>? settings = null,
+        TimeProvider? clock = null)
         => new AuthWebApplicationFactory().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration(
             (_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -244,7 +275,19 @@ public sealed class PasskeyApiTests : IDisposable
                 ["Namerre:RootPath"] = Root,
                 ["Namerre:DataPath"] = Data
             }).AddInMemoryCollection(settings ?? []))
-            .ConfigureServices(services => services.AddTransient<IStartupFilter, ClientAddressStartupFilter>()));
+            .ConfigureServices(services =>
+            {
+                services.AddTransient<IStartupFilter, ClientAddressStartupFilter>();
+                if (clock is not null)
+                    services.AddSingleton(clock);
+            }));
+
+    private sealed class ManualClock(DateTimeOffset start) : TimeProvider
+    {
+        private DateTimeOffset now = start;
+        public override DateTimeOffset GetUtcNow() => now;
+        public void Advance(TimeSpan by) => now += by;
+    }
 
     // The test server has no remote address; this stands in for the connection address.
     private sealed class ClientAddressStartupFilter : IStartupFilter

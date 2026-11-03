@@ -145,7 +145,8 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     public async Task<IActionResult> Unlink(long loginId, CancellationToken cancellationToken)
     {
         var user = await RequireUser(cancellationToken);
-        var updated = await sender.Send(new UnlinkLoginCommand(Reference(user), user.Id, loginId), cancellationToken);
+        var updated = await sender.Send(new UnlinkOwnLoginCommand(Reference(user), loginId, UserSession.IsRecent(User, Now)),
+            cancellationToken);
         await RenewAsync(updated);
         return NoContent();
     }
@@ -325,7 +326,7 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     public async Task<IActionResult> RemovePasskey(long passkeyId, CancellationToken cancellationToken)
     {
         var user = await RequireUser(cancellationToken);
-        var updated = await sender.Send(new RemovePasskeyCommand(Reference(user), user.Id, passkeyId),
+        var updated = await sender.Send(new RemoveOwnPasskeyCommand(Reference(user), passkeyId, UserSession.IsRecent(User, Now)),
             cancellationToken);
         await RenewAsync(updated);
         return NoContent();

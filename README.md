@@ -338,8 +338,12 @@ sets or removes the password, `POST /{id}/logins` links an identity (`subject`) 
 and `DELETE /{id}` deletes the user. Users manage their own account under `api/auth`: `POST password`
 (`currentPassword` may be omitted only by a user without a password, after a recent sign-in),
 `DELETE password`, `POST reauthenticate`, `POST oidc/link` (returns the address that starts linking),
-`GET logins` and `DELETE logins/{id}`, `POST sessions/revoke-others` (ends the user's other sessions,
-keeping the current one), `POST logout`, and the passkey endpoints below. `GET api/auth/session`
+`GET logins` and `DELETE logins/{id}` (unlinks an identity), `POST sessions/revoke-others` (ends the user's other sessions,
+keeping the current one), `POST logout`, and the passkey endpoints below. Removing your own password,
+unlinking an identity (`DELETE logins/{id}`) and removing a passkey (`DELETE passkeys/{id}`) need a
+recent sign-in like the other sensitive changes: an older session gets `403` with
+`RecentSignInRequired` and nothing changes until you confirm (the Account page asks and repeats the
+removal), so a stolen old session cookie cannot evict you by removing your sign-in methods. `GET api/auth/session`
 reports the user's `role`, `hasPassword`, linked `logins` and `passkeys` (and whether passkeys are
 `passkeysEnabled`), so the app hides what the user cannot use. Refusals return
 `{ "code", "message" }`, e.g. `LastAdmin`, `OwnAccount`, `LastSignInMethod`, `LoginTaken`,

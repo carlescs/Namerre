@@ -212,10 +212,10 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
 - Controllers reach the rules through thin requests: own account and setup in
   `Application/Authentication` (`RequiresSetupQuery`, `GetUserQuery`, `CompleteSetupCommand`,
   `PasswordSignInCommand`, `VerifyPasswordQuery`, `ConfirmOwnChangeCommand`, `SetPasswordCommand`,
-  `RemoveOwnPasswordCommand`, `UnlinkLoginCommand`, `EndSessionCommand`, `EndOtherSessionsCommand`,
+  `RemoveOwnPasswordCommand`, `UnlinkOwnLoginCommand`, `EndSessionCommand`, `EndOtherSessionsCommand`,
   `SessionEpochQuery`, the passkey requests below), administration in `Application/Users`
   (`ListUsersQuery`, `CreateUserCommand`, `UpdateUserCommand`, `RemovePasswordCommand`,
-  `LinkLoginCommand`, `MoveLoginCommand`, `MergeUsersCommand`, `DeleteUserCommand`). Authentication
+  `LinkLoginCommand`, `UnlinkLoginCommand`, `MoveLoginCommand`, `MergeUsersCommand`, `DeleteUserCommand`). Authentication
   plumbing that runs outside a controller — cookie validation, the OIDC ticket handler and
   `HubRenameNotifier` — uses `UserAccounts` directly.
 - Every access change (role, disabled, password, link, passkey) replaces the stamp, which
@@ -266,8 +266,8 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
   attestation; its opaque state holds the original options and expected origin. Thin requests:
   `BeginPasskeySignInQuery`, `PasskeySignInCommand`, `BeginPasskeyRegistrationCommand` (confirms
   like linking SSO), `CompletePasskeyRegistrationCommand` (pinned to the confirmed stamp),
-  `RenamePasskeyCommand` (own account; a label only, so the stamp stays), `RemovePasskeyCommand`
-  (own account and `api/users`). `Namerre.Api/Authentication/PasskeyLogin`
+  `RenamePasskeyCommand` (own account; a label only, so the stamp stays), `RemoveOwnPasskeyCommand` (own account)
+  and `RemovePasskeyCommand` (`api/users`). `Namerre.Api/Authentication/PasskeyLogin`
   derives the relying party (configured `Origin`, else the request's scheme and host) and carries
   the state through the browser in time-limited Data Protection tickets bound to a purpose (and
   user + stamp for registration), redeemed once against an in-memory nonce set; a random protector
