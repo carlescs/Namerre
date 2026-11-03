@@ -27,7 +27,10 @@ internal sealed class KeyRingCertificates(IOptions<NamerreOptions> options)
         => Current is null ? [] : [Current, .. loaded.Value.Previous];
 }
 
-/// <summary>Encrypts each key's XML with the current certificate (RSA-OAEP wrapped AES-256), like <c>ProtectKeysWithCertificate</c>.</summary>
+/// <summary>
+/// Encrypts each key's XML with the current certificate: XML Encryption with AES-256-CBC and an RSA (PKCS#1 v1.5)
+/// wrapped key, the same format <c>ProtectKeysWithCertificate</c> writes.
+/// </summary>
 internal sealed class CertificateKeyEncryptor(KeyRingCertificates certificates) : IXmlEncryptor
 {
     public EncryptedXmlInfo Encrypt(XElement plaintextElement)

@@ -1088,8 +1088,8 @@ openssl pkcs12 -export -inkey key.pem -in cert.pem -out namerre-keys.pfx -passou
 
 Startup fails with a message naming the setting when the file is missing or unreadable, is not a PFX,
 the password is wrong, the certificate has no private key, or the key is not RSA. A PEM pair must
-be converted to PFX first. Keys are wrapped with RSA-OAEP and AES-256 (ASP.NET Core's XML
-encryption format); certificate store thumbprints are not supported because a mounted file suits
+be converted to PFX first. Keys use XML Encryption with AES-256-CBC and an RSA (PKCS#1 v1.5)
+wrapped key, the same format as ASP.NET Core's `ProtectKeysWithCertificate`; certificate store thumbprints are not supported because a mounted file suits
 containers best.
 
 Enabling encryption on an existing installation is safe: the old unencrypted keys stay readable (ASP.NET
