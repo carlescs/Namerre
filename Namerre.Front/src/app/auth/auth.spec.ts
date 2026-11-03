@@ -303,6 +303,19 @@ describe('Auth', () => {
     await registering;
   });
 
+  it('renames a passkey and keeps the list the server returns', async () => {
+    const renaming = auth.renamePasskey(4, '  Work laptop ');
+    http.expectOne('/api/auth/session').flush({ username: 'alice', requiresSetup: false });
+    const rename = await vi.waitFor(() => http.expectOne('/api/auth/passkeys/4'));
+    expect(rename.request.method).toBe('PATCH');
+    expect(rename.request.body).toEqual({ name: 'Work laptop' });
+    rename.flush([
+      { id: 4, name: 'Work laptop', createdAt: '2026-11-02T00:00:00Z', lastUsedAt: null },
+    ]);
+    await renaming;
+    expect(auth.passkeys().map((p) => p.name)).toEqual(['Work laptop']);
+  });
+
   it('starts linking single sign-on at the address the server returns', async () => {
     const assign = vi.fn();
     TestBed.resetTestingModule();

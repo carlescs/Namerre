@@ -398,13 +398,41 @@ public sealed class UserAccounts
         }
     }
 
+    /// <summary>
+    /// Renames a passkey. Only its label changes, not how anyone signs in, so the credential stamp (and every session)
+    /// stays; an empty name (after removing control characters) is refused.
+    /// </summary>
+    public UserRecord RenamePasskey(UserReference actor, long id, long passkeyId, string name)
+    {
+        lock (gate)
+        {
+            var user = Editable(id);
+            var passkey = user.Passkeys.FirstOrDefault(p => p.Id == passkeyId) ?? throw PasskeyNotFound();
+            var clean = CleanPasskeyName(name);
+            if (clean.Length == 0)
+                throw new AccountException("PasskeyNameRequired", "Enter a name for the passkey.");
+            if (clean == passkey.Name)
+                return user;
+            if (!store.TryRenamePasskey(id, passkeyId, clean))
+            {
+                Reload();
+                throw PasskeyNotFound();
+            }
+            Reload();
+            logger.LogInformation("{Actor} renamed passkey {OldName} of user {UserId} ({Username}) to {PasskeyName}.",
+                LogText.Clean(actor.Username), LogText.Clean(passkey.Name), id, LogText.Clean(user.Username),
+                LogText.Clean(clean));
+            return Find(id)!;
+        }
+    }
+
     public UserRecord RemovePasskey(UserReference actor, long id, long passkeyId)
     {
         lock (gate)
         {
             var user = Editable(id);
             var passkey = user.Passkeys.FirstOrDefault(p => p.Id == passkeyId)
-                ?? throw new AccountException("PasskeyNotFound", "The passkey is not registered to this user.", 404);
+                ?? throw PasskeyNotFound();
             if (!user.Disabled && user.SignInMethods == 1)
                 throw AccountException.LastSignInMethod();
             if (!store.TryRemovePasskey(id, user.Stamp, NewStamp(), passkeyId))
@@ -435,11 +463,19 @@ public sealed class UserAccounts
 
     private static string PasskeyName(string? name, UserRecord user)
     {
-        var clean = new string((name ?? "").Where(c => !char.IsControl(c)).ToArray()).Trim();
-        if (clean.Length == 0)
-            clean = "Passkey " + (user.Passkeys.Count + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
-        return Truncate(clean, MaximumPasskeyNameLength);
+        var clean = CleanPasskeyName(name);
+        return clean.Length > 0
+            ? clean
+            : "Passkey " + (user.Passkeys.Count + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
+
+    /// <summary>The name without control characters or surrounding space, cut to the maximum length.</summary>
+    private static string CleanPasskeyName(string? name)
+        => Truncate(new string((name ?? "").Where(c => !char.IsControl(c)).ToArray()).Trim(),
+            MaximumPasskeyNameLength).Trim();
+
+    private static AccountException PasskeyNotFound() => new("PasskeyNotFound",
+        "The passkey is not registered to this user.", 404);
 
     private static AccountException PasskeyTaken() => new("PasskeyTaken",
         "This passkey is already registered.", 409);

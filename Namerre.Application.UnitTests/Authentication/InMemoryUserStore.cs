@@ -94,6 +94,19 @@ internal sealed class InMemoryUserStore : IUserStore
         return true;
     }
 
+    public bool TryRenamePasskey(long userId, long passkeyId, string name)
+    {
+        Write();
+        var index = users.FindIndex(u => u.Id == userId);
+        if (index < 0 || users[index].Passkeys.All(p => p.Id != passkeyId))
+            return false;
+        users[index] = users[index] with
+        {
+            Passkeys = users[index].Passkeys.Select(p => p.Id == passkeyId ? p with { Name = name } : p).ToArray()
+        };
+        return true;
+    }
+
     public bool TryRemovePasskey(long userId, string expectedStamp, string newStamp, long passkeyId)
     {
         Write();

@@ -13,6 +13,7 @@ describe('Account', () => {
   const startSingleSignOn = vi.fn();
   const registerPasskey = vi.fn<(name: string, password?: string) => Promise<void>>();
   const removePasskey = vi.fn<(id: number) => Promise<void>>();
+  const renamePasskey = vi.fn<(id: number, name: string) => Promise<void>>();
   const reauthenticateWithPasskey = vi.fn<() => Promise<void>>();
   const passkeysEnabled = signal(false);
   const passkeys = signal<Passkey[]>([]);
@@ -45,6 +46,7 @@ describe('Account', () => {
       unlink,
       registerPasskey,
       removePasskey,
+      renamePasskey,
       reauthenticateWithPasskey,
     ]) {
       mock.mockReset().mockResolvedValue();
@@ -82,6 +84,7 @@ describe('Account', () => {
             passkeys,
             registerPasskey,
             removePasskey,
+            renamePasskey,
             reauthenticateWithPasskey,
           },
         },
@@ -313,6 +316,48 @@ describe('Account', () => {
     await vi.waitFor(() => expect(removePasskey).toHaveBeenCalledWith(3));
     await fixture.whenStable();
     expect(element.textContent).toContain('Removed Phone');
+  });
+
+  it('renames a passkey in place', async () => {
+    supportPasskeys();
+    passkeys.set([passkey]);
+    const { fixture, element } = await render();
+    (element.querySelector('[aria-label="Rename passkey Phone"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    const input = element.querySelector(
+      '[aria-label="New name for passkey Phone"]',
+    ) as HTMLInputElement;
+    expect(input.value).toBe('Phone');
+    await vi.waitFor(() => expect(document.activeElement).toBe(input));
+
+    fill(element, '[aria-label="New name for passkey Phone"]', '   ');
+    await fixture.whenStable();
+    expect(buttonNamed(element, 'Save').disabled).toBe(true);
+
+    fill(element, '[aria-label="New name for passkey Phone"]', ' Work phone ');
+    await fixture.whenStable();
+    buttonNamed(element, 'Save').click();
+    await vi.waitFor(() => expect(renamePasskey).toHaveBeenCalledWith(3, 'Work phone'));
+    await fixture.whenStable();
+    expect(element.textContent).toContain('Renamed Phone to Work phone.');
+    expect(element.querySelector('[aria-label="New name for passkey Phone"]')).toBeNull();
+  });
+
+  it('cancels renaming a passkey', async () => {
+    supportPasskeys();
+    passkeys.set([passkey]);
+    const { fixture, element } = await render();
+    (element.querySelector('[aria-label="Rename passkey Phone"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    buttonNamed(element, 'Cancel').click();
+    await fixture.whenStable();
+    expect(element.querySelector('[aria-label="New name for passkey Phone"]')).toBeNull();
+    expect(renamePasskey).not.toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(
+        element.querySelector('[aria-label="Rename passkey Phone"]'),
+      ),
+    );
   });
 
   it('lets passkey-only users confirm with a passkey before setting a password', async () => {

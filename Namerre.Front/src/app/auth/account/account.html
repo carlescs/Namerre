@@ -176,15 +176,48 @@
           <ul class="mb-4 space-y-2">
             @for (passkey of auth.passkeys(); track passkey.id) {
               <li class="flex flex-wrap items-center gap-3">
-                <span class="min-w-0 flex-1">
-                  <strong>{{ passkey.name }}</strong>
-                  <span class="block text-xs text-slate-500 dark:text-slate-400">
-                    Added {{ passkey.createdAt | date: 'medium' }}
-                    @if (passkey.lastUsedAt) {
-                      · last used {{ passkey.lastUsedAt | date: 'medium' }}
-                    }
+                @if (renaming() === passkey.id) {
+                  <form
+                    class="flex min-w-0 flex-1 flex-wrap items-center gap-3"
+                    [formGroup]="renameForm"
+                    (ngSubmit)="renamePasskey(passkey)"
+                  >
+                    <input
+                      class="min-w-0 flex-1"
+                      formControlName="name"
+                      maxlength="100"
+                      autocomplete="off"
+                      [attr.data-rename-input]="passkey.id"
+                      [attr.aria-label]="'New name for passkey ' + passkey.name"
+                      (keydown.escape)="cancelRenaming()"
+                    />
+                    <button type="submit" [disabled]="busy() || newPasskeyName.invalid">
+                      Save
+                    </button>
+                    <button type="button" (click)="cancelRenaming()" [disabled]="busy()">
+                      Cancel
+                    </button>
+                  </form>
+                } @else {
+                  <span class="min-w-0 flex-1">
+                    <strong>{{ passkey.name }}</strong>
+                    <span class="block text-xs text-slate-500 dark:text-slate-400">
+                      Added {{ passkey.createdAt | date: 'medium' }}
+                      @if (passkey.lastUsedAt) {
+                        · last used {{ passkey.lastUsedAt | date: 'medium' }}
+                      }
+                    </span>
                   </span>
-                </span>
+                  <button
+                    type="button"
+                    (click)="startRenaming(passkey)"
+                    [disabled]="busy()"
+                    [attr.data-rename-passkey]="passkey.id"
+                    [attr.aria-label]="'Rename passkey ' + passkey.name"
+                  >
+                    Rename
+                  </button>
+                }
                 <button
                   type="button"
                   (click)="removePasskey(passkey)"

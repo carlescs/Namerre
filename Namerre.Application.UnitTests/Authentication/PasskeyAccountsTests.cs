@@ -235,6 +235,31 @@ public sealed class PasskeyAccountsTests
     }
 
     [Fact]
+    public async Task RenamingAPasskeyKeepsSessions()
+    {
+        var actor = new UserReference(alice.Id, "alice");
+        var registered = await Register(alice.Stamp, [1], "  ");
+        var passkey = Assert.Single(registered.Passkeys);
+        Assert.Equal("Passkey 1", passkey.Name);
+
+        var renamed = accounts.RenamePasskey(actor, alice.Id, passkey.Id, " Phone\u0007 " + new string('x', 200));
+        var name = Assert.Single(renamed.Passkeys).Name;
+        Assert.StartsWith("Phone x", name);
+        Assert.Equal(UserAccounts.MaximumPasskeyNameLength, name.Length);
+        // A label is not a sign-in method: the credential stamp, and with it every session, stays.
+        Assert.Equal(registered.Stamp, renamed.Stamp);
+        Assert.Equal(name, accounts.Find(alice.Id)!.Passkeys[0].Name);
+
+        Assert.Equal("PasskeyNameRequired", Assert.Throws<AccountException>(() =>
+            accounts.RenamePasskey(actor, alice.Id, passkey.Id, " \t ")).Code);
+        Assert.Equal("PasskeyNotFound", Assert.Throws<AccountException>(() =>
+            accounts.RenamePasskey(actor, alice.Id, passkey.Id + 1, "Other")).Code);
+        var bob = accounts.Create(new UserReference(0, "admin"), "bob", UserRole.User, Password, null);
+        Assert.Equal("PasskeyNotFound", Assert.Throws<AccountException>(() =>
+            accounts.RenamePasskey(actor, bob.Id, passkey.Id, "Other")).Code);
+    }
+
+    [Fact]
     public async Task MergingMovesPasskeys()
     {
         var admin = accounts.Create(new UserReference(0, "setup"), "root", UserRole.Admin, Password, null);

@@ -67,9 +67,25 @@ public sealed class PasskeyApiTests : IDisposable
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await replayer.PostAsJsonAsync("/api/auth/passkey/login", Body(signInTicket, signInAnswer))).StatusCode);
 
+        // Renaming only changes the label: the sessions the passkey opened continue. Only the owner can rename it.
+        var id = passkey.GetProperty("id").GetInt64();
+        using var renamed = await carol.PatchAsJsonAsync($"/api/auth/passkeys/{id}", new { name = " Work laptop " });
+        Assert.Equal(HttpStatusCode.OK, renamed.StatusCode);
+        Assert.Equal("Work laptop", Assert.Single((await renamed.Content.ReadFromJsonAsync<JsonElement>())
+            .EnumerateArray()).GetProperty("name").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync("/api/rename-plugins")).StatusCode);
+        await AssertCode(await admin.PatchAsJsonAsync($"/api/auth/passkeys/{id}", new { name = "Mine" }),
+            HttpStatusCode.NotFound, "PasskeyNotFound");
+        await AssertCode(await carol.PatchAsJsonAsync($"/api/auth/passkeys/{id}", new { name = "\u0007" }),
+            HttpStatusCode.BadRequest, "PasskeyNameRequired");
+        foreach (var blank in new[] { "", "   " })
+            await AssertCode(await carol.PatchAsJsonAsync($"/api/auth/passkeys/{id}", new { name = blank }),
+                HttpStatusCode.BadRequest, "PasskeyNameRequired");
+
         // Administrators see passkeys and can remove them, which ends the sessions they opened.
         var user = await admin.GetFromJsonAsync<JsonElement>($"/api/users/{carolId}");
-        var id = Assert.Single(user.GetProperty("passkeys").EnumerateArray()).GetProperty("id").GetInt64();
+        Assert.Equal("Work laptop",
+            Assert.Single(user.GetProperty("passkeys").EnumerateArray()).GetProperty("name").GetString());
         Assert.Equal(HttpStatusCode.OK, (await admin.DeleteAsync($"/api/users/{carolId}/passkeys/{id}")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/rename-plugins")).StatusCode);
 

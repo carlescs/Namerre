@@ -20,6 +20,11 @@ public interface IUserStore
     bool TryRemoveLogin(long userId, string expectedStamp, string newStamp, long loginId);
     /// <summary>Registers a passkey; false when the user changed or the credential is registered to anyone already.</summary>
     bool TryAddPasskey(long userId, string expectedStamp, string newStamp, UserPasskeyRecord passkey);
+    /// <summary>
+    /// Renames a passkey of the user. The name is not a sign-in method, so the stamp stays and sessions continue;
+    /// false when the passkey is not the user's (any more).
+    /// </summary>
+    bool TryRenamePasskey(long userId, long passkeyId, string name);
     /// <summary>Removes a passkey from the user; false when either changed.</summary>
     bool TryRemovePasskey(long userId, string expectedStamp, string newStamp, long passkeyId);
     /// <summary>
