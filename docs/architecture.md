@@ -390,3 +390,6 @@ runs CI, then semantic-release (`release.config.mjs`) on pushes to `main` (stabl
 are built and published only for version tags (a hand-pushed tag runs CI in `docker.yml` first).
 CI's `betterleaks` job scans the full Git history with a pinned Betterleaks release on PRs and
 pushes; the lefthook `pre-commit` hook scans staged changes when `betterleaks` is on PATH.
+Issue and PR labels are declared in `.github/labels.json` (defaults, `security`, `pentest`,
+`breaking change`, `dependencies` and `area: …` labels); `labels.yml` creates or updates them on
+pushes to `main` that touch the file (or on demand), and never deletes labels missing from it.
