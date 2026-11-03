@@ -40,7 +40,7 @@ public sealed class UserAccounts
         var passwordHash = administrator.PasswordHash;
         if (!string.IsNullOrEmpty(username) || !string.IsNullOrEmpty(passwordHash))
         {
-            if (!IsValidUsername(username) || !passwords.IsValidHash(passwordHash))
+            if (!IsValidConfiguredUsername(username) || !passwords.IsValidHash(passwordHash))
                 throw new InvalidOperationException(
                     "The administrator credentials are invalid. Configure Namerre:Authentication:Username and Namerre:Authentication:PasswordHash, or restore valid administrator data.");
             configured = new UserRecord(ConfiguredUserId, username!.Trim(), passwordHash, UserRole.Admin, false,
@@ -81,9 +81,9 @@ public sealed class UserAccounts
                 return SetupResult.InvalidToken;
             if (!PasswordPolicy.IsAcceptable(password))
                 return SetupResult.WeakPassword;
-            if (!IsValidUsername(username))
+            if (NewUsername(username) is not { } canonical)
                 return SetupResult.InvalidUsername;
-            if (!store.TryCreate(NewUser(username.Trim(), UserRole.Admin, passwords.Hash(password)), out _))
+            if (!store.TryCreate(NewUser(canonical, UserRole.Admin, passwords.Hash(password)), out _))
                 return SetupResult.AlreadyConfigured;
             Reload();
             SetupToken = null;
@@ -163,7 +163,7 @@ public sealed class UserAccounts
                         Logins = [new UserLoginRecord(0, 0, identity.Issuer, identity.Subject,
                             Truncate(identity.Username, 256), now, null)]
                     };
-                    if (IsTaken(username))
+                    if (IsTaken(username) || IsConfusable(username))
                         continue;
                     if (!store.TryCreate(user, out var created))
                     {
@@ -194,7 +194,7 @@ public sealed class UserAccounts
     public UserRecord Create(UserReference actor, string username, UserRole role, string? password,
         ExternalIdentity? login)
     {
-        if (!IsValidUsername(username))
+        if (NewUsername(username) is not { } canonical)
             throw InvalidUsername();
         if (password is null && login is null)
             throw AccountException.LastSignInMethod();
@@ -203,9 +203,11 @@ public sealed class UserAccounts
         var hash = password is null ? null : passwords.Hash(password);
         lock (gate)
         {
-            username = username.Trim();
+            username = canonical;
             if (IsTaken(username))
                 throw UsernameTaken();
+            if (IsConfusable(username))
+                throw UsernameConfusable();
             if (login is not null && FindLogin(login.Issuer, login.Subject) is not null)
                 throw AccountException.LoginTaken();
             var user = NewUser(username, role, hash);
@@ -617,15 +619,26 @@ public sealed class UserAccounts
             ? char.ToLowerInvariant(pair.First) == char.ToLowerInvariant(pair.Second)
             : pair.First == pair.Second);
 
+    // Look-alike of another user (the same skeleton), though not the same name; exact matches are IsTaken.
+    private bool IsConfusable(string username)
+    {
+        var skeleton = UsernameSkeleton.Of(username);
+        return List().Any(u => UsernameSkeleton.Of(u.Username) == skeleton);
+    }
+
     private static string ProvisionedUsername(ExternalIdentity identity, int attempt)
     {
-        var name = new string(identity.Username.Where(c => !char.IsControl(c)).ToArray()).Trim();
+        var name = UsernameSkeleton.Clean(identity.Username);
         if (name.Length == 0)
             name = "user";
         var suffix = attempt == 1 ? "" : "-" + attempt;
         if (attempt == 20)
             suffix = "-" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(identity.Subject)))[..12];
-        return Truncate(name, MaximumUsernameLength - suffix.Length) + suffix;
+        var length = MaximumUsernameLength - suffix.Length;
+        // Never cut a surrogate pair in half.
+        if (name.Length > length && char.IsHighSurrogate(name[length - 1]))
+            length--;
+        return Truncate(name, length).Trim() + suffix;
     }
 
     private static string Truncate(string value, int length) => value.Length <= length ? value : value[..length];
@@ -637,7 +650,21 @@ public sealed class UserAccounts
 
     private IReadOnlyDictionary<long, UserRecord> Load() => store.List().ToDictionary(u => u.Id);
 
+    /// <summary>
+    /// The rule for every new username (setup, creation): printable after NFKC normalization (no control, format,
+    /// separator or other invisible characters) and at most <see cref="MaximumUsernameLength"/> characters.
+    /// </summary>
     public static bool IsValidUsername(string? username)
+        => NewUsername(username) is not null;
+
+    private static string? NewUsername(string? username)
+        => UsernameSkeleton.Canonical(username) is { } canonical && canonical.Length <= MaximumUsernameLength
+            ? canonical
+            : null;
+
+    // Existing stored users and the configured administrator keep signing in whatever their name holds, so
+    // startup only keeps the original, lenient check.
+    private static bool IsValidConfiguredUsername(string? username)
         => !string.IsNullOrWhiteSpace(username) && username.Trim().Length <= MaximumUsernameLength &&
             !username.Any(char.IsControl);
 
@@ -648,9 +675,12 @@ public sealed class UserAccounts
         SHA256.HashData(Encoding.UTF8.GetBytes(username + "\0" + passwordHash)));
 
     private static AccountException InvalidUsername() => new("InvalidUsername",
-        $"Enter a username of 1 to {MaximumUsernameLength} characters without control characters.");
+        $"Enter a username of 1 to {MaximumUsernameLength} visible characters, without control, invisible or formatting characters.");
 
     private static AccountException UsernameTaken() => new("UsernameTaken", "That username is already taken.", 409);
+
+    private static AccountException UsernameConfusable() => new("UsernameConfusable",
+        "That username looks too much like an existing one.", 409);
 
     private static AccountException WeakPassword() => new("WeakPassword", PasswordPolicy.WeakPasswordMessage);
 }

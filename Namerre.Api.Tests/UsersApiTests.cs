@@ -40,6 +40,10 @@ public sealed class UsersApiTests : IDisposable
         await AssertCode(await admin.PostAsJsonAsync("/api/users",
             new { username = "CAROL", password = "another-long-password" }), HttpStatusCode.Conflict, "UsernameTaken");
         await AssertCode(await admin.PostAsJsonAsync("/api/users",
+            new { username = "c\u0430rol", password = "another-long-password" }), HttpStatusCode.Conflict, "UsernameConfusable"); // betterleaks:allow
+        await AssertCode(await admin.PostAsJsonAsync("/api/users",
+            new { username = "dan\u200Biel", password = "another-long-password" }), HttpStatusCode.BadRequest, "InvalidUsername"); // betterleaks:allow
+        await AssertCode(await admin.PostAsJsonAsync("/api/users",
             new { username = "dave", password = "short" }), HttpStatusCode.BadRequest, "WeakPassword");
 
         using var user = await SignIn(factory, "carol", "carol-first-password");
