@@ -23,6 +23,7 @@
   <ItemGroup>
     <!-- The in-memory user store lives in Namerre.Testing in Namerre.Application.UnitTests. -->
     <Compile Include="..\Namerre.Application.UnitTests\Authentication\InMemoryUserStore.cs" Link="Authentication\InMemoryUserStore.cs" />
+    <Compile Include="..\Namerre.Application.UnitTests\Authentication\InMemorySessionRegistry.cs" Link="Authentication\InMemorySessionRegistry.cs" />
     <Using Include="Namerre.Testing" />
   </ItemGroup>
 

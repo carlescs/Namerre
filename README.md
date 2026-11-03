@@ -333,7 +333,8 @@ sets or removes the password, `POST /{id}/logins` links an identity (`subject`) 
 and `DELETE /{id}` deletes the user. Users manage their own account under `api/auth`: `POST password`
 (`currentPassword` may be omitted only by a user without a password, after a recent sign-in),
 `DELETE password`, `POST reauthenticate`, `POST oidc/link` (returns the address that starts linking),
-`GET logins` and `DELETE logins/{id}`, and the passkey endpoints below. `GET api/auth/session`
+`GET logins` and `DELETE logins/{id}`, `POST sessions/revoke-others` (ends the user's other sessions,
+keeping the current one), `POST logout`, and the passkey endpoints below. `GET api/auth/session`
 reports the user's `role`, `hasPassword`, linked `logins` and `passkeys` (and whether passkeys are
 `passkeysEnabled`), so the app hides what the user cannot use. Refusals return
 `{ "code", "message" }`, e.g. `LastAdmin`, `OwnAccount`, `LastSignInMethod`, `LoginTaken`,
@@ -417,8 +418,18 @@ Data Protection keys that encrypt session and antiforgery cookies are stored in 
 `keys` folder, so sessions survive restarts and container replacement. Protect that
 folder like the database: anyone who can read the keys can forge a session cookie.
 Without `Namerre:DataPath`, ASP.NET Core's default key location is used.
-Signing out removes the browser cookie; a stolen copy remains usable until its
-expiry or a credential change. Keep the server, browser, and TLS keys protected.
+Cookies are stateless, so the server also remembers ended sessions. Every session carries a
+random ID and the user's session epoch; **Sign out** revokes that ID on the server, and a
+copied cookie is rejected at once. **Sign out of other sessions** on the **Account** page
+(`POST api/auth/sessions/revoke-others`) raises the user's session epoch, which ends every other
+session of that user on any device while the current one is re-issued and stays signed in. It
+works for every account, including the administrator configured in server settings. Both are
+stored in the SQLite database (`RevokedSessions` and `SessionEpochs`), so they survive restarts;
+revoked IDs are dropped once their eight-hour cookie would have expired anyway. Without
+`Namerre:DataPath` they last only until the process stops. Sessions created before this
+protection existed carry no ID and sign in again once after upgrading. A credential change
+(password, role, link or passkey) still ends a user's sessions through the credential stamp.
+Keep the server, browser, and TLS keys protected.
 
 All controllers and development OpenAPI require authentication, except session
 discovery, first-time setup, login (password and passkey), and the single sign-on redirect and

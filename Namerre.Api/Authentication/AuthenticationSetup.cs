@@ -38,7 +38,7 @@ public static class AuthenticationSetup
                 options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
                 options.Cookie.SameSite = SameSiteMode.Strict;
                 options.Cookie.Path = "/";
-                options.ExpireTimeSpan = TimeSpan.FromHours(8);
+                options.ExpireTimeSpan = SessionPolicy.Lifetime;
                 options.SlidingExpiration = false;
                 options.Events.OnRedirectToLogin = context =>
                 {
@@ -54,7 +54,8 @@ public static class AuthenticationSetup
                 {
                     var services = context.HttpContext.RequestServices;
                     if (context.Principal is null || !IsValidSession(context.Principal,
-                            services.GetRequiredService<UserAccounts>(), services.GetRequiredService<OidcLogin>()))
+                            services.GetRequiredService<UserAccounts>(), services.GetRequiredService<OidcLogin>(),
+                            services.GetRequiredService<UserSessions>()))
                         context.RejectPrincipal();
                     return Task.CompletedTask;
                 };
@@ -116,13 +117,16 @@ public static class AuthenticationSetup
     /// <summary>
     /// A session stays valid while its user exists, is enabled and keeps the same credential stamp (and, for single
     /// sign-on sessions, while single sign-on settings are unchanged). The stamp changes with the user's role,
-    /// password and links, so the role claim never outlives a change.
+    /// password and links, so the role claim never outlives a change. A session also ends on the server when it is
+    /// signed out or the user ends their other sessions (see <see cref="UserSessions"/>).
     /// </summary>
-    internal static bool IsValidSession(ClaimsPrincipal principal, UserAccounts accounts, OidcLogin oidc)
+    internal static bool IsValidSession(ClaimsPrincipal principal, UserAccounts accounts, OidcLogin oidc,
+        UserSessions sessions)
     {
         if (UserSession.UserId(principal) is not { } id || accounts.Find(id) is not { Disabled: false } user ||
             principal.FindFirst(UserSession.StampClaim)?.Value != user.Stamp ||
-            principal.FindFirst(ClaimTypes.Role)?.Value != user.Role.ToString())
+            principal.FindFirst(ClaimTypes.Role)?.Value != user.Role.ToString() ||
+            !sessions.IsActive(UserSession.SessionId(principal), id, UserSession.SessionEpoch(principal)))
             return false;
         return !UserSession.IsSingleSignOn(principal) || oidc.IsValidSession(principal);
     }
@@ -268,7 +272,7 @@ public static class AuthenticationSetup
         // The provider's authentication time, not the callback's, decides whether the sign-in counts as recent:
         // a provider session reused without signing in again must not unlock sensitive changes.
         context.Principal = UserSession.Create(user, UserSession.SingleSignOnMethod, oidc.Stamp,
-            AuthenticatedAt(context.Principal, now));
+            AuthenticatedAt(context.Principal, now), services.GetRequiredService<UserSessions>().CurrentEpoch(user.Id));
         properties.IsPersistent = false;
         properties.Items.Remove(OidcLogin.LinkUserItem);
         properties.Items.Remove(OidcLogin.LinkStampItem);

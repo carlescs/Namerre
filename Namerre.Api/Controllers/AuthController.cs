@@ -192,7 +192,8 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
             return Unauthorized(new { message = "Invalid username or password." });
         }
 
-        await SignInAsync(UserSession.Create(verified, UserSession.PasswordMethod, null, Now));
+        await SignInAsync(UserSession.Create(verified, UserSession.PasswordMethod, null, Now,
+            await sender.Send(new SessionEpochQuery(verified.Id), cancellationToken)));
         NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "password"), new("namerre.auth.outcome", "success"));
         logger.LogInformation("User {UserId} ({Username}) signed in from {RemoteAddress}", verified.Id,
             LogText.Clean(verified.Username), HttpContext.Connection.RemoteIpAddress);
@@ -233,7 +234,8 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
         }
 
         // Passkeys require user verification, so this is a fresh sign-in.
-        await SignInAsync(UserSession.Create(verified, UserSession.PasskeyMethod, null, Now));
+        await SignInAsync(UserSession.Create(verified, UserSession.PasskeyMethod, null, Now,
+            await sender.Send(new SessionEpochQuery(verified.Id), cancellationToken)));
         NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "passkey"), new("namerre.auth.outcome", "success"));
         logger.LogInformation("User {UserId} ({Username}) signed in with a passkey from {RemoteAddress}", verified.Id,
             LogText.Clean(verified.Username), HttpContext.Connection.RemoteIpAddress);
@@ -362,9 +364,26 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
         return NoContent();
     }
 
+    /// <summary>
+    /// Ends every other session of the signed-in user, on any device, and keeps this one. Works for every account,
+    /// including the administrator configured in server settings.
+    /// </summary>
+    [HttpPost("sessions/revoke-others")]
+    public async Task<IActionResult> RevokeOtherSessions(CancellationToken cancellationToken)
+    {
+        var user = await RequireUser(cancellationToken);
+        var epoch = await sender.Send(new EndOtherSessionsCommand(Reference(user)), cancellationToken);
+        // Re-issue this session with the new epoch, so only it survives.
+        await RenewAsync(user, epoch: epoch);
+        return NoContent();
+    }
+
     [HttpPost("logout")]
     public async Task<IActionResult> Logout(CancellationToken cancellationToken)
     {
+        // Cookies are stateless, so the server must remember the session ended, or a copy of the cookie stays valid.
+        if (UserSession.Reference(User) is { } who && UserSession.SessionId(User) is { } sessionId)
+            await sender.Send(new EndSessionCommand(who, sessionId), cancellationToken);
         var endSessionUrl = UserSession.IsSingleSignOn(User) && oidc.Enabled
             ? await EndSessionUrlAsync(await HttpContext.GetTokenAsync(Authentication.OidcLogin.IdTokenName),
                 cancellationToken)
@@ -456,13 +475,13 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
             .CreateProtector("Namerre.Authentication.LinkSingleSignOn");
 
     /// <summary>Re-issues this session for the changed user, keeping its method, provider tokens and expiry.</summary>
-    private async Task RenewAsync(UserRecord user, DateTimeOffset? signedInAt = null)
+    private async Task RenewAsync(UserRecord user, DateTimeOffset? signedInAt = null, long? epoch = null)
     {
         var current = await HttpContext.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         var properties = current?.Properties ?? new AuthenticationProperties();
         properties.IsPersistent = false;
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
-            UserSession.Renew(User, user, signedInAt), properties);
+            UserSession.Renew(User, user, signedInAt, epoch), properties);
     }
 
     private Task SignInAsync(System.Security.Claims.ClaimsPrincipal principal)

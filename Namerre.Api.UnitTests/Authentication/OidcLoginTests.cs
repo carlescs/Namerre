@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.Extensions.Options;
 using Namerre.Application.Authentication;
 using Namerre.Authentication;
+using Namerre.Testing;
 using Namerre.Infrastructure.Authentication;
 using Namerre.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -99,6 +100,7 @@ public sealed class OidcLoginTests
     public void SessionsOfLocalUsersAreValidUntilTheirStampOrSingleSignOnSettingsChange()
     {
         var oidc = Create(Valid());
+        var sessions = new UserSessions(new InMemorySessionRegistry(), NullLogger<UserSessions>.Instance);
         var store = new InMemoryUserStore();
         var hasher = new PasswordHasher();
         var accounts = new UserAccounts(new AdministratorConfiguration(Options.Create(new NamerreOptions
@@ -109,16 +111,16 @@ public sealed class OidcLoginTests
         var principal = UserSession.Create(user!, UserSession.SingleSignOnMethod, oidc.Stamp, DateTimeOffset.UtcNow);
         var local = UserSession.Create(user!, UserSession.PasswordMethod, null, DateTimeOffset.UtcNow);
 
-        Assert.True(AuthenticationSetup.IsValidSession(principal, accounts, oidc));
-        Assert.True(AuthenticationSetup.IsValidSession(local, accounts, oidc));
+        Assert.True(AuthenticationSetup.IsValidSession(principal, accounts, oidc, sessions));
+        Assert.True(AuthenticationSetup.IsValidSession(local, accounts, oidc, sessions));
         Assert.False(AuthenticationSetup.IsValidSession(principal, accounts,
-            Create(Valid(options => options.RequiredRole = "other"))));
-        Assert.False(AuthenticationSetup.IsValidSession(principal, accounts, Create(new OidcOptions())));
+            Create(Valid(options => options.RequiredRole = "other")), sessions));
+        Assert.False(AuthenticationSetup.IsValidSession(principal, accounts, Create(new OidcOptions()), sessions));
 
         accounts.Update(new UserReference(99, "admin"), user!.Id, UserRole.Admin, null);
 
-        Assert.False(AuthenticationSetup.IsValidSession(principal, accounts, oidc));
-        Assert.False(AuthenticationSetup.IsValidSession(local, accounts, oidc));
+        Assert.False(AuthenticationSetup.IsValidSession(principal, accounts, oidc, sessions));
+        Assert.False(AuthenticationSetup.IsValidSession(local, accounts, oidc, sessions));
     }
 
     [Fact]
