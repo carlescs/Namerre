@@ -79,6 +79,10 @@ Application settings live in one `Namerre` section in `Namerre.Api\appsettings.j
         "AutoProvision": true,
         "Scopes": [],
         "RequireHttpsMetadata": true
+      },
+      "Passkeys": {
+        "Enabled": true,
+        "Origin": ""
       }
     },
     "Tmdb": {
@@ -163,7 +167,7 @@ per watch folder scan; `library.notify` per finished run with one child per targ
 | `namerre.tmdb.lookups` | counter | `namerre.tmdb.result` (`cache_hit`, `ok` or the error code, e.g. `TmdbRateLimited`) |
 | `namerre.watch.files` | counter | `namerre.watch.folder`, `namerre.watch.outcome` (`prepared`, `unchanged`, `completed`, `failed`, `ignored`) |
 | `namerre.library.notifications` | counter | `namerre.library.target`, `namerre.library.outcome` (`delivered`, `http_error`, `failed`, `dropped`) |
-| `namerre.auth.sign_ins` | counter | `namerre.auth.method` (`password`, `oidc`), `namerre.auth.outcome` (`success`, `failure`, `denied`) |
+| `namerre.auth.sign_ins` | counter | `namerre.auth.method` (`password`, `passkey`, `oidc`), `namerre.auth.outcome` (`success`, `failure`, `denied`) |
 
 Metric tags never contain file paths or record IDs. Logs record queued plans and runs, each
 job's outcome and duration, runs that need recovery, deletions, sign-ins (failed attempts with
@@ -286,8 +290,8 @@ changed from the **Account** page.
 
 ### Users and roles
 
-Every person signs in as a local user. A password and single sign-on are only ways of
-signing in to that user, and a user can have either or both. Roles are managed in Namerre
+Every person signs in as a local user. A password, passkeys and single sign-on are only ways
+of signing in to that user, and a user can have any combination of them. Roles are managed in Namerre
 only; an identity provider never sets or changes them.
 
 | Role | Can |
@@ -298,14 +302,15 @@ only; an identity provider never sets or changes them.
 Administrators manage users from **Options** (the sliders button in the header) → **Users**:
 create users with a password, a single sign-on identity, or both; change roles; disable or
 enable users; set, reset or remove passwords; link, unlink or move single sign-on identities;
-and delete users. The server keeps every account usable:
+remove a user's passkeys (users add passkeys themselves, on **Account**); and delete users. The
+server keeps every account usable:
 
 - At least one enabled administrator remains (the break-glass administrator counts).
   Administrators cannot remove their own `Admin` role, disable themselves or delete themselves.
-- An enabled user always keeps at least one sign-in method: the last password or linked
-  identity cannot be removed, and a disabled user without one cannot be enabled.
-- Disabling a user, resetting or removing their password, changing their role, and linking or
-  unlinking an identity replace that user's credential stamp, which ends their existing sessions
+- An enabled user always keeps at least one sign-in method: the last password, passkey or
+  linked identity cannot be removed, and a disabled user without one cannot be enabled.
+- Disabling a user, resetting or removing their password, changing their role, linking or
+  unlinking an identity, and adding or removing a passkey replace that user's credential stamp, which ends their existing sessions
   (and live updates) right away.
 - Usernames are unique ignoring case. A user without a password fails password sign-in exactly
   like a wrong password, without revealing that the account exists.
@@ -324,14 +329,54 @@ sign-in methods, `POST` creates one (`username`, `role`, and a `password`, a sin
 `subject`, or both), `PATCH /{id}` changes `role` or `disabled`, `PUT`/`DELETE /{id}/password`
 sets or removes the password, `POST /{id}/logins` links an identity (`subject`) or moves one
 (`loginId`, optional `deleteSource`), `POST /{id}/merge` merges another user into it (`sourceUserId`),
-`DELETE /{id}/logins/{loginId}` unlinks it and
-`DELETE /{id}` deletes the user. Users manage their own account under `api/auth`: `POST password`
+`DELETE /{id}/logins/{loginId}` unlinks it, `DELETE /{id}/passkeys/{passkeyId}` removes a passkey
+and `DELETE /{id}` deletes the user. Users manage their own account under `api/auth`: `POST password`
 (`currentPassword` may be omitted only by a user without a password, after a recent sign-in),
 `DELETE password`, `POST reauthenticate`, `POST oidc/link` (returns the address that starts linking),
-`GET logins` and `DELETE logins/{id}`. `GET api/auth/session` reports the user's `role`,
-`hasPassword` and linked `logins`, so the app hides what the user cannot use. Refusals return
-`{ "code", "message" }`, e.g. `LastAdmin`, `OwnAccount`, `LastSignInMethod`, `LoginTaken` or
-`RecentSignInRequired`.
+`GET logins` and `DELETE logins/{id}`, and the passkey endpoints below. `GET api/auth/session`
+reports the user's `role`, `hasPassword`, linked `logins` and `passkeys` (and whether passkeys are
+`passkeysEnabled`), so the app hides what the user cannot use. Refusals return
+`{ "code", "message" }`, e.g. `LastAdmin`, `OwnAccount`, `LastSignInMethod`, `LoginTaken`,
+`PasskeyTaken`, `PasskeyExpired`, `TooManyPasskeys` or `RecentSignInRequired`.
+
+### Passkeys
+
+Users can sign in with a passkey (WebAuthn) instead of a password: the browser offers the
+passkeys it holds for Namerre and unlocks one with the device's fingerprint, face, PIN or screen
+lock. To add one, open **Account** → **Passkeys**, optionally name it (for example "work laptop")
+and select **Add a passkey**. Like linking single sign-on, adding a passkey is a sensitive change:
+it needs a sign-in within the last ten minutes, the password, or another passkey. Then select
+**Sign in with a passkey** on the sign-in page. A passkey sign-in counts as a fresh sign-in, so
+the next sensitive changes need no further confirmation, and a user without a password confirms
+sensitive changes with a passkey. The break-glass administrator from the server configuration
+cannot have passkeys.
+
+- Passkeys are discoverable credentials that require user verification. No attestation is
+  requested, so any authenticator the browser accepts works (platform authenticators, security
+  keys, password managers). Each user can register up to 20.
+- Only the credential ID, public key, signature counter, a random user handle (never the user ID
+  or name) and the name are stored, in the database's `UserPasskeys` table (the `AddPasskeys`
+  migration). A signature counter that goes back is refused as a cloned authenticator.
+- Each sign-in or registration is a one-time challenge: the server returns the WebAuthn options
+  with a protected ticket valid for five minutes and bound to its purpose (and, when registering,
+  to the user and their current credential stamp). A ticket works once, so a captured answer
+  cannot be replayed.
+- Passkeys belong to the address people open Namerre at: the relying party ID is its host name
+  and the browser origin must match. By default both come from each request (`Host` and the
+  scheme after `X-Forwarded-Proto`), which suits a reverse proxy that keeps the `Host` header. If
+  the proxy rewrites it, set `Namerre:Authentication:Passkeys:Origin` to the public origin, e.g.
+  `https://namerre.example.com`. Passkeys created at one host name do not work at another, and
+  browsers do not offer passkeys at an IP address or over plain HTTP (except `localhost`).
+- Set `Namerre:Authentication:Passkeys:Enabled` to `false` to turn passkeys off: the sign-in
+  button and the **Passkeys** section disappear and the endpoints return 404. Registered passkeys
+  stay stored (and still count as sign-in methods) until removed.
+
+The passkey endpoints are under `api/auth`: `POST passkey/options` (anonymous) starts a sign-in,
+returning `{ options, ticket }`; `POST passkey/login` (`ticket`, `credential` as WebAuthn JSON)
+signs in, and `POST passkey/reauthenticate` confirms the signed-in user with one of their own
+passkeys. `POST passkeys/options` (optional `password`) starts registering one, `POST passkeys`
+(`ticket`, `credential`, optional `name`) finishes it and returns the user's passkeys, and
+`DELETE passkeys/{id}` removes one. Failed passkey sign-ins return a generic 401.
 
 **Upgrading from a single administrator.** The `AddUsers` migration runs on the first start
 after upgrading: the existing administrator becomes the first `Admin` user and keeps its
@@ -370,12 +415,13 @@ Signing out removes the browser cookie; a stolen copy remains usable until its
 expiry or a credential change. Keep the server, browser, and TLS keys protected.
 
 All controllers and development OpenAPI require authentication, except session
-discovery, first-time setup, login, and the single sign-on redirect and callback. The public HTML/assets contain no server file
+discovery, first-time setup, login (password and passkey), and the single sign-on redirect and
+callback. The public HTML/assets contain no server file
 information.
 API responses are not cached. State-changing requests (including login and logout)
 require an antiforgery cookie and `X-XSRF-TOKEN` header; the Angular client manages
-these automatically. Login, setup, password changes, re-confirming the password and starting a
-single sign-on link are limited to five attempts
+these automatically. Login (password and passkey), setup, password changes, re-confirming the password or a passkey,
+and starting a single sign-on link or a passkey registration are limited to five attempts
 per minute for each client address (IPv6 clients are grouped by their /64 network) and
 60 attempts per minute across all clients. One noisy client therefore cannot lock
 everyone out, while guessing from many addresses stays bounded. Behind a reverse
@@ -501,7 +547,7 @@ the same server, so the server must be running and reachable.
   files with `Cache-Control: no-cache`. After an upgrade, the app finds the new
   version the next time its window is shown and offers **Reload**. Rename jobs
   keep running on the server either way.
-- **Sign-in.** Password and single sign-on both work from the installed window.
+- **Sign-in.** Password, passkey and single sign-on all work from the installed window.
   The OpenID Connect redirect goes to the identity provider and comes back to `/`.
 - Development builds (`npm run watch`, `ng serve`) do not register the service
   worker. To remove it from a browser, uninstall the app or clear the site data.

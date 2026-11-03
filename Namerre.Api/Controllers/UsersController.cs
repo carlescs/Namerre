@@ -8,7 +8,7 @@ using Namerre.Authentication;
 
 namespace Namerre.Controllers;
 
-/// <summary>User management for administrators: accounts, roles, passwords and single sign-on links.</summary>
+/// <summary>User management for administrators: accounts, roles, passwords, single sign-on links and passkeys.</summary>
 [ApiController]
 [Route("api/users")]
 [Authorize(Policy = AuthenticationSetup.AdminPolicy)]
@@ -77,6 +77,10 @@ public sealed class UsersController(ISender sender, OidcLogin oidc) : Controller
     public async Task<IActionResult> Unlink(long id, long loginId, CancellationToken cancellationToken)
         => Ok(UserView.From(await sender.Send(new UnlinkLoginCommand(Actor, id, loginId), cancellationToken)));
 
+    [HttpDelete("{id:long}/passkeys/{passkeyId:long}")]
+    public async Task<IActionResult> RemovePasskey(long id, long passkeyId, CancellationToken cancellationToken)
+        => Ok(UserView.From(await sender.Send(new RemovePasskeyCommand(Actor, id, passkeyId), cancellationToken)));
+
     [HttpDelete("{id:long}")]
     public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken)
     {
@@ -101,12 +105,12 @@ public sealed class UsersController(ISender sender, OidcLogin oidc) : Controller
 
 public sealed record UserView(long Id, string Username, string Role, bool Disabled, bool HasPassword,
     bool ManagedByConfiguration, DateTimeOffset? CreatedAt, DateTimeOffset? LastSignInAt,
-    IReadOnlyList<LoginView> Logins)
+    IReadOnlyList<LoginView> Logins, IReadOnlyList<PasskeyView> Passkeys)
 {
     public static UserView From(UserRecord user) => new(user.Id, user.Username, user.Role.ToString(), user.Disabled,
         user.HasPassword, user.Id == UserAccounts.ConfiguredUserId,
         user.Id == UserAccounts.ConfiguredUserId ? null : user.CreatedAt, user.LastSignInAt,
-        user.Logins.Select(LoginView.From).ToArray());
+        user.Logins.Select(LoginView.From).ToArray(), user.Passkeys.Select(PasskeyView.From).ToArray());
 }
 
 /// <param name="Password">Optional when <paramref name="Subject"/> links a single sign-on identity instead.</param>

@@ -396,6 +396,12 @@ public sealed class InstallationTests : IDisposable
             string newStamp) => throw Failure();
         public bool TryDelete(long userId, string expectedStamp) => throw Failure();
         public void RecordSignIn(long userId, long? loginId, DateTimeOffset at) => throw Failure();
+        public bool TryAddPasskey(long userId, string expectedStamp, string newStamp, UserPasskeyRecord passkey)
+            => throw Failure();
+        public bool TryRemovePasskey(long userId, string expectedStamp, string newStamp, long passkeyId)
+            => throw Failure();
+        public void RecordPasskeySignIn(long userId, long passkeyId, uint signCount, DateTimeOffset at)
+            => throw Failure();
         private static UserStorageException Failure() => new("Database is read-only.", new IOException("read-only"));
     }
 }

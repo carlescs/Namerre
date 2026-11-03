@@ -202,6 +202,54 @@ namespace Namerre.Infrastructure.Renaming.Migrations
                     b.ToTable("UserLogins", (string)null);
                 });
 
+            modelBuilder.Entity("Namerre.Infrastructure.Renaming.UserPasskeyRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("CredentialId")
+                        .IsRequired()
+                        .HasMaxLength(1023)
+                        .HasColumnType("BLOB");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("PublicKey")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("BLOB");
+
+                    b.Property<long>("SignCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte[]>("UserHandle")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("BLOB");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CredentialId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("UserPasskeys", (string)null);
+                });
+
             modelBuilder.Entity("Namerre.Infrastructure.Renaming.UserRow", b =>
                 {
                     b.Property<long>("Id")
@@ -324,9 +372,20 @@ namespace Namerre.Infrastructure.Renaming.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Namerre.Infrastructure.Renaming.UserPasskeyRow", b =>
+                {
+                    b.HasOne("Namerre.Infrastructure.Renaming.UserRow", null)
+                        .WithMany("Passkeys")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Namerre.Infrastructure.Renaming.UserRow", b =>
                 {
                     b.Navigation("Logins");
+
+                    b.Navigation("Passkeys");
                 });
 #pragma warning restore 612, 618
         }

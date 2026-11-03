@@ -15,7 +15,8 @@ public sealed class AccountException(string code, string message, int status = 4
     public static AccountException Configured() => new("ManagedByConfiguration",
         "This administrator is configured on the server. Change Namerre:Authentication instead.", 409);
     public static AccountException LastSignInMethod() => new("LastSignInMethod",
-        "An enabled user needs at least one way to sign in: a password or a linked single sign-on identity.", 409);
+        "An enabled user needs at least one way to sign in: a password, a passkey or a linked single sign-on identity.",
+        409);
     public static AccountException LoginTaken() => new("LoginTaken",
         "This single sign-on identity is already linked to another user.", 409);
     public static AccountException RecentSignIn() => new("RecentSignInRequired",

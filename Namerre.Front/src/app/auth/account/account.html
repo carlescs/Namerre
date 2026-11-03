@@ -19,15 +19,26 @@
       <h2 class="text-lg">{{ setsFirstPassword() ? 'Set a password' : 'Change password' }}</h2>
       @if (setsFirstPassword()) {
         <p class="text-slate-500 dark:text-slate-400">
-          You sign in with single sign-on. Add a password to also sign in with your username
+          You sign in without a password. Add one to also sign in with your username
           <strong>{{ auth.username() }}</strong
           >.
           @if (!auth.recentSignIn()) {
-            To confirm it is you, sign in again with single sign-on first.
+            To confirm it is you, use a passkey or sign in again with single sign-on first.
           }
         </p>
         @if (!auth.recentSignIn()) {
-          <button type="button" (click)="signInAgain()">Sign in again</button>
+          <div class="actions">
+            @if (canConfirmWithPasskey()) {
+              <button type="button" (click)="confirmWithPasskey()" [disabled]="busy()">
+                Confirm with a passkey
+              </button>
+            }
+            @if (canConfirmWithSingleSignOn()) {
+              <button type="button" (click)="signInAgain()" [disabled]="busy()">
+                Sign in again
+              </button>
+            }
+          </div>
         }
       } @else {
         <p class="text-slate-500 dark:text-slate-400">
@@ -92,9 +103,16 @@
           </button>
         </form>
       }
-      @if (auth.hasPassword() && auth.logins().length) {
+      @if (auth.hasPassword() && signInMethods() > 1) {
         <p class="mt-6 mb-2 text-sm text-slate-500 dark:text-slate-400">
-          You can also sign in with single sign-on, so the password is optional.
+          You can also sign in with
+          {{
+            auth.passkeys().length && auth.logins().length
+              ? 'a passkey or single sign-on'
+              : auth.passkeys().length
+                ? 'a passkey'
+                : 'single sign-on'
+          }}, so the password is optional.
         </p>
         <button
           type="button"
@@ -126,7 +144,7 @@
                   [disabled]="busy() || signInMethods() <= 1"
                   [title]="
                     signInMethods() <= 1
-                      ? 'Add a password first: this is your only way to sign in'
+                      ? 'Add a password or a passkey first: this is your only way to sign in'
                       : 'Unlink this identity'
                   "
                   [attr.aria-label]="'Unlink ' + login.displayName"
@@ -147,13 +165,96 @@
       </section>
     }
 
+    @if (auth.passkeysEnabled()) {
+      <section class="surface mt-6 p-6" aria-labelledby="passkeys-heading">
+        <h2 id="passkeys-heading" class="text-lg">Passkeys</h2>
+        <p class="text-slate-500 dark:text-slate-400">
+          Sign in with your device's fingerprint, face or screen lock instead of a password. Adding
+          or removing a passkey signs out every other browser session.
+        </p>
+        @if (auth.passkeys().length) {
+          <ul class="mb-4 space-y-2">
+            @for (passkey of auth.passkeys(); track passkey.id) {
+              <li class="flex flex-wrap items-center gap-3">
+                <span class="min-w-0 flex-1">
+                  <strong>{{ passkey.name }}</strong>
+                  <span class="block text-xs text-slate-500 dark:text-slate-400">
+                    Added {{ passkey.createdAt | date: 'medium' }}
+                    @if (passkey.lastUsedAt) {
+                      · last used {{ passkey.lastUsedAt | date: 'medium' }}
+                    }
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  (click)="removePasskey(passkey)"
+                  [disabled]="busy() || signInMethods() <= 1"
+                  [title]="
+                    signInMethods() <= 1
+                      ? 'Add a password or another passkey first: this is your only way to sign in'
+                      : 'Remove this passkey'
+                  "
+                  [attr.aria-label]="'Remove passkey ' + passkey.name"
+                >
+                  Remove
+                </button>
+              </li>
+            }
+          </ul>
+        }
+        @if (passkeysSupported) {
+          <form [formGroup]="passkeyForm" (ngSubmit)="request('add-passkey')">
+            <label for="passkey-name">Passkey name (optional)</label>
+            <input
+              id="passkey-name"
+              formControlName="name"
+              maxlength="100"
+              placeholder="For example: work laptop"
+              autocomplete="off"
+            />
+            <button
+              class="mt-3"
+              type="submit"
+              [disabled]="busy() || pending() !== null || passkeyName.invalid"
+            >
+              Add a passkey
+            </button>
+          </form>
+        } @else {
+          <p class="mb-0 text-slate-500 dark:text-slate-400">
+            This browser cannot use passkeys here. Open Namerre over HTTPS in a current browser.
+          </p>
+        }
+      </section>
+    }
+
     @if (pending(); as action) {
       <section class="surface mt-6 p-6" role="group" aria-label="Confirm it is you">
         <h2 class="text-lg">Confirm it is you</h2>
+        @if (canConfirmWithPasskey()) {
+          <p>Use one of your passkeys to confirm.</p>
+          <div class="actions mb-4">
+            <button
+              [class.btn-primary]="!auth.hasPassword()"
+              type="button"
+              (click)="confirmWithPasskey()"
+              [disabled]="busy()"
+            >
+              Use a passkey
+            </button>
+          </div>
+        }
         @if (auth.hasPassword()) {
           <form [formGroup]="confirmForm" (ngSubmit)="confirm()">
             <label for="confirm-password">
-              Enter your password to {{ action === 'link' ? 'link single sign-on' : 'remove it' }}.
+              Enter your password to
+              {{
+                action === 'link'
+                  ? 'link single sign-on'
+                  : action === 'add-passkey'
+                    ? 'add a passkey'
+                    : 'remove it'
+              }}.
             </label>
             <input
               id="confirm-password"
@@ -174,11 +275,27 @@
               <button type="button" (click)="cancel()" [disabled]="busy()">Cancel</button>
             </div>
           </form>
-        } @else {
-          <p>Sign in again with single sign-on, then retry.</p>
+        } @else if (canConfirmWithSingleSignOn()) {
+          <p>
+            {{ canConfirmWithPasskey() ? 'Or sign in' : 'Sign in' }} again with single sign-on, then
+            retry.
+          </p>
           <div class="actions">
-            <button class="btn-primary" type="button" (click)="signInAgain()">Sign in again</button>
+            <button
+              [class.btn-primary]="!canConfirmWithPasskey()"
+              type="button"
+              (click)="signInAgain()"
+            >
+              Sign in again
+            </button>
             <button type="button" (click)="cancel()">Cancel</button>
+          </div>
+        } @else {
+          @if (!canConfirmWithPasskey()) {
+            <p>Sign out and sign in again, then retry.</p>
+          }
+          <div class="actions">
+            <button type="button" (click)="cancel()" [disabled]="busy()">Cancel</button>
           </div>
         }
       </section>

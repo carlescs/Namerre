@@ -27,6 +27,7 @@ builder.AddOptionalTelemetry();
 var app = builder.Build();
 _ = app.Services.GetRequiredService<UserAccounts>();
 _ = app.Services.GetRequiredService<OidcLogin>();
+_ = app.Services.GetRequiredService<PasskeyLogin>();
 
 if (!string.IsNullOrWhiteSpace(app.Services.GetRequiredService<IOptions<NamerreOptions>>().Value.DataPath))
 {

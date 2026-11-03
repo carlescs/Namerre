@@ -6,6 +6,12 @@
     Your self-hosted workspace for a more organized library.
   </p>
   <app-single-sign-on />
+  @if (passkeys()) {
+    <button class="w-full" type="button" (click)="signInWithPasskey()" [disabled]="busy()">
+      Sign in with a passkey
+    </button>
+    <p class="my-4 text-center text-xs text-slate-500 dark:text-slate-400">or</p>
+  }
   <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="busy()">
     <label for="username">Username</label>
     <input

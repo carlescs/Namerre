@@ -20,7 +20,8 @@ public sealed class UserStore(RenameStore store) : IUserStore
             return [];
         // Read at startup: storage problems surface unchanged, like the rename store's own.
         store.Initialize();
-        return Run(db => db.Users.AsNoTracking().Include(u => u.Logins).OrderBy(u => u.Id).AsEnumerable()
+        return Run(db => db.Users.AsNoTracking().Include(u => u.Logins).Include(u => u.Passkeys)
+            .AsSplitQuery().OrderBy(u => u.Id).AsEnumerable()
             .Select(ToRecord).ToArray());
     }
 
@@ -45,7 +46,8 @@ public sealed class UserStore(RenameStore store) : IUserStore
                     DisplayName = login.DisplayName,
                     LinkedAt = login.LinkedAt,
                     LastUsedAt = login.LastUsedAt
-                }).ToList()
+                }).ToList(),
+                Passkeys = user.Passkeys.Select(ToRow).ToList()
             };
             db.Users.Add(row);
             if (!TrySave(db))
@@ -94,6 +96,42 @@ public sealed class UserStore(RenameStore store) : IUserStore
         return true;
     });
 
+    public bool TryAddPasskey(long userId, string expectedStamp, string newStamp, UserPasskeyRecord passkey)
+        => Run(db =>
+        {
+            using var transaction = db.Database.BeginTransaction();
+            if (!Restamp(db, userId, expectedStamp, newStamp))
+                return false;
+            var row = ToRow(passkey);
+            row.UserId = userId;
+            db.UserPasskeys.Add(row);
+            if (!TrySave(db))
+                return false;
+            transaction.Commit();
+            return true;
+        });
+
+    public bool TryRemovePasskey(long userId, string expectedStamp, string newStamp, long passkeyId) => Run(db =>
+    {
+        using var transaction = db.Database.BeginTransaction();
+        if (!Restamp(db, userId, expectedStamp, newStamp) ||
+            db.UserPasskeys.Where(p => p.Id == passkeyId && p.UserId == userId).ExecuteDelete() != 1)
+            return false;
+        transaction.Commit();
+        return true;
+    });
+
+    public void RecordPasskeySignIn(long userId, long passkeyId, uint signCount, DateTimeOffset at) => Run(db =>
+    {
+        using var transaction = db.Database.BeginTransaction();
+        db.Users.Where(u => u.Id == userId).ExecuteUpdate(setters => setters.SetProperty(u => u.LastSignInAt, at));
+        db.UserPasskeys.Where(p => p.Id == passkeyId && p.UserId == userId).ExecuteUpdate(setters => setters
+            .SetProperty(p => p.LastUsedAt, at)
+            .SetProperty(p => p.SignCount, (long)signCount));
+        transaction.Commit();
+        return true;
+    });
+
     public bool TryMoveLogin(long loginId, long fromUserId, string fromStamp, long toUserId, string toStamp,
         string newStamp, bool deleteSource) => Run(db =>
     {
@@ -121,6 +159,8 @@ public sealed class UserStore(RenameStore store) : IUserStore
                 return false;
             db.UserLogins.Where(l => l.UserId == fromUserId)
                 .ExecuteUpdate(setters => setters.SetProperty(l => l.UserId, toUserId));
+            db.UserPasskeys.Where(p => p.UserId == fromUserId)
+                .ExecuteUpdate(setters => setters.SetProperty(p => p.UserId, toUserId));
             if (db.Users.Where(u => u.Id == fromUserId && u.Stamp == fromStamp).ExecuteDelete() != 1)
                 return false;
             transaction.Commit();
@@ -180,5 +220,18 @@ public sealed class UserStore(RenameStore store) : IUserStore
     private static UserRecord ToRecord(UserRow row) => new(row.Id, row.Username, row.PasswordHash,
         Enum.Parse<UserRole>(row.Role), row.Disabled, row.Stamp, row.CreatedAt, row.LastSignInAt,
         row.Logins.OrderBy(l => l.Id).Select(l => new UserLoginRecord(l.Id, l.UserId, l.Issuer, l.Subject,
-            l.DisplayName, l.LinkedAt, l.LastUsedAt)).ToArray());
+            l.DisplayName, l.LinkedAt, l.LastUsedAt)).ToArray(),
+        row.Passkeys.OrderBy(p => p.Id).Select(p => new UserPasskeyRecord(p.Id, p.UserId, p.CredentialId,
+            p.PublicKey, p.UserHandle, (uint)p.SignCount, p.Name, p.CreatedAt, p.LastUsedAt)).ToArray());
+
+    private static UserPasskeyRow ToRow(UserPasskeyRecord passkey) => new()
+    {
+        CredentialId = passkey.CredentialId,
+        PublicKey = passkey.PublicKey,
+        UserHandle = passkey.UserHandle,
+        SignCount = passkey.SignCount,
+        Name = passkey.Name,
+        CreatedAt = passkey.CreatedAt,
+        LastUsedAt = passkey.LastUsedAt
+    };
 }

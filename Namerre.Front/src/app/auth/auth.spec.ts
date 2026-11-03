@@ -208,6 +208,101 @@ describe('Auth', () => {
     expect(auth.logins()).toEqual([login]);
   });
 
+  it('signs in with a passkey: options, the browser prompt, then the answer and the session', async () => {
+    const get = vi.fn().mockResolvedValue({
+      id: 'Bw',
+      rawId: new Uint8Array([7]).buffer,
+      type: 'public-key',
+      response: {
+        clientDataJSON: new Uint8Array([1]).buffer,
+        authenticatorData: new Uint8Array([2]).buffer,
+        signature: new Uint8Array([3]).buffer,
+        userHandle: null,
+      },
+      getClientExtensionResults: () => ({}),
+    });
+    Object.defineProperty(navigator, 'credentials', { value: { get }, configurable: true });
+    const signingIn = auth.loginWithPasskey();
+    http.expectOne('/api/auth/session').flush({ username: null, requiresSetup: false });
+    await vi.waitFor(() =>
+      http.expectOne('/api/auth/passkey/options').flush({
+        options: { challenge: 'AAEC', rpId: 'localhost', allowCredentials: [] },
+        ticket: 'ticket-1',
+      }),
+    );
+    const answer = await vi.waitFor(() => http.expectOne('/api/auth/passkey/login'));
+    expect(get.mock.calls[0]?.[0].publicKey.rpId).toBe('localhost');
+    expect(answer.request.body).toEqual({
+      ticket: 'ticket-1',
+      credential: {
+        id: 'Bw',
+        rawId: 'Bw',
+        type: 'public-key',
+        response: { clientDataJSON: 'AQ', authenticatorData: 'Ag', signature: 'Aw' },
+        clientExtensionResults: {},
+      },
+    });
+    answer.flush(null, { status: 204, statusText: 'No Content' });
+    await vi.waitFor(() =>
+      http.expectOne('/api/auth/session').flush({
+        username: 'alice',
+        requiresSetup: false,
+        passkeysEnabled: true,
+        passkeys: [{ id: 1, name: 'Phone', createdAt: '2026-11-02T00:00:00Z', lastUsedAt: null }],
+      }),
+    );
+    await signingIn;
+    expect(auth.username()).toBe('alice');
+    expect(auth.passkeysEnabled()).toBe(true);
+    expect(auth.passkeys().map((p) => p.name)).toEqual(['Phone']);
+  });
+
+  it('registers a passkey with the name and the password confirming it', async () => {
+    const create = vi.fn().mockResolvedValue({
+      id: 'Bw',
+      rawId: new Uint8Array([7]).buffer,
+      type: 'public-key',
+      response: {
+        clientDataJSON: new Uint8Array([1]).buffer,
+        attestationObject: new Uint8Array([2]).buffer,
+        getTransports: () => ['internal'],
+      },
+      getClientExtensionResults: () => ({}),
+    });
+    Object.defineProperty(navigator, 'credentials', { value: { create }, configurable: true });
+    const registering = auth.registerPasskey('  Laptop ', 'secret');
+    http.expectOne('/api/auth/session').flush({ username: 'alice', requiresSetup: false });
+    const options = await vi.waitFor(() => http.expectOne('/api/auth/passkeys/options'));
+    expect(options.request.body).toEqual({ password: 'secret' });
+    options.flush({
+      options: {
+        rp: { id: 'localhost', name: 'Namerre' },
+        user: { id: 'AQI', name: 'alice', displayName: 'alice' },
+        challenge: 'AAEC',
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+        excludeCredentials: [],
+      },
+      ticket: 'ticket-2',
+    });
+    const register = await vi.waitFor(() => http.expectOne('/api/auth/passkeys'));
+    expect(register.request.body).toEqual({
+      ticket: 'ticket-2',
+      name: 'Laptop',
+      credential: {
+        id: 'Bw',
+        rawId: 'Bw',
+        type: 'public-key',
+        response: { clientDataJSON: 'AQ', attestationObject: 'Ag', transports: ['internal'] },
+        clientExtensionResults: {},
+      },
+    });
+    register.flush([]);
+    await vi.waitFor(() =>
+      http.expectOne('/api/auth/session').flush({ username: 'alice', requiresSetup: false }),
+    );
+    await registering;
+  });
+
   it('starts linking single sign-on at the address the server returns', async () => {
     const assign = vi.fn();
     TestBed.resetTestingModule();

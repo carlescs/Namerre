@@ -15,7 +15,8 @@ namespace Namerre.Authentication;
 
 public static class AuthenticationSetup
 {
-    // Login, setup and password changes share these limits; each attempt costs a full password hash.
+    // Login (password and passkey), setup and password changes share these limits; each password attempt costs a
+    // full password hash.
     public const string LoginPolicy = "login";
     internal const int LoginLimitPerClient = 5;
     internal const int LoginLimitShared = 60;
@@ -26,6 +27,7 @@ public static class AuthenticationSetup
     public static IServiceCollection AddUserAuthentication(this IServiceCollection services)
     {
         services.AddSingleton<OidcLogin>();
+        services.AddSingleton<PasskeyLogin>();
         services.AddHttpContextAccessor();
         services.AddSingleton<ICurrentUser, HttpCurrentUser>();
         services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

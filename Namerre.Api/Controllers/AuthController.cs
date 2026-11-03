@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
+using System.Text.Json;
 using CMediator.Abstractions;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
@@ -24,11 +25,15 @@ namespace Namerre.Controllers;
 [TypeFilter(typeof(AccountExceptionFilter))]
 public sealed class AuthController(ISender sender, OidcLogin oidc,
     IOptionsMonitor<OpenIdConnectOptions> oidcOptions, IAntiforgery antiforgery, ILogger<AuthController> logger,
-    IDataProtectionProvider? dataProtection = null, RenameLimits? limits = null, TimeProvider? time = null)
+    IDataProtectionProvider? dataProtection = null, RenameLimits? limits = null, TimeProvider? time = null,
+    PasskeyLogin? passkeyLogin = null)
     : ControllerBase
 {
     private static readonly TimeSpan LinkTicketLifetime = TimeSpan.FromMinutes(5);
+    // WebAuthn answers are a few kilobytes; anything much larger is not one.
+    private const long PasskeyRequestLimit = 64 * 1024;
     private DateTimeOffset Now => (time ?? TimeProvider.System).GetUtcNow();
+    private PasskeyLogin Passkeys => passkeyLogin ?? HttpContext.RequestServices.GetRequiredService<PasskeyLogin>();
 
     [AllowAnonymous]
     [HttpGet("session")]
@@ -58,6 +63,8 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
             signedInAt = user is null ? null : UserSession.SignedInAt(User),
             recentSignIn = user is not null && UserSession.IsRecent(User, Now),
             logins = user?.Logins.Select(LoginView.From).ToArray(),
+            passkeysEnabled = Passkeys.Enabled,
+            passkeys = user?.Passkeys.Select(PasskeyView.From).ToArray(),
             // Configured workload limits, so the app shows the numbers the server enforces.
             limits = user is null ? null : limits ?? RenameLimits.Default
         });
@@ -192,6 +199,120 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
         return NoContent();
     }
 
+    /// <summary>Starts a passkey sign-in; the browser answers with any passkey it holds for Namerre.</summary>
+    [AllowAnonymous]
+    [HttpPost("passkey/options")]
+    public async Task<IActionResult> PasskeySignInOptions(CancellationToken cancellationToken)
+    {
+        if (!Passkeys.Enabled)
+            return NotFound();
+        var challenge = await sender.Send(new BeginPasskeySignInQuery(Passkeys.RelyingParty(Request)),
+            cancellationToken);
+        return Ok(new
+        {
+            options = OptionsJson(challenge),
+            ticket = Passkeys.Issue(PasskeyLogin.SignInPurpose, challenge.State)
+        });
+    }
+
+    [AllowAnonymous]
+    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
+    [RequestSizeLimit(PasskeyRequestLimit)]
+    [HttpPost("passkey/login")]
+    public async Task<IActionResult> PasskeySignIn(PasskeyCredentialRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Passkeys.Enabled)
+            return NotFound();
+        var verified = await PasskeyUser(request, cancellationToken);
+        if (verified is null)
+        {
+            NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "passkey"), new("namerre.auth.outcome", "failure"));
+            logger.LogWarning("Failed passkey sign-in from {RemoteAddress}", HttpContext.Connection.RemoteIpAddress);
+            return Unauthorized(new { message = "The passkey was not accepted." });
+        }
+
+        // Passkeys require user verification, so this is a fresh sign-in.
+        await SignInAsync(UserSession.Create(verified, UserSession.PasskeyMethod, null, Now));
+        NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "passkey"), new("namerre.auth.outcome", "success"));
+        logger.LogInformation("User {UserId} ({Username}) signed in with a passkey from {RemoteAddress}", verified.Id,
+            LogText.Clean(verified.Username), HttpContext.Connection.RemoteIpAddress);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Confirms it is the user with one of their passkeys, so sensitive changes in the next few minutes need no
+    /// further prompt. Takes a challenge from <see cref="PasskeySignInOptions"/>.
+    /// </summary>
+    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
+    [RequestSizeLimit(PasskeyRequestLimit)]
+    [HttpPost("passkey/reauthenticate")]
+    public async Task<IActionResult> PasskeyReauthenticate(PasskeyCredentialRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Passkeys.Enabled)
+            return NotFound();
+        var user = await RequireUser(cancellationToken);
+        var verified = await PasskeyUser(request, cancellationToken);
+        if (verified is null || verified.Id != user.Id)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new { code = "PasskeyRejected", message = "Use a passkey of this account." });
+        await RenewAsync(verified, Now);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Starts registering a passkey for the signed-in user. Adding a sign-in method is sensitive, so it needs a
+    /// recent sign-in or the user's password.
+    /// </summary>
+    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
+    [HttpPost("passkeys/options")]
+    public async Task<IActionResult> PasskeyRegistrationOptions(ConfirmRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Passkeys.Enabled)
+            return NotFound();
+        var registration = await sender.Send(new BeginPasskeyRegistrationCommand(
+            (await RequireUser(cancellationToken)).Id, UserSession.IsRecent(User, Now), request.Password,
+            Passkeys.RelyingParty(Request)), cancellationToken);
+        return Ok(new
+        {
+            options = OptionsJson(registration.Challenge),
+            ticket = Passkeys.Issue(PasskeyLogin.RegisterPurpose, registration.Challenge.State, registration.User)
+        });
+    }
+
+    // Not rate limited like sign-ins: it needs a signed-in session and a one-time ticket that confirmation issued.
+    [RequestSizeLimit(PasskeyRequestLimit)]
+    [HttpPost("passkeys")]
+    public async Task<IActionResult> RegisterPasskey(RegisterPasskeyRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Passkeys.Enabled)
+            return NotFound();
+        var user = await RequireUser(cancellationToken);
+        // The ticket only works for the user, and the user version, that asked for it.
+        if (request.Credential.ValueKind != JsonValueKind.Object ||
+            Passkeys.Redeem(request.Ticket, PasskeyLogin.RegisterPurpose) is not { } ticket ||
+            ticket.UserId != user.Id || ticket.Stamp is null)
+            throw new AccountException("PasskeyExpired", "The passkey registration expired. Start again.", 409);
+        var updated = await sender.Send(new CompletePasskeyRegistrationCommand(Reference(user), ticket.Stamp,
+            ticket.State, request.Credential.GetRawText(), request.Name), cancellationToken);
+        // The credential stamp changed, which signs out every other session; keep this one.
+        await RenewAsync(updated);
+        return Ok(updated.Passkeys.Select(PasskeyView.From));
+    }
+
+    [HttpDelete("passkeys/{passkeyId:long}")]
+    public async Task<IActionResult> RemovePasskey(long passkeyId, CancellationToken cancellationToken)
+    {
+        var user = await RequireUser(cancellationToken);
+        var updated = await sender.Send(new RemovePasskeyCommand(Reference(user), user.Id, passkeyId),
+            cancellationToken);
+        await RenewAsync(updated);
+        return NoContent();
+    }
+
     /// <summary>Confirms the password again, so sensitive changes in the next few minutes need no further prompt.</summary>
     [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
     [HttpPost("reauthenticate")]
@@ -304,6 +425,21 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
 
     private static UserReference Reference(UserRecord user) => new(user.Id, user.Username);
 
+    /// <summary>The user a passkey sign-in answer proves, or null; the ticket works once.</summary>
+    private async Task<UserRecord?> PasskeyUser(PasskeyCredentialRequest request, CancellationToken cancellationToken)
+        => request.Credential.ValueKind == JsonValueKind.Object &&
+            Passkeys.Redeem(request.Ticket, PasskeyLogin.SignInPurpose) is { } ticket
+            ? await sender.Send(new PasskeySignInCommand(ticket.State, request.Credential.GetRawText()),
+                cancellationToken)
+            : null;
+
+    /// <summary>The WebAuthn options as JSON, not as a string, for the browser to decode.</summary>
+    private static JsonElement OptionsJson(PasskeyChallenge challenge)
+    {
+        using var document = JsonDocument.Parse(challenge.OptionsJson);
+        return document.RootElement.Clone();
+    }
+
     private IDataProtector Protector()
         => (dataProtection ?? HttpContext.RequestServices.GetRequiredService<IDataProtectionProvider>())
             .CreateProtector("Namerre.Authentication.LinkSingleSignOn");
@@ -329,6 +465,25 @@ public sealed record LoginView(long Id, string Issuer, string DisplayName, DateT
     public static LoginView From(UserLoginRecord login)
         => new(login.Id, login.Issuer, login.DisplayName, login.LinkedAt, login.LastUsedAt);
 }
+
+/// <summary>A registered passkey, without its key material.</summary>
+public sealed record PasskeyView(long Id, string Name, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt)
+{
+    public static PasskeyView From(UserPasskeyRecord passkey)
+        => new(passkey.Id, passkey.Name, passkey.CreatedAt, passkey.LastUsedAt);
+}
+
+/// <param name="Ticket">The ticket returned with the options the browser answered.</param>
+/// <param name="Credential">The browser's <c>PublicKeyCredential</c>, encoded as WebAuthn JSON.</param>
+public sealed record PasskeyCredentialRequest(
+    [Required, StringLength(16384)] string Ticket,
+    JsonElement Credential);
+
+/// <param name="Name">A name to recognise the passkey by, e.g. the device; a default is used when empty.</param>
+public sealed record RegisterPasskeyRequest(
+    [Required, StringLength(16384)] string Ticket,
+    JsonElement Credential,
+    [StringLength(100)] string? Name);
 
 public sealed record LoginRequest(
     [Required, StringLength(128)] string Username,

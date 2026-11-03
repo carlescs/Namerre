@@ -2,6 +2,14 @@ import { HttpClient, HttpErrorResponse, type HttpInterceptorFn } from '@angular/
 import { computed, DOCUMENT, Injectable, inject, signal } from '@angular/core';
 import { catchError, firstValueFrom, throwError } from 'rxjs';
 import { defaultLimits, type Limits, WorkloadLimits } from '../workload-limits';
+import {
+  authenticationJson,
+  type CreationOptionsJson,
+  creationOptions,
+  type RequestOptionsJson,
+  registrationJson,
+  requestOptions,
+} from './passkeys';
 
 /** Matches the server's rule for new passwords; existing shorter passwords still sign in. */
 export const minimumPasswordLength = 12;
@@ -38,6 +46,20 @@ export interface LinkedLogin {
   lastUsedAt: string | null;
 }
 
+/** A passkey registered to the user; the key itself never leaves the server. */
+export interface Passkey {
+  id: number;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+/** A WebAuthn ceremony from the server: options for the browser and the ticket to send back. */
+interface PasskeyChallenge<T> {
+  options: T;
+  ticket: string;
+}
+
 interface Session {
   username: string | null;
   userId?: number | null;
@@ -51,6 +73,9 @@ interface Session {
   /** Signed in within the last few minutes, so sensitive changes need no confirmation. */
   recentSignIn?: boolean;
   logins?: LinkedLogin[] | null;
+  /** Whether the server offers passkey sign-in. */
+  passkeysEnabled?: boolean;
+  passkeys?: Passkey[] | null;
   oidc?: SingleSignOnProvider | null;
   /** Configured workload limits; only sent to signed-in sessions. */
   limits?: Limits | null;
@@ -73,6 +98,8 @@ export class Auth {
   readonly singleSignOnSession = signal(false);
   readonly recentSignIn = signal(false);
   readonly logins = signal<LinkedLogin[]>([]);
+  readonly passkeysEnabled = signal(false);
+  readonly passkeys = signal<Passkey[]>([]);
 
   async refresh(): Promise<void> {
     const session = await firstValueFrom(this.http.get<Session>('/api/auth/session'));
@@ -87,6 +114,8 @@ export class Auth {
     this.singleSignOnSession.set(session.singleSignOnSession ?? false);
     this.recentSignIn.set(session.recentSignIn ?? false);
     this.logins.set(session.logins ?? []);
+    this.passkeysEnabled.set(session.passkeysEnabled ?? false);
+    this.passkeys.set(session.passkeys ?? []);
     this.limits.current.set(session.limits ?? defaultLimits);
   }
 
@@ -142,6 +171,67 @@ export class Auth {
     await this.refresh();
     await firstValueFrom(this.http.post('/api/auth/login', { username, password }));
     await this.refresh();
+  }
+
+  /**
+   * Signs in with a passkey: the browser offers the passkeys it holds for Namerre and asks for the
+   * device's PIN or biometric. Throws a `DOMException` when the person cancels.
+   */
+  async loginWithPasskey(): Promise<void> {
+    await this.refresh();
+    await this.passkeyAssertion('/api/auth/passkey/login');
+    await this.refresh();
+  }
+
+  /** Confirms it is the user with one of their passkeys, like `reauthenticate` with the password. */
+  async reauthenticateWithPasskey(): Promise<void> {
+    await this.refresh();
+    await this.passkeyAssertion('/api/auth/passkey/reauthenticate');
+    await this.refresh();
+  }
+
+  /**
+   * Registers a new passkey on this device. Needs a recent sign-in or the password; the browser then
+   * creates the passkey after the device's PIN or biometric.
+   */
+  async registerPasskey(name: string, password?: string): Promise<void> {
+    await this.refresh();
+    const challenge = await firstValueFrom(
+      this.http.post<PasskeyChallenge<CreationOptionsJson>>('/api/auth/passkeys/options', {
+        password: password || null,
+      }),
+    );
+    const credential = (await this.document.defaultView?.navigator.credentials.create({
+      publicKey: creationOptions(challenge.options),
+    })) as PublicKeyCredential | null;
+    if (!credential) throw new DOMException('No passkey was created.', 'NotAllowedError');
+    await firstValueFrom(
+      this.http.post('/api/auth/passkeys', {
+        ticket: challenge.ticket,
+        credential: registrationJson(credential),
+        name: name.trim() || null,
+      }),
+    );
+    await this.refresh();
+  }
+
+  async removePasskey(passkeyId: number): Promise<void> {
+    await this.refresh();
+    await firstValueFrom(this.http.delete(`/api/auth/passkeys/${passkeyId}`));
+    await this.refresh();
+  }
+
+  private async passkeyAssertion(url: string): Promise<void> {
+    const challenge = await firstValueFrom(
+      this.http.post<PasskeyChallenge<RequestOptionsJson>>('/api/auth/passkey/options', {}),
+    );
+    const credential = (await this.document.defaultView?.navigator.credentials.get({
+      publicKey: requestOptions(challenge.options),
+    })) as PublicKeyCredential | null;
+    if (!credential) throw new DOMException('No passkey was chosen.', 'NotAllowedError');
+    await firstValueFrom(
+      this.http.post(url, { ticket: challenge.ticket, credential: authenticationJson(credential) }),
+    );
   }
 
   /** Changes the password; users without one yet set it with `currentPassword` null after a recent sign-in. */

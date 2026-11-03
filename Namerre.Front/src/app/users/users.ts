@@ -13,7 +13,13 @@ import {
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom, type Observable } from 'rxjs';
-import { Auth, type LinkedLogin, minimumPasswordLength, type UserRole } from '../auth/auth';
+import {
+  Auth,
+  type LinkedLogin,
+  minimumPasswordLength,
+  type Passkey,
+  type UserRole,
+} from '../auth/auth';
 import { openModal } from '../workflow-mode/workflow-onboarding';
 import { type MoveSource, UsersApi, type UserView } from './users-api';
 
@@ -112,7 +118,7 @@ export class Users implements OnInit {
   }
 
   protected methods(user: UserView): number {
-    return (user.hasPassword ? 1 : 0) + user.logins.length;
+    return (user.hasPassword ? 1 : 0) + user.logins.length + user.passkeys.length;
   }
 
   protected select(user: UserView): void {
@@ -130,6 +136,11 @@ export class Users implements OnInit {
     const methods = [
       ...(user.hasPassword ? ['Password'] : []),
       ...user.logins.map((l) => l.displayName),
+      ...(user.passkeys.length === 1
+        ? ['1 passkey']
+        : user.passkeys.length
+          ? [`${user.passkeys.length} passkeys`]
+          : []),
     ];
     return methods.length ? methods.join(', ') : 'None';
   }
@@ -231,6 +242,13 @@ export class Users implements OnInit {
     return this.apply(
       this.api.unlink(user.id, login.id),
       `Unlinked ${login.displayName} from ${user.username}.`,
+    );
+  }
+
+  protected removePasskey(user: UserView, passkey: Passkey): Promise<unknown> {
+    return this.apply(
+      this.api.removePasskey(user.id, passkey.id),
+      `Removed passkey ${passkey.name} from ${user.username}.`,
     );
   }
 

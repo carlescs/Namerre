@@ -11,6 +11,7 @@ internal sealed class InMemoryUserStore : IUserStore
     private readonly List<UserRecord> users = [];
     private long nextUser = 1;
     private long nextLogin = 1;
+    private long nextPasskey = 1;
 
     public bool IsAvailable { get; set; } = true;
     /// <summary>Thrown by every write when set, to simulate storage failures.</summary>
@@ -29,7 +30,8 @@ internal sealed class InMemoryUserStore : IUserStore
         created = user with
         {
             Id = id,
-            Logins = user.Logins.Select(l => l with { Id = nextLogin++, UserId = id }).ToArray()
+            Logins = user.Logins.Select(l => l with { Id = nextLogin++, UserId = id }).ToArray(),
+            Passkeys = user.Passkeys.Select(p => p with { Id = nextPasskey++, UserId = id }).ToArray()
         };
         users.Add(created);
         return true;
@@ -41,7 +43,12 @@ internal sealed class InMemoryUserStore : IUserStore
         var index = users.FindIndex(u => u.Id == updated.Id && u.Stamp == expectedStamp);
         if (index < 0)
             return false;
-        users[index] = updated with { Logins = users[index].Logins, CreatedAt = users[index].CreatedAt };
+        users[index] = updated with
+        {
+            Logins = users[index].Logins,
+            Passkeys = users[index].Passkeys,
+            CreatedAt = users[index].CreatedAt
+        };
         return true;
     }
 
@@ -71,6 +78,47 @@ internal sealed class InMemoryUserStore : IUserStore
             Logins = users[index].Logins.Where(l => l.Id != loginId).ToArray()
         };
         return true;
+    }
+
+    public bool TryAddPasskey(long userId, string expectedStamp, string newStamp, UserPasskeyRecord passkey)
+    {
+        Write();
+        var index = users.FindIndex(u => u.Id == userId && u.Stamp == expectedStamp);
+        if (index < 0 || users.Any(u => u.Passkeys.Any(p => p.CredentialId.AsSpan().SequenceEqual(passkey.CredentialId))))
+            return false;
+        users[index] = users[index] with
+        {
+            Stamp = newStamp,
+            Passkeys = [.. users[index].Passkeys, passkey with { Id = nextPasskey++, UserId = userId }]
+        };
+        return true;
+    }
+
+    public bool TryRemovePasskey(long userId, string expectedStamp, string newStamp, long passkeyId)
+    {
+        Write();
+        var index = users.FindIndex(u => u.Id == userId && u.Stamp == expectedStamp);
+        if (index < 0 || users[index].Passkeys.All(p => p.Id != passkeyId))
+            return false;
+        users[index] = users[index] with
+        {
+            Stamp = newStamp,
+            Passkeys = users[index].Passkeys.Where(p => p.Id != passkeyId).ToArray()
+        };
+        return true;
+    }
+
+    public void RecordPasskeySignIn(long userId, long passkeyId, uint signCount, DateTimeOffset at)
+    {
+        Write();
+        var index = users.FindIndex(u => u.Id == userId);
+        if (index >= 0)
+            users[index] = users[index] with
+            {
+                LastSignInAt = at,
+                Passkeys = users[index].Passkeys
+                    .Select(p => p.Id == passkeyId ? p with { SignCount = signCount, LastUsedAt = at } : p).ToArray()
+            };
     }
 
     public bool TryMoveLogin(long loginId, long fromUserId, string fromStamp, long toUserId, string toStamp,
@@ -106,7 +154,8 @@ internal sealed class InMemoryUserStore : IUserStore
         users[to] = users[to] with
         {
             Stamp = newStamp,
-            Logins = [.. users[to].Logins, .. users[from].Logins.Select(l => l with { UserId = toUserId })]
+            Logins = [.. users[to].Logins, .. users[from].Logins.Select(l => l with { UserId = toUserId })],
+            Passkeys = [.. users[to].Passkeys, .. users[from].Passkeys.Select(p => p with { UserId = toUserId })]
         };
         users.RemoveAt(from);
         return true;
