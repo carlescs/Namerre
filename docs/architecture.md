@@ -264,6 +264,17 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
   `AccountPolicy` (signed-in `password`, `reauthenticate`, `passkey/reauthenticate`, `passkeys/options`,
   `oidc/link`) allows 5/min per user ID with no shared ceiling, so anonymous traffic cannot block signed-in users.
 - A configured `Namerre:Authentication` account is a never-stored break-glass `Admin` with ID 0.
+- Usernames (`Application/Authentication/UsernameSkeleton`, used by `UserAccounts.IsValidUsername`, the
+  single rule for setup, creation and provisioning): new names are trimmed and normalized to NFKC, and
+  refused (`InvalidUsername`) if they hold control, format (bidi overrides, zero-width characters, BOM),
+  line/paragraph separator, surrogate-half, private-use, unassigned or noncharacter code points, Hangul
+  fillers, or any space other than U+0020. `UsernameSkeleton.Of` is a pragmatic confusable key (NFKC,
+  diacritics and format characters dropped, case folded, a small Cyrillic/Greek/Latin look-alike table,
+  and `0`→`o`, `1`/`i`/`l`/`|`→`l`); creating a user whose skeleton equals an existing user's (the
+  configured administrator included) is refused with 409 `UsernameConfusable`, and provisioning
+  (`ProvisionedUsername`) strips what `Clean` drops from the claim and moves on to the next `-N` suffix.
+  Uniqueness stays NOCASE in the database. Existing stored users and the configured administrator are
+  never revalidated, so legacy names keep signing in; only new names are checked.
 - SSO identities are keyed on (issuer = configured authority, `sub`); `OidcLogin.Read` checks
   `RequiredRole`, then `AuthenticationSetup.OnTicketReceived` resolves the linked user, provisions a
   `User` when `Oidc:AutoProvision` allows (never matching by username), or links the identity when

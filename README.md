@@ -321,7 +321,11 @@ server keeps every account usable:
 - Disabling a user, resetting or removing their password, changing their role, linking or
   unlinking an identity, and adding or removing a passkey replace that user's credential stamp, which ends their existing sessions
   (and live updates) right away.
-- Usernames are unique ignoring case. A user without a password fails password sign-in exactly
+- New usernames are normalized to Unicode NFKC and must be 1 to 128 visible characters: control,
+  invisible or formatting characters (zero-width spaces, bidirectional overrides, line separators and
+  similar) are refused. A name that looks like an existing one (such as a Cyrillic `а` in place of
+  Latin `a`, or `adm1n` next to `admin`) is refused as well. Usernames are unique ignoring case;
+  existing users keep their names. A user without a password fails password sign-in exactly
   like a wrong password, without revealing that the account exists.
 
 Rename history belongs to the user who prepared each plan: a user sees, exports, undoes and
@@ -502,8 +506,9 @@ Every single sign-on resolves to a local user, keyed on the provider's issuer an
 `sub` claim (never on `preferred_username` or email, which can change or be reused):
 
 - **First sign-in.** With `AutoProvision` on (the default), an identity that is not linked yet
-  gets a new local user with the `User` role, named after `UsernameClaim` (with a `-2`, `-3`, …
-  suffix if the name is taken). An administrator promotes it if needed. With `AutoProvision`
+  gets a new local user with the `User` role, named after `UsernameClaim` (cleaned of invisible
+  characters and normalized like any username, with a `-2`, `-3`, … suffix if the name is taken or
+  looks like an existing one). An administrator promotes it if needed. With `AutoProvision`
   off, unlinked identities are refused until someone links them. Until the first administrator is
   installed with the setup token (or configured), no users are provisioned, so single sign-on
   cannot end installation without an administrator.
