@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Auth, type LinkedLogin } from '../auth';
+import { Auth, type LinkedLogin, type Passkey } from '../auth';
 import { Account } from './account';
 
 describe('Account', () => {
@@ -11,6 +11,17 @@ describe('Account', () => {
   const removePassword = vi.fn<() => Promise<void>>();
   const unlink = vi.fn<(id: number) => Promise<void>>();
   const startSingleSignOn = vi.fn();
+  const registerPasskey = vi.fn<(name: string, password?: string) => Promise<void>>();
+  const removePasskey = vi.fn<(id: number) => Promise<void>>();
+  const reauthenticateWithPasskey = vi.fn<() => Promise<void>>();
+  const passkeysEnabled = signal(false);
+  const passkeys = signal<Passkey[]>([]);
+  const passkey: Passkey = {
+    id: 3,
+    name: 'Phone',
+    createdAt: '2026-11-02T00:00:00Z',
+    lastUsedAt: null,
+  };
   const canChangePassword = signal(true);
   const hasPassword = signal(true);
   const managedByConfiguration = signal(false);
@@ -26,7 +37,16 @@ describe('Account', () => {
   };
 
   beforeEach(async () => {
-    for (const mock of [changePassword, linkSingleSignOn, reauthenticate, removePassword, unlink]) {
+    for (const mock of [
+      changePassword,
+      linkSingleSignOn,
+      reauthenticate,
+      removePassword,
+      unlink,
+      registerPasskey,
+      removePasskey,
+      reauthenticateWithPasskey,
+    ]) {
       mock.mockReset().mockResolvedValue();
     }
     startSingleSignOn.mockReset();
@@ -36,6 +56,8 @@ describe('Account', () => {
     recentSignIn.set(false);
     logins.set([]);
     singleSignOn.set(null);
+    passkeysEnabled.set(false);
+    passkeys.set([]);
     await TestBed.configureTestingModule({
       imports: [Account],
       providers: [
@@ -56,11 +78,28 @@ describe('Account', () => {
             removePassword,
             unlink,
             startSingleSignOn,
+            passkeysEnabled,
+            passkeys,
+            registerPasskey,
+            removePasskey,
+            reauthenticateWithPasskey,
           },
         },
       ],
     }).compileComponents();
   });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  function supportPasskeys(): void {
+    passkeysEnabled.set(true);
+    vi.stubGlobal('isSecureContext', true);
+    vi.stubGlobal('PublicKeyCredential', class {});
+    Object.defineProperty(navigator, 'credentials', {
+      value: { get: vi.fn(), create: vi.fn() },
+      configurable: true,
+    });
+  }
 
   function fill(element: HTMLElement, selector: string, value: string): void {
     const input = element.querySelector(selector) as HTMLInputElement;
@@ -220,5 +259,85 @@ describe('Account', () => {
     expect(reauthenticate).toHaveBeenCalledWith('my-password');
     await fixture.whenStable();
     expect(element.textContent).toContain('Password removed');
+  });
+
+  it('adds a named passkey right away after a recent sign-in', async () => {
+    supportPasskeys();
+    recentSignIn.set(true);
+    const { fixture, element } = await render();
+    fill(element, '#passkey-name', 'Laptop');
+    await fixture.whenStable();
+    buttonNamed(element, 'Add a passkey').click();
+    await vi.waitFor(() => expect(registerPasskey).toHaveBeenCalledWith('Laptop', undefined));
+    await fixture.whenStable();
+    expect(element.textContent).toContain('Passkey added');
+  });
+
+  it('confirms the password before adding a passkey', async () => {
+    supportPasskeys();
+    const { fixture, element } = await render();
+    buttonNamed(element, 'Add a passkey').click();
+    await fixture.whenStable();
+    expect(registerPasskey).not.toHaveBeenCalled();
+    fill(element, '#confirm-password', 'my-password');
+    await fixture.whenStable();
+    buttonNamed(element, 'Confirm').click();
+    await vi.waitFor(() => expect(registerPasskey).toHaveBeenCalledWith('', 'my-password'));
+  });
+
+  it('says nothing when the browser prompt is cancelled', async () => {
+    supportPasskeys();
+    recentSignIn.set(true);
+    registerPasskey.mockRejectedValue(new DOMException('closed', 'NotAllowedError'));
+    const { fixture, element } = await render();
+    buttonNamed(element, 'Add a passkey').click();
+    await vi.waitFor(() => expect(registerPasskey).toHaveBeenCalled());
+    await fixture.whenStable();
+    expect(element.querySelector('[role="alert"]')).toBeNull();
+    expect(element.textContent).not.toContain('Confirm it is you');
+  });
+
+  it('removes a passkey unless it is the last way to sign in', async () => {
+    supportPasskeys();
+    passkeys.set([passkey]);
+    hasPassword.set(false);
+    let { fixture, element } = await render();
+    const remove = () =>
+      element.querySelector('[aria-label="Remove passkey Phone"]') as HTMLButtonElement;
+    expect(remove().disabled).toBe(true);
+    fixture.destroy();
+
+    hasPassword.set(true);
+    ({ fixture, element } = await render());
+    remove().click();
+    await vi.waitFor(() => expect(removePasskey).toHaveBeenCalledWith(3));
+    await fixture.whenStable();
+    expect(element.textContent).toContain('Removed Phone');
+  });
+
+  it('lets passkey-only users confirm with a passkey before setting a password', async () => {
+    supportPasskeys();
+    passkeys.set([passkey]);
+    hasPassword.set(false);
+    const { fixture, element } = await render();
+    expect(element.textContent).not.toContain('Sign in again');
+    buttonNamed(element, 'Confirm with a passkey').click();
+    await vi.waitFor(() => expect(reauthenticateWithPasskey).toHaveBeenCalled());
+    await fixture.whenStable();
+    expect(element.textContent).toContain('Confirmed.');
+  });
+
+  it('confirms a sensitive change with a passkey instead of the password', async () => {
+    supportPasskeys();
+    passkeys.set([passkey]);
+    singleSignOn.set({ displayName: 'Keycloak' });
+    logins.set([login]);
+    const { fixture, element } = await render();
+    buttonNamed(element, 'Remove password').click();
+    await fixture.whenStable();
+    buttonNamed(element, 'Use a passkey').click();
+    await vi.waitFor(() => expect(removePassword).toHaveBeenCalled());
+    expect(reauthenticateWithPasskey).toHaveBeenCalled();
+    expect(reauthenticate).not.toHaveBeenCalled();
   });
 });

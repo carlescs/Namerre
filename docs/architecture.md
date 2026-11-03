@@ -179,7 +179,8 @@ Everything app-specific is under the `Namerre` section, bound to `NamerreOptions
   timeout 100 ms for user patterns (1 s for `ReleaseTagsPlugin`'s built-in ones), TMDB lookups 15 s overall (5 s per attempt).
 - `Authentication`, incl. optional `Oidc` single sign-on, e.g. Keycloak — see
   `Namerre.Api/Authentication/OidcLogin.cs`; the OIDC scheme is hidden by `OidcAwareSchemeProvider`
-  unless `Authority` is set.
+  unless `Authority` is set — and `Passkeys` (`Enabled`, optional public `Origin`; see
+  `Namerre.Api/Authentication/PasskeyLogin.cs`).
 - `Tmdb`, `ReverseProxy`.
 - `Telemetry`: optional OTLP export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless
   `OtlpEndpoint` is set. Namerre's own `ActivitySource`/`Meter` and instruments live in
@@ -195,35 +196,55 @@ Everything app-specific is under the `Namerre` section, bound to `NamerreOptions
 ## Users and authentication
 
 Every session belongs to a local user (`Application/Authentication`: `UserRecord`,
-`UserLoginRecord`, `UserRole` `Admin`/`User`, `IUserStore`, `ICurrentUser`).
+`UserLoginRecord`, `UserPasskeyRecord`, `UserRole` `Admin`/`User`, `IUserStore`, `ICurrentUser`).
 
 - Account rules live in `Application/Authentication/UserAccounts` (a singleton registered by
   `AddApplication()`, caching users in memory, mutations under one lock, compare-and-swap on each
   user's random credential stamp): unique NOCASE usernames, `PasswordPolicy` (12 characters for new
   passwords), at least one enabled admin, no self-demotion/disable/delete, confirmation of sensitive
   own changes (`ConfirmOwnChange`: a recent sign-in or the password), and an enabled user always
-  keeps a password or a linked identity. It depends only on ports: `IUserStore`, `IPasswordHasher`
+  keeps a password, a passkey or a linked identity (`UserRecord.SignInMethods`). It depends only on ports: `IUserStore`, `IPasswordHasher`
   (`Infrastructure/Authentication/PasswordHasher`, Identity V3 PBKDF2-SHA512 at 210,000 iterations)
   and `IAdministratorConfiguration` (`AdministratorConfiguration` over `Namerre:Authentication`), so
   `Namerre.Application.UnitTests` covers the rules with an in-memory store and a fast test hasher.
 - Controllers reach the rules through thin requests: own account and setup in
   `Application/Authentication` (`RequiresSetupQuery`, `GetUserQuery`, `CompleteSetupCommand`,
   `PasswordSignInCommand`, `VerifyPasswordQuery`, `ConfirmOwnChangeCommand`, `SetPasswordCommand`,
-  `RemoveOwnPasswordCommand`, `UnlinkLoginCommand`), administration in `Application/Users`
+  `RemoveOwnPasswordCommand`, `UnlinkLoginCommand`, the passkey requests below), administration in `Application/Users`
   (`ListUsersQuery`, `CreateUserCommand`, `UpdateUserCommand`, `RemovePasswordCommand`,
   `LinkLoginCommand`, `MoveLoginCommand`, `MergeUsersCommand`, `DeleteUserCommand`). Authentication
   plumbing that runs outside a controller — cookie validation, the OIDC ticket handler and
   `HubRenameNotifier` — uses `UserAccounts` directly.
-- Every access change (role, disabled, password, link) replaces the stamp, which
+- Every access change (role, disabled, password, link, passkey) replaces the stamp, which
   `AuthenticationSetup.IsValidSession` checks on each request, so sessions end at once.
 - `UserSession` builds the cookie principal from the local user (ID, name, role claim, stamp,
-  method, sign-in time; SSO sessions add the `OidcLogin.Stamp`) and defines the live-update group.
+  method `password`/`passkey`/`oidc`, sign-in time; SSO sessions add the `OidcLogin.Stamp`) and
+  defines the live-update group.
 - A configured `Namerre:Authentication` account is a never-stored break-glass `Admin` with ID 0.
 - SSO identities are keyed on (issuer = configured authority, `sub`); `OidcLogin.Read` checks
   `RequiredRole`, then `AuthenticationSetup.OnTicketReceived` resolves the linked user, provisions a
   `User` when `Oidc:AutoProvision` allows (never matching by username), or links the identity when
   the challenge carries the protected link items from `AuthController.LinkSingleSignOn` (needs a
   recent sign-in or the password).
+- Passkeys (WebAuthn): `Application/Authentication/PasskeyAccounts` (singleton) runs the ceremonies
+  through the `IPasskeyCeremonies` port and applies `UserAccounts` rules (`AddPasskey`,
+  `RemovePasskey`, `FindPasskey`, `TryRecordPasskeySignIn`, which updates the counter only if it is
+  still the one verified against and fails the sign-in otherwise, storage failures included; at most
+  20 per user, merges included, credential IDs unique
+  across users, one random user handle per user). `Infrastructure/Authentication/PasskeyCeremonies`
+  implements the port with Fido2NetLib: discoverable credentials, user verification required, no
+  attestation; its opaque state holds the original options and expected origin. Thin requests:
+  `BeginPasskeySignInQuery`, `PasskeySignInCommand`, `BeginPasskeyRegistrationCommand` (confirms
+  like linking SSO), `CompletePasskeyRegistrationCommand` (pinned to the confirmed stamp),
+  `RemovePasskeyCommand` (own account and `api/users`). `Namerre.Api/Authentication/PasskeyLogin`
+  derives the relying party (configured `Origin`, else the request's scheme and host) and carries
+  the state through the browser in time-limited Data Protection tickets bound to a purpose (and
+  user + stamp for registration), redeemed once against an in-memory nonce set; a random protector
+  subpurpose per process makes tickets die with it, so a restart cannot revive a redeemed one. The
+  registration state leaves out the excluded credentials to stay small. A passkey sign-in
+  is a fresh sign-in (`UserSession.IsRecent`). Merging moves passkeys with the identities.
+  `Namerre.Infrastructure.UnitTests/Authentication/SoftwareAuthenticator` (linked into
+  `Namerre.Api.Tests`) is an ES256 software authenticator that answers real WebAuthn JSON.
 - Moving a link can merge its user into the target (`MergeUsersCommand`: `UserAccounts.Merge`, then
   `IUserHistory.Reattribute`, implemented by `RenameService` under its job gate, rewrites
   `CreatedBy`/`RecoveredBy`; a failure there is `HistoryNotMerged` (503) and keeps the merge).
@@ -253,7 +274,9 @@ selector prefix, SCSS component styles, Tailwind CSS v4 via PostCSS in `src/styl
 routes in `src/app/app.routes.ts`. Use same-origin `/api/...` URLs.
 
 - **Auth.** `Auth` (`src/app/auth/auth.ts`) holds the session (`role`/`isAdmin`, `hasPassword`,
-  `logins`, `recentSignIn`); `auth/account` manages the user's own password and SSO links; `users/`
+  `logins`, `passkeys`/`passkeysEnabled`, `recentSignIn`) and runs the passkey ceremonies through
+  `auth/passkeys.ts` (base64url ↔ `navigator.credentials` and WebAuthn JSON; `passkeysSupported`
+  needs a secure context); `auth/account` manages the user's own password, passkeys and SSO links; `users/`
   is the admin-only user management page (route guarded by `isAdmin`, linked from `settings-menu`);
   admin-only controls (watch folders, run deletion) are hidden for users.
 - **Renamer.** The root route lazy-loads `modules/renamer`; `rename-api.ts` is the HTTP client for

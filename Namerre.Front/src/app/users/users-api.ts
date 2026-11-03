@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import type { LinkedLogin, UserRole } from '../auth/auth';
+import type { LinkedLogin, Passkey, UserRole } from '../auth/auth';
 
 /** A local user as administrators see it (`/api/users`). */
 export interface UserView {
@@ -14,6 +14,7 @@ export interface UserView {
   createdAt: string | null;
   lastSignInAt: string | null;
   logins: LinkedLogin[];
+  passkeys: Passkey[];
 }
 
 /**
@@ -72,6 +73,10 @@ export class UsersApi {
 
   unlink(id: number, loginId: number) {
     return this.http.delete<UserView>(`/api/users/${id}/logins/${loginId}`);
+  }
+
+  removePasskey(id: number, passkeyId: number) {
+    return this.http.delete<UserView>(`/api/users/${id}/passkeys/${passkeyId}`);
   }
 
   delete(id: number) {

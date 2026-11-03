@@ -19,6 +19,7 @@ describe('Users', () => {
     createdAt: '2026-11-01T00:00:00Z',
     lastSignInAt: null,
     logins: [],
+    passkeys: [],
   };
   const alice: UserView = {
     ...admin,
@@ -189,6 +190,35 @@ describe('Users', () => {
     await settle(fixture);
     expect(element.querySelector('[role="alert"]')?.textContent).toContain(
       'changed while you were editing',
+    );
+  });
+
+  it('shows passkeys, counts them as a sign-in method and removes them', async () => {
+    const withPasskey: UserView = {
+      ...alice,
+      passkeys: [{ id: 9, name: 'Phone', createdAt: '2026-11-02T00:00:00Z', lastUsedAt: null }],
+    };
+    const fixture = TestBed.createComponent(Users);
+    await fixture.whenStable();
+    http.expectOne('/api/users').flush([admin, withPasskey]);
+    await settle(fixture);
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelectorAll('tbody tr')[1]?.textContent).toContain('1 passkey');
+    (element.querySelector('[aria-label="Manage alice"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    // With a passkey, the identity is no longer alice's only way to sign in.
+    expect(
+      (element.querySelector('[aria-label="Unlink alice"]') as HTMLButtonElement).disabled,
+    ).toBe(false);
+    (element.querySelector('[aria-label="Remove passkey Phone"]') as HTMLButtonElement).click();
+    const removal = http.expectOne('/api/users/2/passkeys/9');
+    expect(removal.request.method).toBe('DELETE');
+    removal.flush(alice);
+    await settle(fixture);
+    http.expectOne('/api/users').flush([admin, alice]);
+    await settle(fixture);
+    expect(element.querySelector('[role="status"]')?.textContent).toContain(
+      'Removed passkey Phone from alice',
     );
   });
 

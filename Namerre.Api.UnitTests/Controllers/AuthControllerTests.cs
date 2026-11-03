@@ -463,13 +463,15 @@ public sealed class AuthControllerTests
             .AddApplication()
             .AddSingleton(account)
             .AddSingleton(Substitute.For<IUserHistory>())
+            .AddSingleton(Substitute.For<IPasskeyCeremonies>())
             .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
             .AddSingleton(authentication)
             .BuildServiceProvider();
         var oidcOptions = Substitute.For<IOptionsMonitor<OpenIdConnectOptions>>();
         oidcOptions.Get(OidcLogin.Scheme).Returns(new OpenIdConnectOptions { ConfigurationManager = providerMetadata });
         return new AuthController(services.GetRequiredService<ISender>(), oidc ?? new OidcLogin(Options.Create(new NamerreOptions())), oidcOptions,
-            antiforgery, NullLogger<AuthController>.Instance, new EphemeralDataProtectionProvider(), time: time)
+            antiforgery, NullLogger<AuthController>.Instance, new EphemeralDataProtectionProvider(), time: time,
+            passkeyLogin: new PasskeyLogin(Options.Create(new NamerreOptions()), new EphemeralDataProtectionProvider(), time))
         {
             ControllerContext = new ControllerContext
             {

@@ -6,13 +6,78 @@ import { Login } from './login';
 
 describe('Login', () => {
   const login = vi.fn<(username: string, password: string) => Promise<void>>();
+  const loginWithPasskey = vi.fn<() => Promise<void>>();
+  const passkeysEnabled = signal(false);
 
   beforeEach(async () => {
     login.mockReset().mockResolvedValue();
+    loginWithPasskey.mockReset().mockResolvedValue();
+    passkeysEnabled.set(false);
     await TestBed.configureTestingModule({
       imports: [Login],
-      providers: [{ provide: Auth, useValue: { login, singleSignOn: signal(null) } }],
+      providers: [
+        {
+          provide: Auth,
+          useValue: { login, loginWithPasskey, passkeysEnabled, singleSignOn: signal(null) },
+        },
+      ],
     }).compileComponents();
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  function passkeyButton(fixture: { nativeElement: HTMLElement }): HTMLButtonElement | undefined {
+    return [...fixture.nativeElement.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Sign in with a passkey',
+    );
+  }
+
+  function supportPasskeys(): void {
+    vi.stubGlobal('isSecureContext', true);
+    vi.stubGlobal('PublicKeyCredential', class {});
+    Object.defineProperty(navigator, 'credentials', {
+      value: { get: vi.fn(), create: vi.fn() },
+      configurable: true,
+    });
+  }
+
+  it('offers passkeys only when the server and the browser support them', async () => {
+    let fixture = TestBed.createComponent(Login);
+    await fixture.whenStable();
+    expect(passkeyButton(fixture)).toBeUndefined();
+
+    passkeysEnabled.set(true);
+    supportPasskeys();
+    fixture = TestBed.createComponent(Login);
+    await fixture.whenStable();
+    expect(passkeyButton(fixture)).toBeDefined();
+  });
+
+  it.each([
+    [new HttpErrorResponse({ status: 401 }), 'That passkey was not accepted.'],
+    [new HttpErrorResponse({ status: 429 }), 'Too many sign-in attempts.'],
+    [new Error('offline'), 'Unable to sign in with a passkey.'],
+  ])('signs in with a passkey and explains %s', async (failure, message) => {
+    passkeysEnabled.set(true);
+    supportPasskeys();
+    loginWithPasskey.mockRejectedValue(failure);
+    const fixture = TestBed.createComponent(Login);
+    await fixture.whenStable();
+    passkeyButton(fixture)!.click();
+    await fixture.whenStable();
+    expect(loginWithPasskey).toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain(message);
+  });
+
+  it('says nothing when the passkey prompt is cancelled', async () => {
+    passkeysEnabled.set(true);
+    supportPasskeys();
+    loginWithPasskey.mockRejectedValue(new DOMException('closed', 'NotAllowedError'));
+    const fixture = TestBed.createComponent(Login);
+    await fixture.whenStable();
+    passkeyButton(fixture)!.click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
   });
 
   it('submits credentials and clears the password after a failed login', async () => {

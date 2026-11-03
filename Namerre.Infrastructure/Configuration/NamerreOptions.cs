@@ -34,6 +34,19 @@ public sealed class AuthenticationOptions
     public string? Username { get; set; }
     public string? PasswordHash { get; set; }
     public OidcOptions Oidc { get; set; } = new();
+    public PasskeyOptions Passkeys { get; set; } = new();
+}
+
+/// <summary>Passkey (WebAuthn) sign-in for local users.</summary>
+public sealed class PasskeyOptions
+{
+    public bool Enabled { get; set; } = true;
+    /// <summary>
+    /// The public HTTPS origin people open Namerre at, e.g. <c>https://namerre.example.com</c>; its host is the
+    /// passkeys' relying party ID. Empty uses each request's own scheme and host, which suits a reverse proxy that
+    /// keeps the <c>Host</c> header.
+    /// </summary>
+    public string? Origin { get; set; }
 }
 
 /// <summary>Optional OpenID Connect sign-in (for example Keycloak). Disabled while <see cref="Authority"/> is empty.</summary>

@@ -38,6 +38,7 @@ public static class DependencyInjection
         services.AddSingleton<PresetService>();
         services.AddSingleton<IWatchFolders, WatchFolderService>();
         services.AddSingleton<UserAccounts>();
+        services.AddSingleton<PasskeyAccounts>();
 
         return services;
     }

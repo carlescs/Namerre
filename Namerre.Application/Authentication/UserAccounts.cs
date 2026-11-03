@@ -6,7 +6,7 @@ namespace Namerre.Application.Authentication;
 
 /// <summary>
 /// Local users and the rules that keep them usable: unique usernames, the password policy, at least one enabled
-/// administrator, and at least one sign-in method for every enabled user. Every change that affects a user's access
+/// administrator, and at least one sign-in method (password, passkey or single sign-on) for every enabled user. Every change that affects a user's access
 /// replaces their credential stamp, which ends their existing sessions.
 /// </summary>
 /// <remarks>
@@ -19,6 +19,8 @@ public sealed class UserAccounts
 {
     public const long ConfiguredUserId = 0;
     public const int MaximumUsernameLength = 128;
+    public const int MaximumPasskeyNameLength = 100;
+    public const int MaximumPasskeysPerUser = 20;
     private readonly object gate = new();
     private readonly IUserStore store;
     private readonly IPasswordHasher passwords;
@@ -42,7 +44,7 @@ public sealed class UserAccounts
                 throw new InvalidOperationException(
                     "The administrator credentials are invalid. Configure Namerre:Authentication:Username and Namerre:Authentication:PasswordHash, or restore valid administrator data.");
             configured = new UserRecord(ConfiguredUserId, username!.Trim(), passwordHash, UserRole.Admin, false,
-                ConfiguredStamp(username.Trim(), passwordHash!), DateTimeOffset.UnixEpoch, null, []);
+                ConfiguredStamp(username.Trim(), passwordHash!), DateTimeOffset.UnixEpoch, null, [], []);
         }
 
         users = Load();
@@ -290,7 +292,7 @@ public sealed class UserAccounts
             var user = Editable(id);
             if (!user.HasPassword)
                 return user;
-            if (!user.Disabled && user.Logins.Count == 0)
+            if (!user.Disabled && user.SignInMethods == 1)
                 throw AccountException.LastSignInMethod();
             Save(user, user with { PasswordHash = null, Stamp = NewStamp() });
             logger.LogInformation("{Actor} removed the password of user {UserId} ({Username}).", LogText.Clean(actor.Username), id,
@@ -348,6 +350,100 @@ public sealed class UserAccounts
         }
     }
 
+    /// <summary>The user a passkey is registered to, with the passkey, or null.</summary>
+    public (UserRecord User, UserPasskeyRecord Passkey)? FindPasskey(byte[] credentialId)
+    {
+        foreach (var user in Volatile.Read(ref users).Values)
+            foreach (var passkey in user.Passkeys)
+                if (passkey.CredentialId.AsSpan().SequenceEqual(credentialId))
+                    return (user, passkey);
+        return null;
+    }
+
+    /// <summary>
+    /// The WebAuthn user handle for a new passkey of this user: the one their passkeys already use, so authenticators
+    /// treat them as the same account, or a new random one. Never derived from the user's ID or name.
+    /// </summary>
+    public static byte[] PasskeyUserHandle(UserRecord user)
+        => user.Passkeys.Count > 0 ? user.Passkeys[0].UserHandle : RandomNumberGenerator.GetBytes(32);
+
+    /// <summary>
+    /// Registers a verified passkey. <paramref name="expectedStamp"/> pins the user version that started the
+    /// registration, which was confirmed (<see cref="ConfirmOwnChange"/>) before it began.
+    /// </summary>
+    public UserRecord AddPasskey(UserReference actor, long id, string expectedStamp, NewPasskey passkey, string? name)
+    {
+        lock (gate)
+        {
+            var user = Editable(id);
+            if (user.Stamp != expectedStamp)
+                throw AccountException.Changed();
+            if (user.Disabled)
+                throw new AccountException("UserDisabled", "Disabled users cannot register passkeys.", 409);
+            if (user.Passkeys.Count >= MaximumPasskeysPerUser)
+                throw AccountException.TooManyPasskeys();
+            if (FindPasskey(passkey.CredentialId) is not null)
+                throw PasskeyTaken();
+            var record = new UserPasskeyRecord(0, id, passkey.CredentialId, passkey.PublicKey, passkey.UserHandle,
+                passkey.SignCount, PasskeyName(name, user), time.GetUtcNow(), null);
+            if (!store.TryAddPasskey(id, user.Stamp, NewStamp(), record))
+            {
+                Reload();
+                throw FindPasskey(passkey.CredentialId) is not null ? PasskeyTaken() : AccountException.Changed();
+            }
+            Reload();
+            logger.LogInformation("{Actor} registered passkey {PasskeyName} for user {UserId} ({Username}).",
+                LogText.Clean(actor.Username), LogText.Clean(record.Name), id, LogText.Clean(user.Username));
+            return Find(id)!;
+        }
+    }
+
+    public UserRecord RemovePasskey(UserReference actor, long id, long passkeyId)
+    {
+        lock (gate)
+        {
+            var user = Editable(id);
+            var passkey = user.Passkeys.FirstOrDefault(p => p.Id == passkeyId)
+                ?? throw new AccountException("PasskeyNotFound", "The passkey is not registered to this user.", 404);
+            if (!user.Disabled && user.SignInMethods == 1)
+                throw AccountException.LastSignInMethod();
+            if (!store.TryRemovePasskey(id, user.Stamp, NewStamp(), passkeyId))
+            {
+                Reload();
+                throw AccountException.Changed();
+            }
+            Reload();
+            logger.LogInformation("{Actor} removed passkey {PasskeyName} from user {UserId} ({Username}).",
+                LogText.Clean(actor.Username), LogText.Clean(passkey.Name), id, LogText.Clean(user.Username));
+            return Find(id)!;
+        }
+    }
+
+    /// <summary>
+    /// Records a verified passkey sign-in and the authenticator's new signature counter. False when the passkey was
+    /// removed, or used again, since <paramref name="passkey"/> was read: the sign-in must then fail. Unlike password
+    /// sign-ins this is not best effort, since clone detection needs the counter; storage failures throw.
+    /// </summary>
+    public bool TryRecordPasskeySignIn(UserRecord user, UserPasskeyRecord passkey, uint signCount)
+    {
+        var recorded = store.TryRecordPasskeySignIn(user.Id, passkey.Id, passkey.SignCount, signCount,
+            time.GetUtcNow());
+        lock (gate)
+            Reload();
+        return recorded;
+    }
+
+    private static string PasskeyName(string? name, UserRecord user)
+    {
+        var clean = new string((name ?? "").Where(c => !char.IsControl(c)).ToArray()).Trim();
+        if (clean.Length == 0)
+            clean = "Passkey " + (user.Passkeys.Count + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return Truncate(clean, MaximumPasskeyNameLength);
+    }
+
+    private static AccountException PasskeyTaken() => new("PasskeyTaken",
+        "This passkey is already registered.", 409);
+
     /// <summary>
     /// Moves a link to another user, e.g. from an automatically created user to the right one. When the source has
     /// no other way to sign in it must be deleted (<paramref name="deleteSource"/>), so no enabled user is left
@@ -386,8 +482,8 @@ public sealed class UserAccounts
 
     /// <summary>
     /// Merges <paramref name="sourceId"/> into <paramref name="targetId"/>, e.g. a user created automatically on
-    /// first sign-in into the person's existing user: every identity of the source moves to the target and the
-    /// source is deleted with its password. The target keeps its own role and password. The caller re-attributes
+    /// first sign-in into the person's existing user: every identity and passkey of the source moves to the target and
+    /// the source is deleted with its password. The target keeps its own role and password. The caller re-attributes
     /// the source's history (<see cref="IUserHistory"/>). Returns the merged target.
     /// </summary>
     public UserRecord Merge(UserReference actor, long sourceId, long targetId)
@@ -399,6 +495,8 @@ public sealed class UserAccounts
             if (source.Id == target.Id)
                 throw new AccountException("SameUser", "Choose two different users to merge.", 409);
             EnsureDeletable(actor, source);
+            if (target.Passkeys.Count + source.Passkeys.Count > MaximumPasskeysPerUser)
+                throw AccountException.TooManyPasskeys();
             if (!store.TryMergeUser(source.Id, source.Stamp, target.Id, target.Stamp, NewStamp()))
             {
                 Reload();
@@ -497,7 +595,7 @@ public sealed class UserAccounts
     private static string Truncate(string value, int length) => value.Length <= length ? value : value[..length];
 
     private UserRecord NewUser(string username, UserRole role, string? passwordHash)
-        => new(0, username, passwordHash, role, false, NewStamp(), time.GetUtcNow(), null, []);
+        => new(0, username, passwordHash, role, false, NewStamp(), time.GetUtcNow(), null, [], []);
 
     private void Reload() => Volatile.Write(ref users, Load());
 

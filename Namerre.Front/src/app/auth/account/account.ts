@@ -1,7 +1,16 @@
+import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DOCUMENT, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Auth, type LinkedLogin, minimumPasswordLength, serverCode, serverMessage } from '../auth';
+import {
+  Auth,
+  type LinkedLogin,
+  minimumPasswordLength,
+  type Passkey,
+  serverCode,
+  serverMessage,
+} from '../auth';
+import { passkeyCancelled, passkeysSupported } from '../passkeys';
 
 const linkErrors: Record<string, string> = {
   taken: 'That single sign-on identity is already linked to another Namerre user.',
@@ -11,14 +20,14 @@ const linkErrors: Record<string, string> = {
 };
 
 /** A sensitive change waiting for the user to confirm it is them. */
-type Pending = 'link' | 'remove-password';
+type Pending = 'link' | 'remove-password' | 'add-passkey';
 
 /**
- * The signed-in user's own account: password (change, set a first one, or remove it) and the single
- * sign-on identities linked to it. A user always keeps at least one way to sign in.
+ * The signed-in user's own account: password (change, set a first one, or remove it), passkeys and
+ * the single sign-on identities linked to it. A user always keeps at least one way to sign in.
  */
 @Component({
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, DatePipe],
   selector: 'app-account',
   styleUrl: './account.scss',
   templateUrl: './account.html',
@@ -55,6 +64,21 @@ export class Account {
     validators: [Validators.required, Validators.maxLength(1024)],
   });
   protected readonly confirmForm = new FormGroup({ password: this.confirmPassword });
+  protected readonly passkeyName = new FormControl('', {
+    nonNullable: true,
+    validators: [Validators.maxLength(100)],
+  });
+  protected readonly passkeyForm = new FormGroup({ name: this.passkeyName });
+  /** Whether this browser can create and use passkeys here (HTTPS or localhost). */
+  protected readonly passkeysSupported = passkeysSupported();
+  /** Passkeys can confirm it is the user when they have one and the browser can use it. */
+  protected readonly canConfirmWithPasskey = computed(
+    () => this.passkeysSupported && this.auth.passkeysEnabled() && this.auth.passkeys().length > 0,
+  );
+  /** Single sign-on can confirm it is the user when they have a linked identity. */
+  protected readonly canConfirmWithSingleSignOn = computed(
+    () => this.auth.singleSignOn() !== null && this.auth.logins().length > 0,
+  );
   protected readonly minimumPasswordLength = minimumPasswordLength;
   protected readonly busy = signal(false);
   protected readonly error = signal('');
@@ -69,7 +93,8 @@ export class Account {
   protected readonly setsFirstPassword = computed(() => !this.auth.hasPassword());
   /** The last way to sign in can never be removed. */
   protected readonly signInMethods = computed(
-    () => (this.auth.hasPassword() ? 1 : 0) + this.auth.logins().length,
+    () =>
+      (this.auth.hasPassword() ? 1 : 0) + this.auth.logins().length + this.auth.passkeys().length,
   );
 
   constructor() {
@@ -107,7 +132,7 @@ export class Account {
     } catch (error: unknown) {
       this.error.set(
         serverCode(error) === 'RecentSignInRequired'
-          ? 'Sign in again with single sign-on to confirm it is you, then set the password.'
+          ? 'Confirm it is you first (sign in again or use a passkey), then set the password.'
           : error instanceof HttpErrorResponse && error.status === 403
             ? 'The current password is incorrect.'
             : error instanceof HttpErrorResponse && error.status === 409
@@ -142,12 +167,12 @@ export class Account {
     this.confirmPassword.reset();
   }
 
-  /** Confirms with the password; users without one sign in again with single sign-on instead. */
+  /** Confirms with the password; users without one use a passkey or single sign-on instead. */
   protected async confirm(): Promise<void> {
     const action = this.pending();
     if (!action || this.confirmPassword.invalid || this.busy()) return;
-    if (action === 'link') {
-      // Linking checks the password itself, in the same request that starts it.
+    if (action === 'link' || action === 'add-passkey') {
+      // Linking and adding a passkey check the password themselves, in the request that starts them.
       await this.run(action, this.confirmPassword.value);
       return;
     }
@@ -165,8 +190,45 @@ export class Account {
     await this.run(action);
   }
 
+  /** Confirms it is the user with one of their passkeys, then runs the pending change. */
+  protected async confirmWithPasskey(): Promise<void> {
+    const action = this.pending();
+    if (this.busy()) return;
+    this.busy.set(true);
+    this.accessError.set('');
+    try {
+      await this.auth.reauthenticateWithPasskey();
+    } catch (error: unknown) {
+      if (!passkeyCancelled(error)) {
+        this.accessError.set(this.describe(error, 'Unable to confirm with a passkey.'));
+      }
+      this.busy.set(false);
+      return;
+    }
+    this.busy.set(false);
+    if (action) await this.run(action);
+    else this.accessStatus.set('Confirmed. You can make sensitive changes for a few minutes.');
+  }
+
   protected signInAgain(): void {
     this.auth.startSingleSignOn('account');
+  }
+
+  protected async removePasskey(passkey: Passkey): Promise<void> {
+    if (this.busy()) return;
+    this.busy.set(true);
+    this.accessError.set('');
+    this.accessStatus.set('');
+    try {
+      await this.auth.removePasskey(passkey.id);
+      this.accessStatus.set(
+        `Removed ${passkey.name}. Also delete it from your device or password manager.`,
+      );
+    } catch (error: unknown) {
+      this.accessError.set(this.describe(error, 'Unable to remove the passkey.'));
+    } finally {
+      this.busy.set(false);
+    }
   }
 
   protected async unlink(login: LinkedLogin): Promise<void> {
@@ -193,14 +255,32 @@ export class Account {
         await this.auth.linkSingleSignOn(password);
         return;
       }
+      if (action === 'add-passkey') {
+        await this.auth.registerPasskey(this.passkeyName.value, password);
+        this.pending.set(null);
+        this.passkeyName.reset();
+        this.accessStatus.set('Passkey added. You can now sign in with it.');
+        return;
+      }
       await this.auth.removePassword();
       this.pending.set(null);
-      this.accessStatus.set('Password removed. Sign in with single sign-on from now on.');
+      this.accessStatus.set(
+        'Password removed. Sign in with a passkey or single sign-on from now on.',
+      );
     } catch (error: unknown) {
+      // Closing the browser's passkey prompt is not an error worth reporting.
+      if (passkeyCancelled(error)) {
+        this.pending.set(null);
+        return;
+      }
       this.accessError.set(
         this.describe(
           error,
-          action === 'link' ? 'Unable to start linking.' : 'Unable to remove the password.',
+          action === 'link'
+            ? 'Unable to start linking.'
+            : action === 'add-passkey'
+              ? 'Unable to add the passkey.'
+              : 'Unable to remove the password.',
         ),
       );
       if (serverCode(error) === 'RecentSignInRequired') this.pending.set(action);
@@ -214,7 +294,12 @@ export class Account {
     if (serverCode(error) === 'RecentSignInRequired') {
       return this.auth.hasPassword()
         ? 'Enter your password to confirm it is you.'
-        : 'Sign in again with single sign-on to confirm it is you.';
+        : this.canConfirmWithPasskey()
+          ? 'Use one of your passkeys to confirm it is you.'
+          : 'Sign in again with single sign-on to confirm it is you.';
+    }
+    if (error instanceof DOMException && error.name === 'InvalidStateError') {
+      return 'This device already has a passkey for your account.';
     }
     if (error instanceof HttpErrorResponse && error.status === 429) {
       return 'Too many attempts. Wait one minute and try again.';

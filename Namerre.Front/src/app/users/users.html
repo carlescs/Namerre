@@ -179,6 +179,38 @@
           }
         </div>
 
+        @if (user.passkeys.length) {
+          <div>
+            <h3 class="text-base">Passkeys</h3>
+            <ul class="mb-4 space-y-2">
+              @for (passkey of user.passkeys; track passkey.id) {
+                <li class="flex flex-wrap items-center gap-3">
+                  <span class="min-w-0 flex-1">
+                    <strong>{{ passkey.name }}</strong>
+                    <span class="block text-xs text-slate-500 dark:text-slate-400">
+                      Added {{ passkey.createdAt | date: 'medium' }}
+                      @if (passkey.lastUsedAt) {
+                        · last used {{ passkey.lastUsedAt | date: 'medium' }}
+                      }
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    (click)="removePasskey(user, passkey)"
+                    [disabled]="busy() || (!user.disabled && methods(user) <= 1)"
+                    [attr.aria-label]="'Remove passkey ' + passkey.name"
+                  >
+                    Remove
+                  </button>
+                </li>
+              }
+            </ul>
+            <p class="text-xs text-slate-500 dark:text-slate-400">
+              Users add passkeys themselves, on their account page.
+            </p>
+          </div>
+        }
+
         @if (auth.singleSignOn(); as provider) {
           <div>
             <h3 class="text-base">{{ provider.displayName }} identities</h3>

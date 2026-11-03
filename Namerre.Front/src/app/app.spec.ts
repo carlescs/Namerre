@@ -43,6 +43,8 @@ describe('App', () => {
             managedByConfiguration: signal(false),
             recentSignIn: signal(true),
             logins: signal([]),
+            passkeysEnabled: signal(false),
+            passkeys: signal([]),
             refresh,
             logout,
           },

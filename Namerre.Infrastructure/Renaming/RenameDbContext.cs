@@ -11,6 +11,7 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
     public DbSet<RenameSetting> Settings => Set<RenameSetting>();
     public DbSet<UserRow> Users => Set<UserRow>();
     public DbSet<UserLoginRow> UserLogins => Set<UserLoginRow>();
+    public DbSet<UserPasskeyRow> UserPasskeys => Set<UserPasskeyRow>();
     public DbSet<RenamePresetRow> Presets => Set<RenamePresetRow>();
     public DbSet<WatchedFileRow> WatchedFiles => Set<WatchedFileRow>();
 
@@ -56,6 +57,7 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
             entity.Property(e => e.Role).HasMaxLength(20).IsRequired();
             entity.Property(e => e.Stamp).HasMaxLength(64).IsRequired();
             entity.HasMany(e => e.Logins).WithOne().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(e => e.Passkeys).WithOne().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<UserLoginRow>(entity =>
         {
@@ -66,6 +68,18 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
             entity.Property(e => e.DisplayName).HasMaxLength(256).IsRequired();
             // One identity belongs to at most one local user.
             entity.HasIndex(e => new { e.Issuer, e.Subject }).IsUnique();
+        });
+        modelBuilder.Entity<UserPasskeyRow>(entity =>
+        {
+            entity.ToTable("UserPasskeys");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CredentialId).HasMaxLength(1023).IsRequired();
+            entity.Property(e => e.PublicKey).HasMaxLength(4096).IsRequired();
+            entity.Property(e => e.UserHandle).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            // One credential belongs to at most one local user.
+            entity.HasIndex(e => e.CredentialId).IsUnique();
+            entity.HasIndex(e => e.UserId);
         });
         modelBuilder.Entity<RenamePresetRow>(entity =>
         {
@@ -104,6 +118,7 @@ public sealed class UserRow
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? LastSignInAt { get; set; }
     public List<UserLoginRow> Logins { get; set; } = [];
+    public List<UserPasskeyRow> Passkeys { get; set; } = [];
 }
 
 /// <summary>A single sign-on identity (issuer and subject) linked to a <see cref="UserRow"/>.</summary>
@@ -115,6 +130,20 @@ public sealed class UserLoginRow
     public string Subject { get; set; } = "";
     public string DisplayName { get; set; } = "";
     public DateTimeOffset LinkedAt { get; set; }
+    public DateTimeOffset? LastUsedAt { get; set; }
+}
+
+/// <summary>A passkey registered to a <see cref="UserRow"/>; see <c>Application.Authentication.UserPasskeyRecord</c>.</summary>
+public sealed class UserPasskeyRow
+{
+    public long Id { get; set; }
+    public long UserId { get; set; }
+    public byte[] CredentialId { get; set; } = [];
+    public byte[] PublicKey { get; set; } = [];
+    public byte[] UserHandle { get; set; } = [];
+    public long SignCount { get; set; }
+    public string Name { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? LastUsedAt { get; set; }
 }
 

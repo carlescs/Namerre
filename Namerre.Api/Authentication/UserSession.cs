@@ -15,6 +15,7 @@ public static class UserSession
     public const string MethodClaim = "auth-method";
     public const string PasswordMethod = "password";
     public const string SingleSignOnMethod = "oidc";
+    public const string PasskeyMethod = "passkey";
     /// <summary>The single sign-on settings stamp (see <see cref="OidcLogin.Stamp"/>) on single sign-on sessions.</summary>
     public const string OidcStampClaim = "oidc-stamp";
     public const string SignedInAtClaim = "signed-in-at";
