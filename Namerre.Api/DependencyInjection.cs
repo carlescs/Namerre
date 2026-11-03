@@ -9,6 +9,7 @@ using Namerre.Application.Renaming;
 using Namerre.Authentication;
 using Namerre.Infrastructure.Configuration;
 using Namerre.Notifications;
+using Namerre.Security;
 
 namespace Namerre;
 
@@ -16,7 +17,7 @@ public static class DependencyInjection
 {
     /// <summary>
     /// Registers the web host's own services: forwarded headers, live notifications, controllers,
-    /// authentication, data protection and OpenAPI.
+    /// authentication, data protection (optionally encrypted with a certificate) and OpenAPI.
     /// </summary>
     public static IServiceCollection AddApi(this IServiceCollection services)
     {
@@ -44,6 +45,15 @@ public static class DependencyInjection
                     return;
                 var keys = Path.Combine(Path.GetFullPath(settings.Value.DataPath, environment.ContentRootPath), "keys");
                 options.XmlRepository = new FileSystemXmlRepository(new DirectoryInfo(keys), loggers);
+            });
+        // Optionally encrypt the key ring at rest with a certificate. Keys written before a certificate was configured
+        // stay readable (ASP.NET Core only decrypts keys that carry an encrypted secret); new keys are encrypted.
+        services.AddSingleton<KeyRingCertificates>();
+        services.AddOptions<KeyManagementOptions>()
+            .Configure<IOptions<NamerreOptions>, KeyRingCertificates>((options, settings, certificates) =>
+            {
+                if (!string.IsNullOrWhiteSpace(settings.Value.DataProtection.Certificate))
+                    options.XmlEncryptor = new CertificateKeyEncryptor(certificates);
             });
         // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
         services.AddOpenApi();

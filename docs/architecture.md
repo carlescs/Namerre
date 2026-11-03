@@ -187,6 +187,16 @@ Everything app-specific is under the `Namerre` section, bound to `NamerreOptions
   `Namerre.Api/Authentication/PasskeyLogin.cs`). Without a pinned origin `PasskeyLogin.RelyingParty` yields a
   relying party only for `localhost` and null otherwise (passkey endpoints 404, `passkeysEnabled` false).
 - `Tmdb`, `ReverseProxy`.
+- `DataProtection`: optional PFX (`Certificate`, `CertificatePassword`, `PreviousCertificates`) that
+  encrypts the Data Protection key ring in `DataPath/keys`. `DataProtectionCertificates`
+  (Infrastructure) loads and checks the files (RSA key with private key, `DefaultKeySet` so it works on
+  Windows and Linux; messages never include passwords) and `DataProtectionOptionsValidator` fails startup
+  on a problem. The Api applies it in `Security/KeyRingEncryption.cs`: `CertificateKeyEncryptor` /
+  `CertificateKeyDecryptor` reimplement ASP.NET Core's `EncryptedXml` scheme lazily from
+  `IOptions<NamerreOptions>`, because `ProtectKeysWithCertificate` needs the certificate while services
+  are registered, before the final configuration exists. Retired certificates only decrypt. Existing
+  unencrypted keys stay readable. Without a certificate `Program.cs` logs a one-time startup message
+  (Warning, Information in Development) that the keys are unencrypted. DPAPI is intentionally not used.
 - `Telemetry`: optional OTLP export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless
   `OtlpEndpoint` is set. Namerre's own `ActivitySource`/`Meter` and instruments live in
   `Infrastructure/Diagnostics/NamerreTelemetry`, backlog gauges in `RenameStateMetrics`. Requests

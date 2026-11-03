@@ -32,8 +32,14 @@ var passkeyLogin = app.Services.GetRequiredService<PasskeyLogin>();
 if (passkeyLogin.Enabled && !passkeyLogin.Pinned)
     app.Logger.LogWarning("Passkeys are only available at localhost until Namerre:PublicOrigin (or Namerre:Authentication:Passkeys:Origin) is set to the public HTTPS origin.");
 
-if (!string.IsNullOrWhiteSpace(app.Services.GetRequiredService<IOptions<NamerreOptions>>().Value.DataPath))
+var namerre = app.Services.GetRequiredService<IOptions<NamerreOptions>>().Value;
+if (!string.IsNullOrWhiteSpace(namerre.DataPath))
 {
+    if (string.IsNullOrWhiteSpace(namerre.DataProtection.Certificate))
+        app.Logger.Log(app.Environment.IsDevelopment() ? LogLevel.Information : LogLevel.Warning,
+            "Data Protection keys in the 'keys' folder of the data directory are stored unencrypted, so anyone who can "
+            + "read a copy of that directory (a backup, for example) can forge session cookies. Protect the data "
+            + "directory like a credential, or encrypt the keys with Namerre:DataProtection:Certificate.");
     app.Services.GetRequiredService<RenameStore>().Initialize();
 }
 
