@@ -99,6 +99,11 @@ Application settings live in one `Namerre` section in `Namerre.Api\appsettings.j
       "Headers": "",
       "ServiceName": "namerre"
     },
+    "DataProtection": {
+      "Certificate": "",
+      "CertificatePassword": "",
+      "PreviousCertificates": []
+    },
     "Limits": {
       "MaxFilesPerRun": 200,
       "MaxStepsPerRun": 32,
@@ -119,6 +124,9 @@ The backend binds this section to `NamerreOptions` and consumes it through
 `IOptions<NamerreOptions>`. Logging, allowed hosts, and other ASP.NET Core settings
 remain at the top level. Keep credentials in user secrets or protected runtime
 configuration, not in committed settings.
+
+`Namerre:DataProtection` optionally encrypts the cookie key ring at rest; see
+[Protecting the data directory](#protecting-the-data-directory).
 
 When upgrading, move the former `FileBrowser:RootPath` and `Rename:DataPath` values
 to `Namerre:RootPath` and `Namerre:DataPath`, and move `Authentication` and `Tmdb`
@@ -420,9 +428,11 @@ uses an encrypted, HttpOnly, Secure, SameSite=Strict cookie, not browser storage
 bearer tokens. Sessions expire after eight hours without sliding renewal, and are
 not persisted as remember-me cookies. When `Namerre:DataPath` is set, the ASP.NET Core
 Data Protection keys that encrypt session and antiforgery cookies are stored in its
-`keys` folder, so sessions survive restarts and container replacement. Protect that
-folder like the database: anyone who can read the keys can forge a session cookie.
-Without `Namerre:DataPath`, ASP.NET Core's default key location is used.
+`keys` folder, so sessions survive restarts and container replacement. Treat that
+folder, and the whole data directory, as a credential: the keys are readable XML unless you
+[encrypt them](#protecting-the-data-directory), and anyone holding a copy (a backup, a volume
+snapshot) can forge a session cookie for any user, including the administrator, without a
+password. Without `Namerre:DataPath`, ASP.NET Core's default key location is used.
 Cookies are stateless, so the server also remembers ended sessions. Every session carries a
 random ID and the user's session epoch; **Sign out** revokes that ID on the server, and a
 copied cookie is rejected at once. **Sign out of other sessions** on the **Account** page
@@ -947,7 +957,7 @@ browsing or renaming.
 Set `Namerre:DataPath` (environment variable `Namerre__DataPath`) to a writable data
 directory **separate from the browsable root, with neither directory containing the
 other**. This holds SQLite history, prepared plans,
-the durable job queue, journals, and the cookie encryption keys (`keys` folder). Keep it persistent across upgrades and restarts.
+the durable job queue, journals, and the cookie encryption keys (`keys` folder). Keep it persistent across upgrades and restarts. **The directory is secret**: see [Protecting the data directory](#protecting-the-data-directory).
 Data access uses EF Core's SQLite provider with versioned EF migrations in
 Infrastructure; database concerns stay out of Domain and Application.
 When `Namerre:DataPath` is configured, pending migrations run during API startup,
@@ -985,6 +995,8 @@ Back up the data directory together with the media tree while the app is stopped
 and no jobs are mutating files. Copying only the SQLite main file while it is in use
 is not a reliable backup. Restoring history without the matching media state can
 make rollback unsafe. Keep interrupted-operation evidence until recovery is resolved.
+Backups contain the session keys and every user's credential stamp, so protect them like credentials,
+and consider encrypting `keys/` with a certificate that is not part of the backup.
 
 The container runs as its non-root application user. Ensure writable media and data
 mounts are owned by, or grant access to, that user's numeric UID. Do not grant broad
@@ -1027,6 +1039,80 @@ use a native Linux filesystem/volume when the Windows host mount is rejected.
 Use a disposable media directory first. Removing the container must not remove
 its data volume. Authentication does not sandbox signed-in users or replace network
 restrictions; exposing this mutation-capable API to an untrusted network is unsafe.
+
+### Protecting the data directory
+
+The data directory holds the SQLite database (users, credential stamps, history) and `keys/`, the
+ASP.NET Core Data Protection key ring that signs and encrypts session cookies. **Everything in it is
+secret, `keys/` most of all**: a copy of the directory is enough to forge a valid session for any
+user. Restrict access to it on the host and protect backups and snapshots like credentials
+(encrypt them, limit who can read them, do not upload them to shared storage).
+
+To make a stolen copy of `keys/` useless, encrypt the key ring with a certificate whose private key is
+kept elsewhere (not in the data directory or its backups):
+
+| Setting | Meaning |
+| --- | --- |
+| `Namerre:DataProtection:Certificate` | Path to a PKCS#12 `.pfx` file holding an RSA certificate **with** its private key. Empty keeps the keys unencrypted. |
+| `Namerre:DataProtection:CertificatePassword` | The file's password, if it has one. A secret: pass it through protected runtime configuration and it is never logged. |
+| `Namerre:DataProtection:PreviousCertificates:N:Path` / `:Password` | Retired certificates that can still decrypt keys written while they were current (rotation). |
+
+Any self-signed certificate works; the certificate is only a key-wrapping key and is not validated
+for expiry or trust. For example:
+
+```bash
+openssl req -x509 -newkey rsa:3072 -nodes -keyout key.pem -out cert.pem -days 3650 -subj "/CN=namerre-keys"
+openssl pkcs12 -export -inkey key.pem -in cert.pem -out namerre-keys.pfx -passout env:PFX_PASSWORD
+```
+
+Startup fails with a message naming the setting when the file is missing or unreadable, is not a PFX,
+the password is wrong, the certificate has no private key, or the key is not RSA. A PEM pair must
+be converted to PFX first. Keys are wrapped with RSA-OAEP and AES-256 (ASP.NET Core's XML
+encryption format); certificate store thumbprints are not supported because a mounted file suits
+containers best.
+
+Enabling encryption on an existing installation is safe: the old unencrypted keys stay readable (ASP.NET
+Core only decrypts keys that carry an encrypted secret), new keys are encrypted from then on, and
+sessions survive. To encrypt the keys already on disk, enable encryption, wait for the key ring to roll
+over (keys last 90 days, with a new one created about two days before expiry), then delete the
+remaining old key files once users have signed in again. To rotate the certificate, set the new
+one as `Certificate` and list the old one under `PreviousCertificates` until no key encrypted with it
+remains (at least 90 days). Losing the certificate makes the stored keys unreadable: all sessions end
+and everyone has to sign in again, but no other data is affected.
+
+Without a certificate, startup logs that the keys are unencrypted (a warning, or information in
+Development). Windows DPAPI is deliberately not used by default: it ties the keys to one machine
+and account, so restoring a backup or moving the data directory would silently invalidate every
+session, and it protects nothing from other processes running as the same account.
+
+Docker, mounting the certificate and its password as secrets (a Compose file; Compose mounts
+secrets read-only under `/run/secrets`):
+
+```yaml
+services:
+  namerre:
+    image: namerre
+    environment:
+      Namerre__RootPath: /media
+      Namerre__DataPath: /data
+      Namerre__DataProtection__Certificate: /run/secrets/namerre_keys_pfx
+      # Read the password from a secret file with your orchestrator, or pass it as a protected variable.
+      Namerre__DataProtection__CertificatePassword: ${NAMERRE_KEYS_PASSWORD}
+    volumes:
+      - /srv/media:/media
+      - namerre-data:/data
+    secrets:
+      - namerre_keys_pfx
+secrets:
+  namerre_keys_pfx:
+    file: ./namerre-keys.pfx
+volumes:
+  namerre-data:
+```
+
+With plain `docker run`, add `--mount type=bind,source=/etc/namerre/namerre-keys.pfx,target=/run/secrets/namerre_keys_pfx,readonly`
+and `-e Namerre__DataProtection__Certificate=/run/secrets/namerre_keys_pfx` plus the password variable.
+Keep the `.pfx` outside the data volume and out of the backups of that volume.
 
 ## TMDB metadata
 

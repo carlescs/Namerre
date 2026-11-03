@@ -14,6 +14,7 @@ public sealed class NamerreOptions
     public TelemetryOptions Telemetry { get; set; } = new();
     public LimitsOptions Limits { get; set; } = new();
     public IntegrationsOptions Integrations { get; set; } = new();
+    public DataProtectionOptions DataProtection { get; set; } = new();
     /// <summary>Folders whose new files are renamed automatically with a saved preset.</summary>
     public List<WatchFolderOptions> WatchFolders { get; set; } = [];
 }
@@ -126,4 +127,25 @@ public sealed class WebhookOptions
     public string? Url { get; set; }
     /// <summary>Include each file's source and target path in the payload. Paths may be sensitive.</summary>
     public bool IncludePaths { get; set; }
+}
+
+/// <summary>
+/// Optional at-rest encryption of the Data Protection key ring in <c>DataPath/keys</c>. Without a
+/// <see cref="Certificate"/> the keys are stored as readable XML, so the data directory is a credential.
+/// </summary>
+public sealed class DataProtectionOptions
+{
+    /// <summary>Path to a PKCS#12 (<c>.pfx</c>) file with an RSA certificate and its private key. Empty disables encryption.</summary>
+    public string? Certificate { get; set; }
+    /// <summary>Password of <see cref="Certificate"/>. Treat as a secret.</summary>
+    public string? CertificatePassword { get; set; }
+    /// <summary>Retired certificates that can still decrypt keys written while they were current (rotation).</summary>
+    public List<DataProtectionCertificateOptions> PreviousCertificates { get; set; } = [];
+}
+
+public sealed class DataProtectionCertificateOptions
+{
+    public string? Path { get; set; }
+    /// <summary>Password of the file. Treat as a secret.</summary>
+    public string? Password { get; set; }
 }
