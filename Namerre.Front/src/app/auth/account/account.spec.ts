@@ -328,6 +328,7 @@ describe('Account', () => {
       '[aria-label="New name for passkey Phone"]',
     ) as HTMLInputElement;
     expect(input.value).toBe('Phone');
+    await vi.waitFor(() => expect(document.activeElement).toBe(input));
 
     fill(element, '[aria-label="New name for passkey Phone"]', '   ');
     await fixture.whenStable();
@@ -352,6 +353,11 @@ describe('Account', () => {
     await fixture.whenStable();
     expect(element.querySelector('[aria-label="New name for passkey Phone"]')).toBeNull();
     expect(renamePasskey).not.toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(
+        element.querySelector('[aria-label="Rename passkey Phone"]'),
+      ),
+    );
   });
 
   it('lets passkey-only users confirm with a passkey before setting a password', async () => {

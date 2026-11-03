@@ -78,8 +78,9 @@ public sealed class PasskeyApiTests : IDisposable
             HttpStatusCode.NotFound, "PasskeyNotFound");
         await AssertCode(await carol.PatchAsJsonAsync($"/api/auth/passkeys/{id}", new { name = "\u0007" }),
             HttpStatusCode.BadRequest, "PasskeyNameRequired");
-        Assert.Equal(HttpStatusCode.BadRequest,
-            (await carol.PatchAsJsonAsync($"/api/auth/passkeys/{id}", new { name = "" })).StatusCode);
+        foreach (var blank in new[] { "", "   " })
+            await AssertCode(await carol.PatchAsJsonAsync($"/api/auth/passkeys/{id}", new { name = blank }),
+                HttpStatusCode.BadRequest, "PasskeyNameRequired");
 
         // Administrators see passkeys and can remove them, which ends the sessions they opened.
         var user = await admin.GetFromJsonAsync<JsonElement>($"/api/users/{carolId}");

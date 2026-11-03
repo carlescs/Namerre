@@ -1,6 +1,15 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, DOCUMENT, inject, signal } from '@angular/core';
+import {
+  afterNextRender,
+  Component,
+  computed,
+  DOCUMENT,
+  ElementRef,
+  Injector,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
   Auth,
@@ -35,6 +44,8 @@ type Pending = 'link' | 'remove-password' | 'add-passkey';
 export class Account {
   protected readonly auth = inject(Auth);
   private readonly document = inject(DOCUMENT);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
   protected readonly form = new FormGroup(
     {
       currentPassword: new FormControl('', {
@@ -226,17 +237,37 @@ export class Account {
     this.renaming.set(passkey.id);
     this.accessError.set('');
     this.accessStatus.set('');
+    // The Rename button that had focus is gone; move keyboard focus into the editor that replaced it.
+    this.focusAfterRender(`[data-rename-input="${passkey.id}"]`, true);
   }
 
   protected cancelRenaming(): void {
+    this.stopRenaming();
+  }
+
+  /** Closes the editor and returns focus to the passkey's Rename button. */
+  private stopRenaming(): void {
+    const id = this.renaming();
     this.renaming.set(null);
+    if (id !== null) this.focusAfterRender(`[data-rename-passkey="${id}"]`);
+  }
+
+  private focusAfterRender(selector: string, select = false): void {
+    afterNextRender(
+      () => {
+        const element = this.host.nativeElement.querySelector<HTMLElement>(selector);
+        element?.focus();
+        if (select && element instanceof HTMLInputElement) element.select();
+      },
+      { injector: this.injector },
+    );
   }
 
   protected async renamePasskey(passkey: Passkey): Promise<void> {
     if (this.busy() || this.newPasskeyName.invalid) return;
     const name = this.newPasskeyName.value.trim();
     if (name === passkey.name) {
-      this.renaming.set(null);
+      this.stopRenaming();
       return;
     }
     this.busy.set(true);
@@ -244,7 +275,7 @@ export class Account {
     this.accessStatus.set('');
     try {
       await this.auth.renamePasskey(passkey.id, name);
-      this.renaming.set(null);
+      this.stopRenaming();
       this.accessStatus.set(`Renamed ${passkey.name} to ${name}.`);
     } catch (error: unknown) {
       this.accessError.set(this.describe(error, 'Unable to rename the passkey.'));

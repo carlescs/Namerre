@@ -496,8 +496,8 @@ public sealed record RegisterPasskeyRequest(
     JsonElement Credential,
     [StringLength(100)] string? Name);
 
-/// <param name="Name">The new name to recognise the passkey by.</param>
-public sealed record RenamePasskeyRequest([Required, StringLength(100)] string Name);
+/// <param name="Name">The new name to recognise the passkey by; an empty one is refused by the account rule.</param>
+public sealed record RenamePasskeyRequest([Required(AllowEmptyStrings = true), StringLength(100)] string Name);
 
 public sealed record LoginRequest(
     [Required, StringLength(128)] string Username,

@@ -187,6 +187,7 @@
                       formControlName="name"
                       maxlength="100"
                       autocomplete="off"
+                      [attr.data-rename-input]="passkey.id"
                       [attr.aria-label]="'New name for passkey ' + passkey.name"
                       (keydown.escape)="cancelRenaming()"
                     />
@@ -211,6 +212,7 @@
                     type="button"
                     (click)="startRenaming(passkey)"
                     [disabled]="busy()"
+                    [attr.data-rename-passkey]="passkey.id"
                     [attr.aria-label]="'Rename passkey ' + passkey.name"
                   >
                     Rename
