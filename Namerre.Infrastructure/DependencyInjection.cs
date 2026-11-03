@@ -39,6 +39,7 @@ public static class DependencyInjection
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.Limits.ToLimits());
         services.AddSingleton<IValidateOptions<NamerreOptions>, NamerreOptionsValidator>();
         services.AddSingleton<IValidateOptions<NamerreOptions>, WatchFolderOptionsValidator>();
+        services.AddSingleton<IValidateOptions<NamerreOptions>, DataProtectionOptionsValidator>();
         services.AddSingleton(provider => new BoundedFileSystem(
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.RootPath,
             provider.GetRequiredService<IHostEnvironment>().ContentRootPath));

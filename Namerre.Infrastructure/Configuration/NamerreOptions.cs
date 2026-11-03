@@ -8,12 +8,18 @@ public sealed class NamerreOptions
 
     public string? RootPath { get; set; }
     public string? DataPath { get; set; }
+    /// <summary>
+    /// The public HTTPS origin people open Namerre at, e.g. <c>https://namerre.example.com</c>. Passkeys are pinned to
+    /// it and the single sign-on return address is built from it, instead of from the request's <c>Host</c> header.
+    /// </summary>
+    public string? PublicOrigin { get; set; }
     public AuthenticationOptions Authentication { get; set; } = new();
     public TmdbOptions Tmdb { get; set; } = new();
     public ReverseProxyOptions ReverseProxy { get; set; } = new();
     public TelemetryOptions Telemetry { get; set; } = new();
     public LimitsOptions Limits { get; set; } = new();
     public IntegrationsOptions Integrations { get; set; } = new();
+    public DataProtectionOptions DataProtection { get; set; } = new();
     /// <summary>Folders whose new files are renamed automatically with a saved preset.</summary>
     public List<WatchFolderOptions> WatchFolders { get; set; } = [];
 }
@@ -42,9 +48,8 @@ public sealed class PasskeyOptions
 {
     public bool Enabled { get; set; } = true;
     /// <summary>
-    /// The public HTTPS origin people open Namerre at, e.g. <c>https://namerre.example.com</c>; its host is the
-    /// passkeys' relying party ID. Empty uses each request's own scheme and host, which suits a reverse proxy that
-    /// keeps the <c>Host</c> header.
+    /// Overrides <see cref="NamerreOptions.PublicOrigin"/> for passkeys; its host is the passkeys' relying party ID.
+    /// When neither is set, passkeys are offered only at <c>localhost</c>: the request's <c>Host</c> is never trusted.
     /// </summary>
     public string? Origin { get; set; }
 }
@@ -126,4 +131,25 @@ public sealed class WebhookOptions
     public string? Url { get; set; }
     /// <summary>Include each file's source and target path in the payload. Paths may be sensitive.</summary>
     public bool IncludePaths { get; set; }
+}
+
+/// <summary>
+/// Optional at-rest encryption of the Data Protection key ring in <c>DataPath/keys</c>. Without a
+/// <see cref="Certificate"/> the keys are stored as readable XML, so the data directory is a credential.
+/// </summary>
+public sealed class DataProtectionOptions
+{
+    /// <summary>Path to a PKCS#12 (<c>.pfx</c>) file with an RSA certificate and its private key. Empty disables encryption.</summary>
+    public string? Certificate { get; set; }
+    /// <summary>Password of <see cref="Certificate"/>. Treat as a secret.</summary>
+    public string? CertificatePassword { get; set; }
+    /// <summary>Retired certificates that can still decrypt keys written while they were current (rotation).</summary>
+    public List<DataProtectionCertificateOptions> PreviousCertificates { get; set; } = [];
+}
+
+public sealed class DataProtectionCertificateOptions
+{
+    public string? Path { get; set; }
+    /// <summary>Password of the file. Treat as a secret.</summary>
+    public string? Password { get; set; }
 }
