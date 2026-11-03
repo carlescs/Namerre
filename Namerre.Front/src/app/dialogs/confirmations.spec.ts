@@ -1,5 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter, Router } from '@angular/router';
 import { stubDialogsThatToggle } from '../dialogs.testing';
 import { ConfirmDialog } from './confirm-dialog';
 import { ConfirmationHost } from './confirmation-host';
@@ -71,15 +72,43 @@ describe('Confirmations', () => {
     await expect(answer).resolves.toBe(false);
   });
 
-  it('cancels an earlier question when asked again', async () => {
+  it('cancels an earlier question when asked again, in a new dialog', async () => {
     const { fixture, element, confirmations } = await render();
     const first = confirmations.ask({ heading: 'First?', message: 'One.' });
-    const second = confirmations.ask({ heading: 'Second?', message: 'Two.' });
+    await fixture.whenStable();
+    const firstDialog = element.querySelector('dialog');
+    const second = confirmations.ask({ heading: 'Second?', message: 'Two.', danger: true });
     await expect(first).resolves.toBe(false);
     await fixture.whenStable();
-    expect(element.querySelector('h2')?.textContent).toBe('Second?');
+    const secondDialog = element.querySelector('dialog') as HTMLDialogElement;
+    // A new dialog, so the destructive question gets its own initial focus on Cancel.
+    expect(secondDialog).not.toBe(firstDialog);
+    expect(secondDialog.hasAttribute('open')).toBe(true);
+    expect(secondDialog.querySelector('h2')?.textContent).toBe('Second?');
+    expect(buttonNamed(secondDialog, 'Cancel').autofocus).toBe(true);
     confirmations.answer(true);
     await expect(second).resolves.toBe(true);
+  });
+
+  it('cancels the question when navigating away', async () => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter([{ path: 'other', children: [] }])],
+    });
+    const { fixture, element, confirmations } = await render();
+    const answer = confirmations.ask({ heading: 'Delete alice?', message: 'Gone.' });
+    await fixture.whenStable();
+    await TestBed.inject(Router).navigateByUrl('/other');
+    await expect(answer).resolves.toBe(false);
+    await fixture.whenStable();
+    expect(element.querySelector('dialog')).toBeNull();
+  });
+
+  it('cancels the question when the host goes away', async () => {
+    const { fixture, confirmations } = await render();
+    const answer = confirmations.ask({ heading: 'Delete alice?', message: 'Gone.' });
+    fixture.destroy();
+    await expect(answer).resolves.toBe(false);
+    expect(confirmations.current()).toBeNull();
   });
 });
 

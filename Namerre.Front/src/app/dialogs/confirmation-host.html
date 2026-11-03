@@ -1,4 +1,4 @@
-@if (confirmations.current(); as request) {
+@for (request of requests(); track request) {
   <app-confirm-dialog
     [heading]="request.heading"
     [confirmLabel]="request.confirmLabel ?? 'Confirm'"
