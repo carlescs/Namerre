@@ -140,6 +140,35 @@ public sealed class PasskeyApiTests : IDisposable
     }
 
     [Fact]
+    public async Task AForeignHostGetsNoPasskeyCeremonyWithoutAPinnedOrigin()
+    {
+        using var factory = Factory();
+        using var admin = await Installed(factory);
+        using var foreign = Client(factory, "https://evil.example.net");
+        await AuthWebApplicationFactory.RefreshCsrf(foreign);
+
+        Assert.Equal(HttpStatusCode.NotFound, (await foreign.PostAsJsonAsync("/api/auth/passkey/options", new { })).StatusCode);
+        Assert.False((await foreign.GetFromJsonAsync<JsonElement>("/api/auth/session"))
+            .GetProperty("passkeysEnabled").GetBoolean());
+        // The same server still serves localhost.
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/auth/passkey/options", new { })).StatusCode);
+    }
+
+    [Fact]
+    public async Task CeremoniesUseThePinnedOriginWhateverTheHostHeaderSays()
+    {
+        using var factory = Factory(new() { ["Namerre:PublicOrigin"] = "https://namerre.example.com" });
+        using var foreign = Client(factory, "https://evil.example.net");
+        await AuthWebApplicationFactory.RefreshCsrf(foreign);
+
+        using var options = await foreign.PostAsJsonAsync("/api/auth/passkey/options", new { });
+
+        Assert.Equal(HttpStatusCode.OK, options.StatusCode);
+        Assert.Equal("namerre.example.com", (await options.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("options").GetProperty("rpId").GetString());
+    }
+
+    [Fact]
     public async Task PasskeysCanBeTurnedOff()
     {
         using var factory = Factory(new() { ["Namerre:Authentication:Passkeys:Enabled"] = "false" });
@@ -222,11 +251,11 @@ public sealed class PasskeyApiTests : IDisposable
     }
 
     /// <summary>A browser of its own, at its own address, so the sign-in rate limit applies to each separately.</summary>
-    private static HttpClient Client(WebApplicationFactory<Program> factory)
+    private static HttpClient Client(WebApplicationFactory<Program> factory, string address = "https://localhost")
     {
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
-            BaseAddress = new Uri("https://localhost"),
+            BaseAddress = new Uri(address),
             AllowAutoRedirect = false,
             HandleCookies = true
         });

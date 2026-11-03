@@ -32,6 +32,8 @@ public static class AuthenticationSetup
     public static IServiceCollection AddUserAuthentication(this IServiceCollection services)
     {
         services.AddSingleton<OidcLogin>();
+        services.AddSingleton<PublicOrigin>();
+        services.AddSingleton<PublicOrigin>();
         services.AddSingleton<PasskeyLogin>();
         services.AddHttpContextAccessor();
         services.AddSingleton<ICurrentUser, HttpCurrentUser>();

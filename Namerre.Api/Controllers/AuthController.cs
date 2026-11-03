@@ -26,7 +26,7 @@ namespace Namerre.Controllers;
 public sealed class AuthController(ISender sender, OidcLogin oidc,
     IOptionsMonitor<OpenIdConnectOptions> oidcOptions, IAntiforgery antiforgery, ILogger<AuthController> logger,
     IDataProtectionProvider? dataProtection = null, RenameLimits? limits = null, TimeProvider? time = null,
-    PasskeyLogin? passkeyLogin = null)
+    PasskeyLogin? passkeyLogin = null, PublicOrigin? publicOrigin = null)
     : ControllerBase
 {
     private static readonly TimeSpan LinkTicketLifetime = TimeSpan.FromMinutes(5);
@@ -63,7 +63,7 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
             signedInAt = user is null ? null : UserSession.SignedInAt(User),
             recentSignIn = user is not null && UserSession.IsRecent(User, Now),
             logins = user?.Logins.Select(LoginView.From).ToArray(),
-            passkeysEnabled = Passkeys.Enabled,
+            passkeysEnabled = Passkeys.RelyingParty(Request) is not null,
             passkeys = user?.Passkeys.Select(PasskeyView.From).ToArray(),
             // Configured workload limits, so the app shows the numbers the server enforces.
             limits = user is null ? null : limits ?? RenameLimits.Default
@@ -210,10 +210,10 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     [HttpPost("passkey/options")]
     public async Task<IActionResult> PasskeySignInOptions(CancellationToken cancellationToken)
     {
-        if (!Passkeys.Enabled)
+        // No pinned origin and not localhost: there is no relying party to start a ceremony for.
+        if (Passkeys.RelyingParty(Request) is not { } relyingParty)
             return NotFound();
-        var challenge = await sender.Send(new BeginPasskeySignInQuery(Passkeys.RelyingParty(Request)),
-            cancellationToken);
+        var challenge = await sender.Send(new BeginPasskeySignInQuery(relyingParty), cancellationToken);
         return Ok(new
         {
             options = OptionsJson(challenge),
@@ -277,11 +277,11 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     public async Task<IActionResult> PasskeyRegistrationOptions(ConfirmRequest request,
         CancellationToken cancellationToken)
     {
-        if (!Passkeys.Enabled)
+        if (Passkeys.RelyingParty(Request) is not { } relyingParty)
             return NotFound();
         var registration = await sender.Send(new BeginPasskeyRegistrationCommand(
             (await RequireUser(cancellationToken)).Id, UserSession.IsRecent(User, Now), request.Password,
-            Passkeys.RelyingParty(Request)), cancellationToken);
+            relyingParty), cancellationToken);
         return Ok(new
         {
             options = OptionsJson(registration.Challenge),
@@ -422,6 +422,18 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
         }
     }
 
+    /// <summary>
+    /// Where the identity provider returns to after signing out: the configured public origin, or, only when none is
+    /// configured, the request's own address.
+    /// </summary>
+    private string PostLogoutRedirectUri()
+    {
+        var origin = (publicOrigin ?? HttpContext.RequestServices.GetRequiredService<PublicOrigin>()).General;
+        return origin is null
+            ? $"{Request.Scheme}://{Request.Host}{Request.PathBase}/"
+            : $"{origin.Origin}{Request.PathBase}/";
+    }
+
     /// <summary>Builds the identity provider's RP-initiated logout address, or null when it has none.</summary>
     private async Task<string?> EndSessionUrlAsync(string? idToken, CancellationToken cancellationToken)
     {
@@ -438,7 +450,7 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
                 // Lets the provider identify the client for sessions started before ID tokens were kept.
                 ClientId = options.ClientId,
                 // A fixed return address avoids open redirects.
-                PostLogoutRedirectUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/"
+                PostLogoutRedirectUri = PostLogoutRedirectUri()
             }.CreateLogoutRequestUrl();
         }
         catch (Exception exception) when (exception is InvalidOperationException or IOException or

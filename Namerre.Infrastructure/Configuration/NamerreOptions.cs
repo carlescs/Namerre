@@ -8,6 +8,11 @@ public sealed class NamerreOptions
 
     public string? RootPath { get; set; }
     public string? DataPath { get; set; }
+    /// <summary>
+    /// The public HTTPS origin people open Namerre at, e.g. <c>https://namerre.example.com</c>. Passkeys are pinned to
+    /// it and the single sign-on return address is built from it, instead of from the request's <c>Host</c> header.
+    /// </summary>
+    public string? PublicOrigin { get; set; }
     public AuthenticationOptions Authentication { get; set; } = new();
     public TmdbOptions Tmdb { get; set; } = new();
     public ReverseProxyOptions ReverseProxy { get; set; } = new();
@@ -42,9 +47,8 @@ public sealed class PasskeyOptions
 {
     public bool Enabled { get; set; } = true;
     /// <summary>
-    /// The public HTTPS origin people open Namerre at, e.g. <c>https://namerre.example.com</c>; its host is the
-    /// passkeys' relying party ID. Empty uses each request's own scheme and host, which suits a reverse proxy that
-    /// keeps the <c>Host</c> header.
+    /// Overrides <see cref="NamerreOptions.PublicOrigin"/> for passkeys; its host is the passkeys' relying party ID.
+    /// When neither is set, passkeys are offered only at <c>localhost</c>: the request's <c>Host</c> is never trusted.
     /// </summary>
     public string? Origin { get; set; }
 }
