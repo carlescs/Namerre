@@ -153,6 +153,68 @@ public sealed class AuthenticationTests
         Assert.Equal(HttpStatusCode.OK, session.StatusCode);
     }
 
+    [Fact]
+    public async Task OneNoisyClientCannotExhaustTheSharedCeiling()
+    {
+        using var factory = ClientAddressFactory();
+        using var noisy = await ClientAt(factory, "192.0.2.10");
+        const int attempts = Namerre.Authentication.AuthenticationSetup.LoginLimitShared + 20;
+        var rejected = 0;
+        for (var attempt = 0; attempt < attempts; attempt++)
+        {
+            using var response = await noisy.PostAsJsonAsync("/api/auth/login",
+                new { AuthWebApplicationFactory.Username, password = "incorrect" });
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                rejected++;
+        }
+        Assert.Equal(attempts - Namerre.Authentication.AuthenticationSetup.LoginLimitPerClient, rejected);
+
+        using var other = await ClientAt(factory, "198.51.100.20");
+        using var login = await other.PostAsJsonAsync("/api/auth/login",
+            new { AuthWebApplicationFactory.Username, AuthWebApplicationFactory.Password });
+        Assert.Equal(HttpStatusCode.NoContent, login.StatusCode);
+    }
+
+    [Fact]
+    public async Task AccountEndpointsAreLimitedPerUserAndNotByAnonymousTraffic()
+    {
+        using var factory = ClientAddressFactory();
+        using var admin = await ClientAt(factory, "192.0.2.10");
+        using var signIn = await admin.PostAsJsonAsync("/api/auth/login",
+            new { AuthWebApplicationFactory.Username, AuthWebApplicationFactory.Password });
+        Assert.Equal(HttpStatusCode.NoContent, signIn.StatusCode);
+        await AuthWebApplicationFactory.RefreshCsrf(admin);
+
+        // Anonymous traffic from many clients fills the shared sign-in ceiling.
+        const int clients = Namerre.Authentication.AuthenticationSetup.LoginLimitShared
+            / Namerre.Authentication.AuthenticationSetup.LoginLimitPerClient;
+        // The administrator's own sign-in used one permit, so the last client may be cut short.
+        await Task.WhenAll(Enumerable.Range(0, clients + 1).Select(async index =>
+        {
+            using var client = await ClientAt(factory, $"203.0.113.{index + 1}");
+            for (var attempt = 0; attempt < Namerre.Authentication.AuthenticationSetup.LoginLimitPerClient; attempt++)
+            {
+                using var invalid = await client.PostAsJsonAsync("/api/auth/login",
+                    new { AuthWebApplicationFactory.Username, password = "incorrect" });
+                Assert.Contains(invalid.StatusCode,
+                    new[] { HttpStatusCode.Unauthorized, HttpStatusCode.TooManyRequests });
+            }
+        }));
+        using var anonymous = await ClientAt(factory, "192.0.2.99");
+        using var blocked = await anonymous.PostAsJsonAsync("/api/auth/login",
+            new { AuthWebApplicationFactory.Username, AuthWebApplicationFactory.Password });
+        Assert.Equal(HttpStatusCode.TooManyRequests, blocked.StatusCode);
+
+        // The signed-in user still has their own budget, which is spent per user.
+        for (var attempt = 0; attempt < Namerre.Authentication.AuthenticationSetup.AccountLimitPerUser; attempt++)
+        {
+            using var response = await admin.PostAsJsonAsync("/api/auth/reauthenticate", new { password = "incorrect" });
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+        using var exhausted = await admin.PostAsJsonAsync("/api/auth/reauthenticate", new { password = "incorrect" });
+        Assert.Equal(HttpStatusCode.TooManyRequests, exhausted.StatusCode);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

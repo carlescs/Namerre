@@ -220,6 +220,12 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
 - `UserSession` builds the cookie principal from the local user (ID, name, role claim, stamp,
   method `password`/`passkey`/`oidc`, sign-in time; SSO sessions add the `OidcLogin.Stamp`) and
   defines the live-update group.
+- Rate limits (`AuthenticationSetup.AddRateLimiter`, 429): `LoginPolicy` (`login`, `setup`, `passkey/login`) allows
+  5 attempts/min per client address (IPv6 by /64), checked first, then a shared 60/min ceiling
+  (`ClientThenSharedLimiter`). The ceiling lives in the policy, not in a `GlobalLimiter`: the middleware takes the
+  global permit before the endpoint's, so a client rejected by its own budget would still burn shared permits.
+  `AccountPolicy` (signed-in `password`, `reauthenticate`, `passkey/reauthenticate`, `passkeys/options`,
+  `oidc/link`) allows 5/min per user ID with no shared ceiling, so anonymous traffic cannot block signed-in users.
 - A configured `Namerre:Authentication` account is a never-stored break-glass `Admin` with ID 0.
 - SSO identities are keyed on (issuer = configured authority, `sub`); `OidcLogin.Read` checks
   `RequiredRole`, then `AuthenticationSetup.OnTicketReceived` resolves the linked user, provisions a

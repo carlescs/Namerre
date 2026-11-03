@@ -426,11 +426,13 @@ callback. The public HTML/assets contain no server file
 information.
 API responses are not cached. State-changing requests (including login and logout)
 require an antiforgery cookie and `X-XSRF-TOKEN` header; the Angular client manages
-these automatically. Login (password and passkey), setup, password changes, re-confirming the password or a passkey,
-and starting a single sign-on link or a passkey registration are limited to five attempts
-per minute for each client address (IPv6 clients are grouped by their /64 network) and
+these automatically. Login (password and passkey) and setup are limited to five attempts per minute for each
+client address (IPv6 clients are grouped by their /64 network), checked first, and then to
 60 attempts per minute across all clients. One noisy client therefore cannot lock
-everyone out, while guessing from many addresses stays bounded. Behind a reverse
+everyone out, while guessing from many addresses stays bounded. Password changes,
+re-confirming the password or a passkey, and starting a single sign-on link or a passkey
+registration need a signed-in session and are limited to five attempts per minute for each
+user, independently of sign-in traffic. Exceeding a limit returns `429`. Behind a reverse
 proxy, configure trusted proxies (see below) so the limit applies to real client
 addresses rather than the proxy. Even so, keep network access restricted to trusted
 users or a VPN rather than exposing the app directly to the public internet.

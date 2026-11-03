@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Claims;
@@ -15,11 +16,15 @@ namespace Namerre.Authentication;
 
 public static class AuthenticationSetup
 {
-    // Login (password and passkey), setup and password changes share these limits; each password attempt costs a
-    // full password hash.
+    // Anonymous sign-in (password and passkey) and setup: a small budget per client address, checked first, then a
+    // shared ceiling across all clients. Each password attempt costs a full password hash.
     public const string LoginPolicy = "login";
+    // Signed-in account endpoints (password change, re-confirmation, passkey registration, SSO linking): a small
+    // budget per user, with no shared ceiling so anonymous traffic can never block them.
+    public const string AccountPolicy = "account";
     internal const int LoginLimitPerClient = 5;
     internal const int LoginLimitShared = 60;
+    internal const int AccountLimitPerUser = 5;
 
     /// <summary>Authorization policy for administrator-only endpoints.</summary>
     public const string AdminPolicy = "RequireAdmin";
@@ -77,14 +82,18 @@ public static class AuthenticationSetup
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            // Each client gets its own small budget, so one source cannot lock the administrator out...
-            options.AddPolicy(LoginPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
-                ClientPartition(context.Connection.RemoteIpAddress), _ => LoginWindow(LoginLimitPerClient)));
-            // ...and a shared ceiling still bounds guessing from many addresses at once.
-            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-                context.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName == LoginPolicy
-                    ? RateLimitPartition.GetFixedWindowLimiter("administrator", _ => LoginWindow(LoginLimitShared))
-                    : RateLimitPartition.GetNoLimiter(""));
+            // The shared ceiling is part of the login policy itself, not a global limiter: the middleware takes a
+            // global permit before the endpoint's, so a client rejected by its own budget would still burn a
+            // shared permit and could exhaust the ceiling for everyone.
+            var shared = new FixedWindowRateLimiter(LoginWindow(LoginLimitShared));
+            options.AddPolicy(LoginPolicy, context => RateLimitPartition.Get(
+                ClientPartition(context.Connection.RemoteIpAddress),
+                _ => new ClientThenSharedLimiter(new FixedWindowRateLimiter(LoginWindow(LoginLimitPerClient)), shared)));
+            options.AddPolicy(AccountPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+                context.User.Identity?.IsAuthenticated == true && UserSession.UserId(context.User) is { } id
+                    ? "user:" + id.ToString(CultureInfo.InvariantCulture)
+                    : "client:" + ClientPartition(context.Connection.RemoteIpAddress),
+                _ => LoginWindow(AccountLimitPerUser)));
         });
         return services;
     }

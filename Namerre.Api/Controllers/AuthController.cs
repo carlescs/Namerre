@@ -91,7 +91,7 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     /// Starts linking a single sign-on identity to the signed-in user. Linking is sensitive, so it needs a recent
     /// sign-in or the user's password. Returns a short-lived address for the browser to open.
     /// </summary>
-    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
+    [EnableRateLimiting(AuthenticationSetup.AccountPolicy)]
     [HttpPost("oidc/link")]
     public async Task<IActionResult> LinkSingleSignOn(ConfirmRequest request, CancellationToken cancellationToken)
     {
@@ -244,7 +244,7 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     /// Confirms it is the user with one of their passkeys, so sensitive changes in the next few minutes need no
     /// further prompt. Takes a challenge from <see cref="PasskeySignInOptions"/>.
     /// </summary>
-    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
+    [EnableRateLimiting(AuthenticationSetup.AccountPolicy)]
     [RequestSizeLimit(PasskeyRequestLimit)]
     [HttpPost("passkey/reauthenticate")]
     public async Task<IActionResult> PasskeyReauthenticate(PasskeyCredentialRequest request,
@@ -265,7 +265,7 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     /// Starts registering a passkey for the signed-in user. Adding a sign-in method is sensitive, so it needs a
     /// recent sign-in or the user's password.
     /// </summary>
-    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
+    [EnableRateLimiting(AuthenticationSetup.AccountPolicy)]
     [HttpPost("passkeys/options")]
     public async Task<IActionResult> PasskeyRegistrationOptions(ConfirmRequest request,
         CancellationToken cancellationToken)
@@ -325,7 +325,7 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     }
 
     /// <summary>Confirms the password again, so sensitive changes in the next few minutes need no further prompt.</summary>
-    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
+    [EnableRateLimiting(AuthenticationSetup.AccountPolicy)]
     [HttpPost("reauthenticate")]
     public async Task<IActionResult> Reauthenticate(ConfirmRequest request, CancellationToken cancellationToken)
     {
@@ -340,7 +340,7 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     /// Changes the password, or sets one for a user who only signed in with single sign-on so far. Setting a first
     /// password needs a recent sign-in instead of the current password.
     /// </summary>
-    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
+    [EnableRateLimiting(AuthenticationSetup.AccountPolicy)]
     [HttpPost("password")]
     public async Task<IActionResult> ChangePassword(ChangePasswordRequest request, CancellationToken cancellationToken)
     {
