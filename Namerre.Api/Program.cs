@@ -27,7 +27,10 @@ builder.AddOptionalTelemetry();
 var app = builder.Build();
 _ = app.Services.GetRequiredService<UserAccounts>();
 _ = app.Services.GetRequiredService<OidcLogin>();
-_ = app.Services.GetRequiredService<PasskeyLogin>();
+_ = app.Services.GetRequiredService<PublicOrigin>();
+var passkeyLogin = app.Services.GetRequiredService<PasskeyLogin>();
+if (passkeyLogin.Enabled && !passkeyLogin.Pinned)
+    app.Logger.LogWarning("Passkeys are only available at localhost until Namerre:PublicOrigin (or Namerre:Authentication:Passkeys:Origin) is set to the public HTTPS origin.");
 
 if (!string.IsNullOrWhiteSpace(app.Services.GetRequiredService<IOptions<NamerreOptions>>().Value.DataPath))
 {

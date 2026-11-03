@@ -65,6 +65,7 @@ Application settings live in one `Namerre` section in `Namerre.Api\appsettings.j
   "Namerre": {
     "RootPath": "",
     "DataPath": "",
+    "PublicOrigin": "",
     "Authentication": {
       "Username": "",
       "PasswordHash": "",
@@ -377,11 +378,21 @@ break-glass administrator from the server configuration cannot have passkeys.
   cannot be replayed, and only in the running server: a restart ends ceremonies in progress, which
   people simply start again.
 - Passkeys belong to the address people open Namerre at: the relying party ID is its host name
-  and the browser origin must match. By default both come from each request (`Host` and the
-  scheme after `X-Forwarded-Proto`), which suits a reverse proxy that keeps the `Host` header. If
-  the proxy rewrites it, set `Namerre:Authentication:Passkeys:Origin` to the public origin, e.g.
-  `https://namerre.example.com`. Passkeys created at one host name do not work at another, and
-  browsers do not offer passkeys at an IP address or over plain HTTP (except `localhost`).
+  and the browser origin must match. Namerre pins that origin and never takes it from a
+  request's `Host` header (which a client controls, so a phishing proxy could otherwise register
+  a passkey under its own host name). Set `Namerre:PublicOrigin` to the public HTTPS origin, e.g.
+  `https://namerre.example.com`; `Namerre:Authentication:Passkeys:Origin` overrides it for
+  passkeys only and each falls back to the other. Both are validated at startup (HTTPS, a host
+  name, no path). **Without either setting, passkeys are offered only on requests to
+  `localhost`**; any other host sees passkeys as unavailable (`passkeysEnabled` is false and the
+  passkey endpoints return 404), and a warning is logged at startup. Passkeys created at one
+  host name do not work at another, and browsers do not offer passkeys at an IP address or over
+  plain HTTP (except `localhost`).
+  **Upgrade note:** earlier versions derived the origin from each request. If you use passkeys
+  behind a reverse proxy or on a LAN name, set `Namerre:PublicOrigin` to the same origin people
+  already use (the registered passkeys then keep working, since their relying party ID is
+  unchanged); until you do, passkeys are unavailable there, while passwords and single sign-on
+  are unaffected.
 - Set `Namerre:Authentication:Passkeys:Enabled` to `false` to turn passkeys off: the sign-in
   button and the **Passkeys** section disappear and the endpoints return 404. Registered passkeys
   stay stored (and still count as sign-in methods) until removed.
@@ -411,6 +422,10 @@ Only configured proxies/networks and ASP.NET Core's default loopback proxies are
 trusted. Keep the backend port private and trust only proxy-controlled networks;
 do not trust arbitrary clients or enable unrestricted forwarded-header trust.
 Secure cookies and CSRF protection remain enabled.
+Pin the public address: set `Namerre:PublicOrigin` (used for passkeys and the single sign-on
+sign-out return address) and set the top-level `AllowedHosts` (for example
+`AllowedHosts=namerre.example.com`, or `AllowedHosts__0` in an environment) to the public host
+name, instead of the default `*`, so requests with any other `Host` header are refused.
 Live progress uses a SignalR WebSocket at `/api/hubs/rename`; Traefik forwards WebSocket
 upgrades by default. If a proxy blocks them, SignalR falls back to Server-Sent Events or
 long polling, and the browser keeps refreshing active jobs every second while it cannot connect.
@@ -546,7 +561,9 @@ cookie as local sign-in. Users without the role are rejected. Changing `Authorit
 `UsernameClaim` invalidates existing single sign-on sessions after a restart; removing
 the role in Keycloak takes effect at the next sign-in. **Sign out** of a single sign-on
 session also ends the Keycloak session: Namerre ends its own session, then sends the
-browser to the provider's `end_session_endpoint`, which returns to Namerre afterwards.
+browser to the provider's `end_session_endpoint`, which returns to Namerre afterwards, at
+`Namerre:PublicOrigin` when set (otherwise at the request's own address; register that return
+address in the provider as a valid post-logout redirect URI).
 If the provider advertises no such endpoint or is unreachable, only the Namerre session
 ends, and the button may sign straight back in while Keycloak still remembers the user.
 Behind a reverse proxy, configure trusted proxies

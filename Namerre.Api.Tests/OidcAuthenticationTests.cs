@@ -413,6 +413,26 @@ public sealed class OidcAuthenticationTests
     }
 
     [Fact]
+    public async Task TheProviderReturnsToTheConfiguredPublicOriginNotTheRequestsHost()
+    {
+        using var provider = new FakeProvider([Role]) { HasEndSessionEndpoint = true };
+        provider.Settings["Namerre:PublicOrigin"] = "https://namerre.example.com";
+        using var factory = provider.Factory();
+        using var client = Client(factory);
+        using var callback = await provider.SignIn(client);
+        await AuthWebApplicationFactory.RefreshCsrf(client);
+        client.DefaultRequestHeaders.Host = "evil.example.net";
+
+        using var logout = await client.PostAsJsonAsync("/api/auth/logout", new { });
+
+        Assert.Equal(HttpStatusCode.OK, logout.StatusCode);
+        var endSession = new Uri((await logout.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("endSessionUrl").GetString()!);
+        Assert.Equal("https://namerre.example.com/",
+            HttpUtility.ParseQueryString(endSession.Query)["post_logout_redirect_uri"]);
+    }
+
+    [Fact]
     public async Task SigningOutEndsOnlyTheNamerreSessionWithoutAProviderLogoutEndpoint()
     {
         using var provider = new FakeProvider([Role]);

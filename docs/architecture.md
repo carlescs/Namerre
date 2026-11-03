@@ -173,7 +173,9 @@ rejections to API errors. Requests carry `Namerre:Tmdb:ReadAccessToken`.
 Everything app-specific is under the `Namerre` section, bound to `NamerreOptions`
 (`Infrastructure/Configuration`) and consumed via `IOptions<NamerreOptions>`:
 
-- `RootPath`, `DataPath`.
+- `RootPath`, `DataPath`, `PublicOrigin` (optional public HTTPS origin; `Namerre.Api/Authentication/PublicOrigin.cs` validates it and
+  `Passkeys:Origin`, each falling back to the other; pins passkey ceremonies and the OIDC post-logout return address
+  instead of trusting the request `Host`; set `AllowedHosts` to the public host too).
 - `Limits`: bound to the Application `RenameLimits` singleton; out-of-range values fail startup;
   signed-in `GET api/auth/session` reports them to the frontend's `WorkloadLimits`. Defaults:
   ≤200 files and ≤32 plugin instances per run, ≤32 queued jobs, ≤4 concurrent previews
@@ -181,8 +183,9 @@ Everything app-specific is under the `Namerre` section, bound to `NamerreOptions
   timeout 100 ms for user patterns (1 s for `ReleaseTagsPlugin`'s built-in ones), TMDB lookups 15 s overall (5 s per attempt).
 - `Authentication`, incl. optional `Oidc` single sign-on, e.g. Keycloak — see
   `Namerre.Api/Authentication/OidcLogin.cs`; the OIDC scheme is hidden by `OidcAwareSchemeProvider`
-  unless `Authority` is set — and `Passkeys` (`Enabled`, optional public `Origin`; see
-  `Namerre.Api/Authentication/PasskeyLogin.cs`).
+  unless `Authority` is set — and `Passkeys` (`Enabled`, optional `Origin` override of `PublicOrigin`; see
+  `Namerre.Api/Authentication/PasskeyLogin.cs`). Without a pinned origin `PasskeyLogin.RelyingParty` yields a
+  relying party only for `localhost` and null otherwise (passkey endpoints 404, `passkeysEnabled` false).
 - `Tmdb`, `ReverseProxy`.
 - `Telemetry`: optional OTLP export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless
   `OtlpEndpoint` is set. Namerre's own `ActivitySource`/`Meter` and instruments live in
