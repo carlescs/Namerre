@@ -173,7 +173,9 @@ rejections to API errors. Requests carry `Namerre:Tmdb:ReadAccessToken`.
 Everything app-specific is under the `Namerre` section, bound to `NamerreOptions`
 (`Infrastructure/Configuration`) and consumed via `IOptions<NamerreOptions>`:
 
-- `RootPath`, `DataPath`.
+- `RootPath`, `DataPath`, `PublicOrigin` (optional public HTTPS origin; `Namerre.Api/Authentication/PublicOrigin.cs` validates it and
+  `Passkeys:Origin`, each falling back to the other; pins passkey ceremonies and the OIDC post-logout return address
+  instead of trusting the request `Host`; set `AllowedHosts` to the public host too).
 - `Limits`: bound to the Application `RenameLimits` singleton; out-of-range values fail startup;
   signed-in `GET api/auth/session` reports them to the frontend's `WorkloadLimits`. Defaults:
   ≤200 files and ≤32 plugin instances per run, ≤32 queued jobs, ≤4 concurrent previews
@@ -181,9 +183,20 @@ Everything app-specific is under the `Namerre` section, bound to `NamerreOptions
   timeout 100 ms for user patterns (1 s for `ReleaseTagsPlugin`'s built-in ones), TMDB lookups 15 s overall (5 s per attempt).
 - `Authentication`, incl. optional `Oidc` single sign-on, e.g. Keycloak — see
   `Namerre.Api/Authentication/OidcLogin.cs`; the OIDC scheme is hidden by `OidcAwareSchemeProvider`
-  unless `Authority` is set — and `Passkeys` (`Enabled`, optional public `Origin`; see
-  `Namerre.Api/Authentication/PasskeyLogin.cs`).
+  unless `Authority` is set — and `Passkeys` (`Enabled`, optional `Origin` override of `PublicOrigin`; see
+  `Namerre.Api/Authentication/PasskeyLogin.cs`). Without a pinned origin `PasskeyLogin.RelyingParty` yields a
+  relying party only for `localhost` and null otherwise (passkey endpoints 404, `passkeysEnabled` false).
 - `Tmdb`, `ReverseProxy`.
+- `DataProtection`: optional PFX (`Certificate`, `CertificatePassword`, `PreviousCertificates`) that
+  encrypts the Data Protection key ring in `DataPath/keys`. `DataProtectionCertificates`
+  (Infrastructure) loads and checks the files (RSA key with private key, `DefaultKeySet` so it works on
+  Windows and Linux; messages never include passwords) and `DataProtectionOptionsValidator` fails startup
+  on a problem. The Api applies it in `Security/KeyRingEncryption.cs`: `CertificateKeyEncryptor` /
+  `CertificateKeyDecryptor` reimplement ASP.NET Core's `EncryptedXml` scheme lazily from
+  `IOptions<NamerreOptions>`, because `ProtectKeysWithCertificate` needs the certificate while services
+  are registered, before the final configuration exists. Retired certificates only decrypt. Existing
+  unencrypted keys stay readable. Without a certificate `Program.cs` logs a one-time startup message
+  (Warning, Information in Development) that the keys are unencrypted. DPAPI is intentionally not used.
 - `Telemetry`: optional OTLP export, wired in `Namerre.Api/Telemetry/TelemetrySetup.cs`; off unless
   `OtlpEndpoint` is set. Namerre's own `ActivitySource`/`Meter` and instruments live in
   `Infrastructure/Diagnostics/NamerreTelemetry`, backlog gauges in `RenameStateMetrics`. Requests
@@ -212,10 +225,10 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
 - Controllers reach the rules through thin requests: own account and setup in
   `Application/Authentication` (`RequiresSetupQuery`, `GetUserQuery`, `CompleteSetupCommand`,
   `PasswordSignInCommand`, `VerifyPasswordQuery`, `ConfirmOwnChangeCommand`, `SetPasswordCommand`,
-  `RemoveOwnPasswordCommand`, `UnlinkLoginCommand`, `EndSessionCommand`, `EndOtherSessionsCommand`,
+  `RemoveOwnPasswordCommand`, `UnlinkOwnLoginCommand`, `EndSessionCommand`, `EndOtherSessionsCommand`,
   `SessionEpochQuery`, the passkey requests below), administration in `Application/Users`
   (`ListUsersQuery`, `CreateUserCommand`, `UpdateUserCommand`, `RemovePasswordCommand`,
-  `LinkLoginCommand`, `MoveLoginCommand`, `MergeUsersCommand`, `DeleteUserCommand`). Authentication
+  `LinkLoginCommand`, `UnlinkLoginCommand`, `MoveLoginCommand`, `MergeUsersCommand`, `DeleteUserCommand`). Authentication
   plumbing that runs outside a controller — cookie validation, the OIDC ticket handler and
   `HubRenameNotifier` — uses `UserAccounts` directly.
 - Every access change (role, disabled, password, link, passkey) replaces the stamp, which
@@ -251,6 +264,17 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
   `AccountPolicy` (signed-in `password`, `reauthenticate`, `passkey/reauthenticate`, `passkeys/options`,
   `oidc/link`) allows 5/min per user ID with no shared ceiling, so anonymous traffic cannot block signed-in users.
 - A configured `Namerre:Authentication` account is a never-stored break-glass `Admin` with ID 0.
+- Usernames (`Application/Authentication/UsernameSkeleton`, used by `UserAccounts.IsValidUsername`, the
+  single rule for setup, creation and provisioning): new names are trimmed and normalized to NFKC, and
+  refused (`InvalidUsername`) if they hold control, format (bidi overrides, zero-width characters, BOM),
+  line/paragraph separator, surrogate-half, private-use, unassigned or noncharacter code points, Hangul
+  fillers, or any space other than U+0020. `UsernameSkeleton.Of` is a pragmatic confusable key (NFKC,
+  diacritics and format characters dropped, case folded, a small Cyrillic/Greek/Latin look-alike table,
+  and `0`→`o`, `1`/`i`/`l`/`|`→`l`); creating a user whose skeleton equals an existing user's (the
+  configured administrator included) is refused with 409 `UsernameConfusable`, and provisioning
+  (`ProvisionedUsername`) strips what `Clean` drops from the claim and moves on to the next `-N` suffix.
+  Uniqueness stays NOCASE in the database. Existing stored users and the configured administrator are
+  never revalidated, so legacy names keep signing in; only new names are checked.
 - SSO identities are keyed on (issuer = configured authority, `sub`); `OidcLogin.Read` checks
   `RequiredRole`, then `AuthenticationSetup.OnTicketReceived` resolves the linked user, provisions a
   `User` when `Oidc:AutoProvision` allows (never matching by username), or links the identity when
@@ -266,8 +290,8 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
   attestation; its opaque state holds the original options and expected origin. Thin requests:
   `BeginPasskeySignInQuery`, `PasskeySignInCommand`, `BeginPasskeyRegistrationCommand` (confirms
   like linking SSO), `CompletePasskeyRegistrationCommand` (pinned to the confirmed stamp),
-  `RenamePasskeyCommand` (own account; a label only, so the stamp stays), `RemovePasskeyCommand`
-  (own account and `api/users`). `Namerre.Api/Authentication/PasskeyLogin`
+  `RenamePasskeyCommand` (own account; a label only, so the stamp stays), `RemoveOwnPasskeyCommand` (own account)
+  and `RemovePasskeyCommand` (`api/users`). `Namerre.Api/Authentication/PasskeyLogin`
   derives the relying party (configured `Origin`, else the request's scheme and host) and carries
   the state through the browser in time-limited Data Protection tickets bound to a purpose (and
   user + stamp for registration), redeemed once against an in-memory nonce set; a random protector

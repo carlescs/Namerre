@@ -35,22 +35,29 @@ public sealed class PasskeyLogin
         // ticket that was already redeemed must not verify again. Namerre runs as one process per database.
         protector = dataProtection.CreateProtector("Namerre.Authentication.Passkeys",
             Convert.ToHexString(RandomNumberGenerator.GetBytes(16))).ToTimeLimitedDataProtector();
-        if (string.IsNullOrWhiteSpace(settings.Origin))
-            return;
-        if (!Uri.TryCreate(settings.Origin.Trim(), UriKind.Absolute, out var origin) ||
-            origin.Scheme != Uri.UriSchemeHttps && !(origin.Scheme == Uri.UriSchemeHttp && origin.IsLoopback) ||
-            origin.AbsolutePath != "/" || !string.IsNullOrEmpty(origin.Query) || !string.IsNullOrEmpty(origin.Fragment) ||
-            !string.IsNullOrEmpty(origin.UserInfo) || origin.HostNameType != UriHostNameType.Dns)
-            throw new InvalidOperationException(
-                "Namerre:Authentication:Passkeys:Origin must be an HTTPS origin with a host name, e.g. https://namerre.example.com.");
-        configured = new PasskeyRelyingParty(origin.IdnHost, origin.GetLeftPart(UriPartial.Authority));
+        configured = new PublicOrigin(options).Passkeys;
     }
 
     public bool Enabled { get; }
 
-    /// <summary>The configured relying party, or the request's own scheme and host.</summary>
-    public PasskeyRelyingParty RelyingParty(HttpRequest request)
-        => configured ?? new PasskeyRelyingParty(request.Host.Host, $"{request.Scheme}://{request.Host.Value}");
+    /// <summary>
+    /// The relying party ceremonies for <paramref name="request"/> use: the pinned one when an origin is configured,
+    /// never the request's own <c>Host</c>. Without one, only a request to <c>localhost</c> (development) gets a
+    /// relying party; any other host gets null, so passkeys are unavailable rather than bound to a client's host name.
+    /// </summary>
+    public PasskeyRelyingParty? RelyingParty(HttpRequest request)
+    {
+        if (!Enabled)
+            return null;
+        if (configured is not null)
+            return configured;
+        return string.Equals(request.Host.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+            ? new PasskeyRelyingParty("localhost", $"{request.Scheme}://{request.Host.Value}")
+            : null;
+    }
+
+    /// <summary>True when an origin is pinned, so passkeys work at the public address.</summary>
+    public bool Pinned => configured is not null;
 
     /// <summary>Protects a ceremony's state for <paramref name="purpose"/>, optionally bound to a user version.</summary>
     public string Issue(string purpose, string state, UserRecord? user = null)

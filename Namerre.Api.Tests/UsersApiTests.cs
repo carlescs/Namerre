@@ -40,6 +40,10 @@ public sealed class UsersApiTests : IDisposable
         await AssertCode(await admin.PostAsJsonAsync("/api/users",
             new { username = "CAROL", password = "another-long-password" }), HttpStatusCode.Conflict, "UsernameTaken");
         await AssertCode(await admin.PostAsJsonAsync("/api/users",
+            new { username = "c\u0430rol", password = "another-long-password" }), HttpStatusCode.Conflict, "UsernameConfusable"); // betterleaks:allow
+        await AssertCode(await admin.PostAsJsonAsync("/api/users",
+            new { username = "dan\u200Biel", password = "another-long-password" }), HttpStatusCode.BadRequest, "InvalidUsername"); // betterleaks:allow
+        await AssertCode(await admin.PostAsJsonAsync("/api/users",
             new { username = "dave", password = "short" }), HttpStatusCode.BadRequest, "WeakPassword");
 
         using var user = await SignIn(factory, "carol", "carol-first-password");
@@ -301,6 +305,42 @@ public sealed class UsersApiTests : IDisposable
         Assert.Equal(HttpStatusCode.NoContent, confirm.StatusCode);
         await AuthWebApplicationFactory.RefreshCsrf(admin);
         Assert.NotEqual("RecentSignInRequired", await CodeOf(await Send(admin, method, path, body)));
+    }
+
+    [Fact]
+    public async Task UnlinkingYourOwnIdentityNeedsARecentSignIn()
+    {
+        var clock = new ManualClock(DateTimeOffset.UtcNow);
+        using var factory = Factory(clock, new()
+        {
+            ["Namerre:Authentication:Oidc:Authority"] = "https://keycloak.test/realms/media",
+            ["Namerre:Authentication:Oidc:ClientId"] = "namerre",
+            ["Namerre:Authentication:Oidc:RequiredRole"] = "namerre-user"
+        });
+        using var admin = await Installed(factory);
+        using var created = await admin.PostAsJsonAsync("/api/users",
+            new { username = "judy", password = "judy-long-password", subject = "judy-subject" }); // betterleaks:allow
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        using var judy = await SignIn(factory, "judy", "judy-long-password"); // betterleaks:allow
+        var session = await judy.GetFromJsonAsync<JsonElement>("/api/auth/session");
+        var loginId = Assert.Single(session.GetProperty("logins").EnumerateArray()).GetProperty("id").GetInt64();
+
+        clock.Advance(UserSession.RecentSignIn + TimeSpan.FromMinutes(1));
+
+        // An old session cannot remove a sign-in method, which would end the user's other sessions.
+        await AssertCode(await judy.DeleteAsync($"/api/auth/logins/{loginId}"), HttpStatusCode.Forbidden,
+            "RecentSignInRequired");
+        session = await judy.GetFromJsonAsync<JsonElement>("/api/auth/session");
+        Assert.Equal(1, session.GetProperty("logins").GetArrayLength());
+
+        using var confirm = await judy.PostAsJsonAsync("/api/auth/reauthenticate",
+            new { password = "judy-long-password" }); // betterleaks:allow
+        Assert.Equal(HttpStatusCode.NoContent, confirm.StatusCode);
+        await AuthWebApplicationFactory.RefreshCsrf(judy);
+        using var unlinked = await judy.DeleteAsync($"/api/auth/logins/{loginId}");
+        Assert.Equal(HttpStatusCode.NoContent, unlinked.StatusCode);
+        session = await judy.GetFromJsonAsync<JsonElement>("/api/auth/session");
+        Assert.Equal(0, session.GetProperty("logins").GetArrayLength());
     }
 
     [Fact]

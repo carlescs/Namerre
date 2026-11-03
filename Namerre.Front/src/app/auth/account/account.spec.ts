@@ -347,6 +347,7 @@ describe('Account', () => {
     fixture.destroy();
 
     hasPassword.set(true);
+    recentSignIn.set(true);
     ({ fixture, element } = await render());
     remove().click();
     await answer(fixture, 'Remove passkey Phone?', false);
@@ -443,6 +444,7 @@ describe('Account', () => {
   it('unlinks single sign-on only once confirmed', async () => {
     logins.set([login]);
     singleSignOn.set({ displayName: 'Keycloak' });
+    recentSignIn.set(true);
     const { fixture, element } = await render();
     (element.querySelector('[aria-label="Unlink alice-sso"]') as HTMLButtonElement).click();
     await answer(fixture, 'Unlink alice-sso?', false);
@@ -476,6 +478,86 @@ describe('Account', () => {
     await vi.waitFor(() => expect(removePassword).toHaveBeenCalled());
     expect(reauthenticateWithPasskey).toHaveBeenCalled();
     expect(reauthenticate).not.toHaveBeenCalled();
+  });
+
+  it('confirms the password, then unlinks an identity', async () => {
+    singleSignOn.set({ displayName: 'Keycloak' });
+    logins.set([login]);
+    const { fixture, element } = await render();
+    (element.querySelector('[aria-label="Unlink alice-sso"]') as HTMLButtonElement).click();
+    await answer(fixture, 'Unlink alice-sso?');
+    expect(unlink).not.toHaveBeenCalled();
+    fill(element, '#confirm-password', 'my-password'); // betterleaks:allow
+    await fixture.whenStable();
+    buttonNamed(element, 'Confirm').click();
+    await vi.waitFor(() => expect(unlink).toHaveBeenCalledWith(7));
+    expect(reauthenticate).toHaveBeenCalledWith('my-password'); // betterleaks:allow
+    await fixture.whenStable();
+    expect(element.textContent).toContain('Unlinked alice-sso.');
+  });
+
+  it('unlinks right away after a recent sign-in', async () => {
+    singleSignOn.set({ displayName: 'Keycloak' });
+    logins.set([login]);
+    recentSignIn.set(true);
+    const { fixture, element } = await render();
+    (element.querySelector('[aria-label="Unlink alice-sso"]') as HTMLButtonElement).click();
+    await answer(fixture, 'Unlink alice-sso?');
+    await vi.waitFor(() => expect(unlink).toHaveBeenCalledWith(7));
+    await fixture.whenStable();
+    expect(reauthenticate).not.toHaveBeenCalled();
+  });
+
+  it('asks to confirm when the server finds an unlink sign-in too old, then retries', async () => {
+    singleSignOn.set({ displayName: 'Keycloak' });
+    logins.set([login]);
+    recentSignIn.set(true);
+    unlink.mockRejectedValueOnce(
+      new HttpErrorResponse({ status: 403, error: { code: 'RecentSignInRequired' } }),
+    );
+    const { fixture, element } = await render();
+    (element.querySelector('[aria-label="Unlink alice-sso"]') as HTMLButtonElement).click();
+    await answer(fixture, 'Unlink alice-sso?');
+    await vi.waitFor(() => expect(unlink).toHaveBeenCalledOnce());
+    await fixture.whenStable();
+    expect(element.textContent).toContain('Confirm it is you');
+    fill(element, '#confirm-password', 'my-password'); // betterleaks:allow
+    await fixture.whenStable();
+    buttonNamed(element, 'Confirm').click();
+    await vi.waitFor(() => expect(unlink).toHaveBeenCalledTimes(2));
+    await fixture.whenStable();
+    expect(element.textContent).toContain('Unlinked alice-sso.');
+  });
+
+  it('confirms with a passkey, then removes a passkey', async () => {
+    supportPasskeys();
+    passkeys.set([passkey]);
+    const { fixture, element } = await render();
+    (element.querySelector('[aria-label="Remove passkey Phone"]') as HTMLButtonElement).click();
+    await answer(fixture, 'Remove passkey Phone?');
+    expect(removePasskey).not.toHaveBeenCalled();
+    buttonNamed(element, 'Use a passkey').click();
+    await vi.waitFor(() => expect(removePasskey).toHaveBeenCalledWith(3));
+    expect(reauthenticateWithPasskey).toHaveBeenCalled();
+    await fixture.whenStable();
+    expect(element.textContent).toContain('Removed Phone');
+  });
+
+  it('asks to confirm when the server finds a passkey removal sign-in too old', async () => {
+    supportPasskeys();
+    passkeys.set([passkey]);
+    recentSignIn.set(true);
+    removePasskey.mockRejectedValueOnce(
+      new HttpErrorResponse({ status: 403, error: { code: 'RecentSignInRequired' } }),
+    );
+    const { fixture, element } = await render();
+    (element.querySelector('[aria-label="Remove passkey Phone"]') as HTMLButtonElement).click();
+    await answer(fixture, 'Remove passkey Phone?');
+    await vi.waitFor(() => expect(removePasskey).toHaveBeenCalledOnce());
+    await fixture.whenStable();
+    expect(element.textContent).toContain('Confirm it is you');
+    buttonNamed(element, 'Use a passkey').click();
+    await vi.waitFor(() => expect(removePasskey).toHaveBeenCalledTimes(2));
   });
 
   it('signs out of the other sessions and says so', async () => {

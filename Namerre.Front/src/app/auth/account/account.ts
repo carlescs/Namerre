@@ -33,7 +33,7 @@ const linkErrors: Record<string, string> = {
 };
 
 /** A sensitive change waiting for the user to confirm it is them. */
-type Pending = 'link' | 'remove-password' | 'add-passkey';
+type Pending = 'link' | 'remove-password' | 'add-passkey' | 'unlink' | 'remove-passkey';
 
 /**
  * The signed-in user's own account: password (change, set a first one, or remove it), passkeys and
@@ -111,6 +111,8 @@ export class Account {
   protected readonly error = signal('');
   protected readonly changed = signal(false);
   protected readonly pending = signal<Pending | null>(null);
+  /** The identity or passkey a pending removal applies to. */
+  private target: LinkedLogin | Passkey | null = null;
   protected readonly accessError = signal('');
   protected readonly accessStatus = signal('');
   protected readonly sessionsError = signal('');
@@ -199,7 +201,8 @@ export class Account {
   }
 
   /** Runs a sensitive change now when the sign-in is recent, otherwise asks the user to confirm first. */
-  protected request(action: Pending): void {
+  protected request(action: Pending, target: LinkedLogin | Passkey | null = null): void {
+    this.target = target;
     this.accessError.set('');
     this.accessStatus.set('');
     if (this.auth.recentSignIn()) {
@@ -345,6 +348,7 @@ export class Account {
     }
   }
 
+  /** Asks before removing a passkey, then removes it once it is confirmed to be the user. */
   protected async removePasskey(passkey: Passkey): Promise<void> {
     if (this.busy()) return;
     const confirmed = await this.confirmations.ask({
@@ -354,22 +358,10 @@ export class Account {
       confirmLabel: 'Remove passkey',
       danger: true,
     });
-    if (!confirmed || this.busy()) return;
-    this.busy.set(true);
-    this.accessError.set('');
-    this.accessStatus.set('');
-    try {
-      await this.auth.removePasskey(passkey.id);
-      this.accessStatus.set(
-        `Removed ${passkey.name}. Also delete it from your device or password manager.`,
-      );
-    } catch (error: unknown) {
-      this.accessError.set(this.describe(error, 'Unable to remove the passkey.'));
-    } finally {
-      this.busy.set(false);
-    }
+    if (confirmed && !this.busy()) this.request('remove-passkey', passkey);
   }
 
+  /** Asks before unlinking a single sign-on identity, then unlinks it once it is confirmed to be the user. */
   protected async unlink(login: LinkedLogin): Promise<void> {
     if (this.busy()) return;
     const confirmed = await this.confirmations.ask({
@@ -378,18 +370,7 @@ export class Account {
       confirmLabel: 'Unlink',
       danger: true,
     });
-    if (!confirmed || this.busy()) return;
-    this.busy.set(true);
-    this.accessError.set('');
-    this.accessStatus.set('');
-    try {
-      await this.auth.unlink(login.id);
-      this.accessStatus.set(`Unlinked ${login.displayName}.`);
-    } catch (error: unknown) {
-      this.accessError.set(this.describe(error, 'Unable to unlink the identity.'));
-    } finally {
-      this.busy.set(false);
-    }
+    if (confirmed && !this.busy()) this.request('unlink', login);
   }
 
   private async run(action: Pending, password?: string): Promise<void> {
@@ -406,6 +387,22 @@ export class Account {
         this.pending.set(null);
         this.passkeyName.reset();
         this.accessStatus.set('Passkey added. You can now sign in with it.');
+        return;
+      }
+      if (action === 'remove-passkey' && this.target) {
+        const passkey = this.target as Passkey;
+        await this.auth.removePasskey(passkey.id);
+        this.pending.set(null);
+        this.accessStatus.set(
+          `Removed ${passkey.name}. Also delete it from your device or password manager.`,
+        );
+        return;
+      }
+      if (action === 'unlink' && this.target) {
+        const login = this.target as LinkedLogin;
+        await this.auth.unlink(login.id);
+        this.pending.set(null);
+        this.accessStatus.set(`Unlinked ${login.displayName}.`);
         return;
       }
       await this.auth.removePassword();
@@ -426,7 +423,11 @@ export class Account {
             ? 'Unable to start linking.'
             : action === 'add-passkey'
               ? 'Unable to add the passkey.'
-              : 'Unable to remove the password.',
+              : action === 'unlink'
+                ? 'Unable to unlink the identity.'
+                : action === 'remove-passkey'
+                  ? 'Unable to remove the passkey.'
+                  : 'Unable to remove the password.',
         ),
       );
       if (serverCode(error) === 'RecentSignInRequired') this.pending.set(action);

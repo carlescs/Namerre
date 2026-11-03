@@ -65,6 +65,7 @@ Application settings live in one `Namerre` section in `Namerre.Api\appsettings.j
   "Namerre": {
     "RootPath": "",
     "DataPath": "",
+    "PublicOrigin": "",
     "Authentication": {
       "Username": "",
       "PasswordHash": "",
@@ -99,6 +100,11 @@ Application settings live in one `Namerre` section in `Namerre.Api\appsettings.j
       "Headers": "",
       "ServiceName": "namerre"
     },
+    "DataProtection": {
+      "Certificate": "",
+      "CertificatePassword": "",
+      "PreviousCertificates": []
+    },
     "Limits": {
       "MaxFilesPerRun": 200,
       "MaxStepsPerRun": 32,
@@ -119,6 +125,9 @@ The backend binds this section to `NamerreOptions` and consumes it through
 `IOptions<NamerreOptions>`. Logging, allowed hosts, and other ASP.NET Core settings
 remain at the top level. Keep credentials in user secrets or protected runtime
 configuration, not in committed settings.
+
+`Namerre:DataProtection` optionally encrypts the cookie key ring at rest; see
+[Protecting the data directory](#protecting-the-data-directory).
 
 When upgrading, move the former `FileBrowser:RootPath` and `Rename:DataPath` values
 to `Namerre:RootPath` and `Namerre:DataPath`, and move `Authentication` and `Tmdb`
@@ -312,7 +321,11 @@ server keeps every account usable:
 - Disabling a user, resetting or removing their password, changing their role, linking or
   unlinking an identity, and adding or removing a passkey replace that user's credential stamp, which ends their existing sessions
   (and live updates) right away.
-- Usernames are unique ignoring case. A user without a password fails password sign-in exactly
+- New usernames are normalized to Unicode NFKC and must be 1 to 128 visible characters: control,
+  invisible or formatting characters (zero-width spaces, bidirectional overrides, line separators and
+  similar) are refused. A name that looks like an existing one (such as a Cyrillic `а` in place of
+  Latin `a`, or `adm1n` next to `admin`) is refused as well. Usernames are unique ignoring case;
+  existing users keep their names. A user without a password fails password sign-in exactly
   like a wrong password, without revealing that the account exists.
 
 Rename history belongs to the user who prepared each plan: a user sees, exports, undoes and
@@ -338,8 +351,12 @@ sets or removes the password, `POST /{id}/logins` links an identity (`subject`) 
 and `DELETE /{id}` deletes the user. Users manage their own account under `api/auth`: `POST password`
 (`currentPassword` may be omitted only by a user without a password, after a recent sign-in),
 `DELETE password`, `POST reauthenticate`, `POST oidc/link` (returns the address that starts linking),
-`GET logins` and `DELETE logins/{id}`, `POST sessions/revoke-others` (ends the user's other sessions,
-keeping the current one), `POST logout`, and the passkey endpoints below. `GET api/auth/session`
+`GET logins` and `DELETE logins/{id}` (unlinks an identity), `POST sessions/revoke-others` (ends the user's other sessions,
+keeping the current one), `POST logout`, and the passkey endpoints below. Removing your own password,
+unlinking an identity (`DELETE logins/{id}`) and removing a passkey (`DELETE passkeys/{id}`) need a
+recent sign-in like the other sensitive changes: an older session gets `403` with
+`RecentSignInRequired` and nothing changes until you confirm (the Account page asks and repeats the
+removal), so a stolen old session cookie cannot evict you by removing your sign-in methods. `GET api/auth/session`
 reports the user's `role`, `hasPassword`, linked `logins` and `passkeys` (and whether passkeys are
 `passkeysEnabled`), so the app hides what the user cannot use. Refusals return
 `{ "code", "message" }`, e.g. `LastAdmin`, `OwnAccount`, `LastSignInMethod`, `LoginTaken`,
@@ -356,9 +373,8 @@ it needs a sign-in within the last ten minutes, the password, or another passkey
 the next sensitive changes need no further confirmation, and a user without a password confirms
 sensitive changes with a passkey. To rename a passkey later, select **Rename** next to it and
 enter the new name; a new name is only a label, so it needs no confirmation and keeps every session
-signed in. **Remove** asks you to confirm first; also delete the passkey from your device or
-password manager afterwards. The
-break-glass administrator from the server configuration cannot have passkeys.
+signed in. **Remove** asks you to confirm first and, like other sensitive changes, needs a recent
+sign-in; also delete the passkey from your device or password manager afterwards. The break-glass administrator from the server configuration cannot have passkeys.
 
 - Passkeys are discoverable credentials that require user verification. No attestation is
   requested, so any authenticator the browser accepts works (platform authenticators, security
@@ -375,11 +391,21 @@ break-glass administrator from the server configuration cannot have passkeys.
   cannot be replayed, and only in the running server: a restart ends ceremonies in progress, which
   people simply start again.
 - Passkeys belong to the address people open Namerre at: the relying party ID is its host name
-  and the browser origin must match. By default both come from each request (`Host` and the
-  scheme after `X-Forwarded-Proto`), which suits a reverse proxy that keeps the `Host` header. If
-  the proxy rewrites it, set `Namerre:Authentication:Passkeys:Origin` to the public origin, e.g.
-  `https://namerre.example.com`. Passkeys created at one host name do not work at another, and
-  browsers do not offer passkeys at an IP address or over plain HTTP (except `localhost`).
+  and the browser origin must match. Namerre pins that origin and never takes it from a
+  request's `Host` header (which a client controls, so a phishing proxy could otherwise register
+  a passkey under its own host name). Set `Namerre:PublicOrigin` to the public HTTPS origin, e.g.
+  `https://namerre.example.com`; `Namerre:Authentication:Passkeys:Origin` overrides it for
+  passkeys only and each falls back to the other. Both are validated at startup (HTTPS, a host
+  name, no path). **Without either setting, passkeys are offered only on requests to
+  `localhost`**; any other host sees passkeys as unavailable (`passkeysEnabled` is false and the
+  passkey endpoints return 404), and a warning is logged at startup. Passkeys created at one
+  host name do not work at another, and browsers do not offer passkeys at an IP address or over
+  plain HTTP (except `localhost`).
+  **Upgrade note:** earlier versions derived the origin from each request. If you use passkeys
+  behind a reverse proxy or on a LAN name, set `Namerre:PublicOrigin` to the same origin people
+  already use (the registered passkeys then keep working, since their relying party ID is
+  unchanged); until you do, passkeys are unavailable there, while passwords and single sign-on
+  are unaffected.
 - Set `Namerre:Authentication:Passkeys:Enabled` to `false` to turn passkeys off: the sign-in
   button and the **Passkeys** section disappear and the endpoints return 404. Registered passkeys
   stay stored (and still count as sign-in methods) until removed.
@@ -409,6 +435,10 @@ Only configured proxies/networks and ASP.NET Core's default loopback proxies are
 trusted. Keep the backend port private and trust only proxy-controlled networks;
 do not trust arbitrary clients or enable unrestricted forwarded-header trust.
 Secure cookies and CSRF protection remain enabled.
+Pin the public address: set `Namerre:PublicOrigin` (used for passkeys and the single sign-on
+sign-out return address) and set the top-level `AllowedHosts` (for example
+`AllowedHosts=namerre.example.com`, or `AllowedHosts__0` in an environment) to the public host
+name, instead of the default `*`, so requests with any other `Host` header are refused.
 Live progress uses a SignalR WebSocket at `/api/hubs/rename`; Traefik forwards WebSocket
 upgrades by default. If a proxy blocks them, SignalR falls back to Server-Sent Events or
 long polling, and the browser keeps refreshing active jobs every second while it cannot connect.
@@ -422,9 +452,11 @@ uses an encrypted, HttpOnly, Secure, SameSite=Strict cookie, not browser storage
 bearer tokens. Sessions expire after eight hours without sliding renewal, and are
 not persisted as remember-me cookies. When `Namerre:DataPath` is set, the ASP.NET Core
 Data Protection keys that encrypt session and antiforgery cookies are stored in its
-`keys` folder, so sessions survive restarts and container replacement. Protect that
-folder like the database: anyone who can read the keys can forge a session cookie.
-Without `Namerre:DataPath`, ASP.NET Core's default key location is used.
+`keys` folder, so sessions survive restarts and container replacement. Treat that
+folder, and the whole data directory, as a credential: the keys are readable XML unless you
+[encrypt them](#protecting-the-data-directory), and anyone holding a copy (a backup, a volume
+snapshot) can forge a session cookie for any user, including the administrator, without a
+password. Without `Namerre:DataPath`, ASP.NET Core's default key location is used.
 Cookies are stateless, so the server also remembers ended sessions. Every session carries a
 random ID and the user's session epoch; **Sign out** revokes that ID on the server, and a
 copied cookie is rejected at once. **Sign out of other sessions** on the **Account** page
@@ -475,8 +507,9 @@ Every single sign-on resolves to a local user, keyed on the provider's issuer an
 `sub` claim (never on `preferred_username` or email, which can change or be reused):
 
 - **First sign-in.** With `AutoProvision` on (the default), an identity that is not linked yet
-  gets a new local user with the `User` role, named after `UsernameClaim` (with a `-2`, `-3`, …
-  suffix if the name is taken). An administrator promotes it if needed. With `AutoProvision`
+  gets a new local user with the `User` role, named after `UsernameClaim` (cleaned of invisible
+  characters and normalized like any username, with a `-2`, `-3`, … suffix if the name is taken or
+  looks like an existing one). An administrator promotes it if needed. With `AutoProvision`
   off, unlinked identities are refused until someone links them. Until the first administrator is
   installed with the setup token (or configured), no users are provisioned, so single sign-on
   cannot end installation without an administrator.
@@ -544,7 +577,9 @@ cookie as local sign-in. Users without the role are rejected. Changing `Authorit
 `UsernameClaim` invalidates existing single sign-on sessions after a restart; removing
 the role in Keycloak takes effect at the next sign-in. **Sign out** of a single sign-on
 session also ends the Keycloak session: Namerre ends its own session, then sends the
-browser to the provider's `end_session_endpoint`, which returns to Namerre afterwards.
+browser to the provider's `end_session_endpoint`, which returns to Namerre afterwards, at
+`Namerre:PublicOrigin` when set (otherwise at the request's own address; register that return
+address in the provider as a valid post-logout redirect URI).
 If the provider advertises no such endpoint or is unreachable, only the Namerre session
 ends, and the button may sign straight back in while Keycloak still remembers the user.
 Behind a reverse proxy, configure trusted proxies
@@ -949,7 +984,7 @@ browsing or renaming.
 Set `Namerre:DataPath` (environment variable `Namerre__DataPath`) to a writable data
 directory **separate from the browsable root, with neither directory containing the
 other**. This holds SQLite history, prepared plans,
-the durable job queue, journals, and the cookie encryption keys (`keys` folder). Keep it persistent across upgrades and restarts.
+the durable job queue, journals, and the cookie encryption keys (`keys` folder). Keep it persistent across upgrades and restarts. **The directory is secret**: see [Protecting the data directory](#protecting-the-data-directory).
 Data access uses EF Core's SQLite provider with versioned EF migrations in
 Infrastructure; database concerns stay out of Domain and Application.
 When `Namerre:DataPath` is configured, pending migrations run during API startup,
@@ -987,6 +1022,8 @@ Back up the data directory together with the media tree while the app is stopped
 and no jobs are mutating files. Copying only the SQLite main file while it is in use
 is not a reliable backup. Restoring history without the matching media state can
 make rollback unsafe. Keep interrupted-operation evidence until recovery is resolved.
+Backups contain the session keys and every user's credential stamp, so protect them like credentials,
+and consider encrypting `keys/` with a certificate that is not part of the backup.
 
 The container runs as its non-root application user. Ensure writable media and data
 mounts are owned by, or grant access to, that user's numeric UID. Do not grant broad
@@ -1029,6 +1066,80 @@ use a native Linux filesystem/volume when the Windows host mount is rejected.
 Use a disposable media directory first. Removing the container must not remove
 its data volume. Authentication does not sandbox signed-in users or replace network
 restrictions; exposing this mutation-capable API to an untrusted network is unsafe.
+
+### Protecting the data directory
+
+The data directory holds the SQLite database (users, credential stamps, history) and `keys/`, the
+ASP.NET Core Data Protection key ring that signs and encrypts session cookies. **Everything in it is
+secret, `keys/` most of all**: a copy of the directory is enough to forge a valid session for any
+user. Restrict access to it on the host and protect backups and snapshots like credentials
+(encrypt them, limit who can read them, do not upload them to shared storage).
+
+To make a stolen copy of `keys/` useless, encrypt the key ring with a certificate whose private key is
+kept elsewhere (not in the data directory or its backups):
+
+| Setting | Meaning |
+| --- | --- |
+| `Namerre:DataProtection:Certificate` | Path to a PKCS#12 `.pfx` file holding an RSA certificate **with** its private key. Empty keeps the keys unencrypted. |
+| `Namerre:DataProtection:CertificatePassword` | The file's password, if it has one. A secret: pass it through protected runtime configuration and it is never logged. |
+| `Namerre:DataProtection:PreviousCertificates:N:Path` / `:Password` | Retired certificates that can still decrypt keys written while they were current (rotation). |
+
+Any self-signed certificate works; the certificate is only a key-wrapping key and is not validated
+for expiry or trust. For example:
+
+```bash
+openssl req -x509 -newkey rsa:3072 -nodes -keyout key.pem -out cert.pem -days 3650 -subj "/CN=namerre-keys"
+openssl pkcs12 -export -inkey key.pem -in cert.pem -out namerre-keys.pfx -passout env:PFX_PASSWORD
+```
+
+Startup fails with a message naming the setting when the file is missing or unreadable, is not a PFX,
+the password is wrong, the certificate has no private key, or the key is not RSA. A PEM pair must
+be converted to PFX first. Keys use XML Encryption with AES-256-CBC and an RSA (PKCS#1 v1.5)
+wrapped key, the same format as ASP.NET Core's `ProtectKeysWithCertificate`; certificate store thumbprints are not supported because a mounted file suits
+containers best.
+
+Enabling encryption on an existing installation is safe: the old unencrypted keys stay readable (ASP.NET
+Core only decrypts keys that carry an encrypted secret), new keys are encrypted from then on, and
+sessions survive. To encrypt the keys already on disk, enable encryption, wait for the key ring to roll
+over (keys last 90 days, with a new one created about two days before expiry), then delete the
+remaining old key files once users have signed in again. To rotate the certificate, set the new
+one as `Certificate` and list the old one under `PreviousCertificates` until no key encrypted with it
+remains (at least 90 days). Losing the certificate makes the stored keys unreadable: all sessions end
+and everyone has to sign in again, but no other data is affected.
+
+Without a certificate, startup logs that the keys are unencrypted (a warning, or information in
+Development). Windows DPAPI is deliberately not used by default: it ties the keys to one machine
+and account, so restoring a backup or moving the data directory would silently invalidate every
+session, and it protects nothing from other processes running as the same account.
+
+Docker, mounting the certificate and its password as secrets (a Compose file; Compose mounts
+secrets read-only under `/run/secrets`):
+
+```yaml
+services:
+  namerre:
+    image: namerre
+    environment:
+      Namerre__RootPath: /media
+      Namerre__DataPath: /data
+      Namerre__DataProtection__Certificate: /run/secrets/namerre_keys_pfx
+      # Read the password from a secret file with your orchestrator, or pass it as a protected variable.
+      Namerre__DataProtection__CertificatePassword: ${NAMERRE_KEYS_PASSWORD}
+    volumes:
+      - /srv/media:/media
+      - namerre-data:/data
+    secrets:
+      - namerre_keys_pfx
+secrets:
+  namerre_keys_pfx:
+    file: ./namerre-keys.pfx
+volumes:
+  namerre-data:
+```
+
+With plain `docker run`, add `--mount type=bind,source=/etc/namerre/namerre-keys.pfx,target=/run/secrets/namerre_keys_pfx,readonly`
+and `-e Namerre__DataProtection__Certificate=/run/secrets/namerre_keys_pfx` plus the password variable.
+Keep the `.pfx` outside the data volume and out of the backups of that volume.
 
 ## TMDB metadata
 

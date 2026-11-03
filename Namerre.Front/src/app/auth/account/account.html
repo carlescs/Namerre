@@ -302,7 +302,11 @@
                   ? 'link single sign-on'
                   : action === 'add-passkey'
                     ? 'add a passkey'
-                    : 'remove it'
+                    : action === 'unlink'
+                      ? 'unlink this identity'
+                      : action === 'remove-passkey'
+                        ? 'remove this passkey'
+                        : 'remove the password'
               }}.
             </label>
             <input

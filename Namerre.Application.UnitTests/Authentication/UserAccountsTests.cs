@@ -107,6 +107,122 @@ public sealed class UserAccountsTests
             accounts.Create(Someone, "bob", UserRole.User, null, null)).Code);
     }
 
+    [Theory]
+    [InlineData("ali\u200Bce")] // zero-width space
+    [InlineData("alice\u202E")] // right-to-left override
+    [InlineData("al\u200Dice")] // zero-width joiner
+    [InlineData("\uFEFFalice")] // byte order mark
+    [InlineData("ali\u2028ce")] // line separator
+    [InlineData("ali\u2029ce")] // paragraph separator
+    [InlineData("ali\u3164ce")] // Hangul filler
+    public void InvisibleCharactersAreRejectedInNewUsernames(string username)
+    {
+        var accounts = Accounts("admin", Hash);
+
+        Assert.False(UserAccounts.IsValidUsername(username));
+        Assert.Equal("InvalidUsername", Assert.Throws<AccountException>(() =>
+            accounts.Create(Someone, username, UserRole.User, Password, null)).Code);
+        var fresh = Accounts();
+        Assert.Equal(SetupResult.InvalidUsername, fresh.CompleteSetup(fresh.SetupToken!, username, Password));
+    }
+
+    [Fact]
+    public void NoncharactersPrivateUseAndSurrogateHalvesAreRejectedInNewUsernames()
+    {
+        var accounts = Accounts("admin", Hash);
+
+        foreach (var bad in new[] { 0xD800, 0xFFFE, 0xE000 })
+            Assert.Equal("InvalidUsername", Assert.Throws<AccountException>(() =>
+                accounts.Create(Someone, "ali" + (char)bad + "ce", UserRole.User, Password, null)).Code);
+    }
+
+    [Fact]
+    public void NewUsernamesAreStoredInNfkcForm()
+    {
+        var accounts = Accounts("admin", Hash);
+
+        // Fullwidth letters, and a precomposed vs decomposed accent, fold into one canonical form.
+        var wide = accounts.Create(Someone, "\uFF21lice", UserRole.User, Password, null);
+        var accent = accounts.Create(Someone, "Jose\u0301", UserRole.User, Password, null);
+
+        Assert.Equal("Alice", wide.Username);
+        Assert.Equal("Jos\u00E9", accent.Username);
+        Assert.Equal("UsernameTaken", Assert.Throws<AccountException>(() =>
+            accounts.Create(Someone, "\uFF41lice", UserRole.User, Password, null)).Code);
+    }
+
+    [Theory]
+    [InlineData("\u0430dmin")] // Cyrillic a
+    [InlineData("adm\u0456n")] // Cyrillic i
+    [InlineData("adm1n")]
+    [InlineData("\u0391dmin")] // Greek capital alpha
+    [InlineData("ADM\u0399N")] // Greek capital iota
+    [InlineData("\u03B1dm\u03B9n")] // Greek alpha and iota
+    public void LookAlikesOfAnExistingUsernameAreRefused(string username)
+    {
+        var accounts = Accounts("admin", Hash);
+
+        Assert.Equal("UsernameConfusable", Assert.Throws<AccountException>(() =>
+            accounts.Create(Someone, username, UserRole.User, Password, null)).Code);
+    }
+
+    [Fact]
+    public void LookAlikesAreComparedAgainstStoredUsersToo()
+    {
+        var accounts = Accounts();
+        accounts.Create(Someone, "paypal", UserRole.Admin, Password, null);
+
+        Assert.Equal("UsernameConfusable", Assert.Throws<AccountException>(() =>
+            accounts.Create(Someone, "p\u0430yp\u0430l", UserRole.User, Password, null)).Code);
+        Assert.Equal("UsernameConfusable", Assert.Throws<AccountException>(() =>
+            accounts.Create(Someone, "paypa1", UserRole.User, Password, null)).Code);
+        Assert.Equal("bob", accounts.Create(Someone, "bob", UserRole.User, Password, null).Username);
+    }
+
+    [Fact]
+    public void ProvisioningCleansTheNameAndSuffixesLookAlikes()
+    {
+        var accounts = Accounts("root", Hash);
+        accounts.Create(Someone, "admin", UserRole.Admin, Password, null);
+
+        var (cyrillic, _, _) = accounts.SignInExternal(new(Issuer, "sub-1", "\u0430dmin"), true);
+        var (hidden, _, _) = accounts.SignInExternal(new(Issuer, "sub-2", "\u202Ebo\u200Bb\uFF42"), true);
+        var (blank, _, _) = accounts.SignInExternal(new(Issuer, "sub-3", "\u200B\u202E"), true);
+
+        Assert.Equal("\u0430dmin-2", cyrillic!.Username);
+        Assert.Equal("bobb", hidden!.Username);
+        Assert.Equal("user", blank!.Username);
+    }
+
+    [Fact]
+    public void ProvisionedNamesNeverSplitASurrogatePairWhenTruncated()
+    {
+        var accounts = Accounts("root", Hash);
+
+        var (user, _, _) = accounts.SignInExternal(
+            new(Issuer, "sub-1", new string('a', UserAccounts.MaximumUsernameLength - 1) + "\U0001F600"), true);
+
+        Assert.True(UserAccounts.IsValidUsername(user!.Username));
+        Assert.Equal(UserAccounts.MaximumUsernameLength - 1, user.Username.Length);
+    }
+
+    [Fact]
+    public void ExistingUsersWithLegacyNamesKeepWorking()
+    {
+        store.TryCreate(new UserRecord(0, "ad\u200Bmin", Hash, UserRole.Admin, false, "stamp",
+            DateTimeOffset.UnixEpoch, null, [], []), out _);
+        var accounts = Accounts();
+
+        Assert.False(accounts.RequiresSetup);
+        Assert.NotNull(accounts.Authenticate("ad\u200Bmin", Password));
+        Assert.Equal("UsernameConfusable", Assert.Throws<AccountException>(() =>
+            accounts.Create(Someone, "admin", UserRole.User, Password, null)).Code);
+    }
+
+    [Fact]
+    public void AConfiguredAdministratorWithAnOddNameStillStarts()
+        => Assert.NotNull(Accounts("ad\u200Bmin", Hash).Authenticate("ad\u200Bmin", Password));
+
     [Fact]
     public void TheLastActiveAdministratorCannotBeDemotedDisabledOrDeleted()
     {
