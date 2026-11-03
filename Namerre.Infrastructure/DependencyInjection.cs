@@ -49,6 +49,7 @@ public static class DependencyInjection
             provider.GetRequiredService<IHostEnvironment>().ContentRootPath,
             maxQueuedJobs: provider.GetRequiredService<RenameLimits>().MaxQueuedJobs));
         services.AddSingleton<IUserStore, UserStore>();
+        services.AddSingleton<ISessionRegistry, SessionRegistry>();
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddSingleton<IPasskeyCeremonies, PasskeyCeremonies>();
         services.AddSingleton<IAdministratorConfiguration, AdministratorConfiguration>();

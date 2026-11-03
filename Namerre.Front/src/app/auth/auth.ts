@@ -251,6 +251,15 @@ export class Auth {
     await this.refresh();
   }
 
+  /**
+   * Ends every other session of this user, on any browser or device, and keeps this one. Needs no
+   * confirmation: it can only sign people out.
+   */
+  async signOutOtherSessions(): Promise<void> {
+    await this.refresh();
+    await firstValueFrom(this.http.post('/api/auth/sessions/revoke-others', {}));
+  }
+
   /** Ends the session; single sign-on sessions then leave for the identity provider's sign-out. */
   async logout(): Promise<void> {
     const result = await firstValueFrom(

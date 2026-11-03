@@ -33,7 +33,8 @@ type Pending = 'link' | 'remove-password' | 'add-passkey';
 
 /**
  * The signed-in user's own account: password (change, set a first one, or remove it), passkeys and
- * the single sign-on identities linked to it. A user always keeps at least one way to sign in.
+ * the single sign-on identities linked to it, and ending the account's other sessions. A user
+ * always keeps at least one way to sign in.
  */
 @Component({
   imports: [ReactiveFormsModule, DatePipe],
@@ -104,6 +105,8 @@ export class Account {
   protected readonly pending = signal<Pending | null>(null);
   protected readonly accessError = signal('');
   protected readonly accessStatus = signal('');
+  protected readonly sessionsError = signal('');
+  protected readonly sessionsStatus = signal('');
   protected readonly roleLabel = computed(() =>
     this.auth.role() === 'Admin' ? ' (administrator)' : this.auth.role() ? ' (user)' : '',
   );
@@ -226,6 +229,22 @@ export class Account {
     this.busy.set(false);
     if (action) await this.run(action);
     else this.accessStatus.set('Confirmed. You can make sensitive changes for a few minutes.');
+  }
+
+  /** Signs this account out everywhere else, keeping the current browser signed in. */
+  protected async signOutOtherSessions(): Promise<void> {
+    if (this.busy()) return;
+    this.busy.set(true);
+    this.sessionsError.set('');
+    this.sessionsStatus.set('');
+    try {
+      await this.auth.signOutOtherSessions();
+      this.sessionsStatus.set('Signed out of every other session.');
+    } catch (error: unknown) {
+      this.sessionsError.set(this.describe(error, 'Unable to sign out of other sessions.'));
+    } finally {
+      this.busy.set(false);
+    }
   }
 
   protected signInAgain(): void {

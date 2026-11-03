@@ -33,6 +33,7 @@ public sealed class AuthControllerTests
     private static readonly PasswordHasher Hasher = new();
     private static readonly string Hash = Hasher.Hash("password");
     private readonly InMemoryUserStore store = new();
+    private readonly InMemorySessionRegistry sessions = new();
     private readonly ManualTime time = new(new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero));
     private readonly IAntiforgery antiforgery = Substitute.For<IAntiforgery>();
     private readonly IAuthenticationService authentication = Substitute.For<IAuthenticationService>();
@@ -176,14 +177,56 @@ public sealed class AuthControllerTests
     }
 
     [Fact]
-    public async Task LogoutSignsOut()
+    public async Task LogoutSignsOutAndEndsTheSessionOnTheServer()
     {
-        var controller = Controller(Configured());
+        var account = Configured();
+        var controller = Controller(account);
+        SignIn(controller, account.Find(UserAccounts.ConfiguredUserId)!);
+        var sessionId = UserSession.SessionId(controller.HttpContext.User)!;
+        Assert.False(sessions.IsRevoked(sessionId));
 
         Assert.IsType<NoContentResult>(await controller.Logout(CancellationToken.None));
 
         await authentication.Received(1).SignOutAsync(controller.HttpContext,
             CookieAuthenticationDefaults.AuthenticationScheme, Arg.Any<AuthenticationProperties?>());
+        Assert.True(sessions.IsRevoked(sessionId));
+    }
+
+    [Fact]
+    public async Task SigningOutOfOtherSessionsReissuesThisSessionWithTheNewEpoch()
+    {
+        var account = Configured();
+        var controller = Controller(account);
+        var admin = account.Find(UserAccounts.ConfiguredUserId)!;
+        SignIn(controller, admin);
+        var sessionId = UserSession.SessionId(controller.HttpContext.User)!;
+        var older = UserSession.Create(admin, UserSession.PasswordMethod, null, time.GetUtcNow());
+
+        Assert.IsType<NoContentResult>(await controller.RevokeOtherSessions(CancellationToken.None));
+
+        await authentication.Received(1).SignInAsync(controller.HttpContext,
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            Arg.Is<ClaimsPrincipal>(p => UserSession.SessionId(p) == sessionId && UserSession.SessionEpoch(p) == 1),
+            Arg.Is<AuthenticationProperties>(p => !p.IsPersistent));
+        Assert.Equal(1, sessions.Epoch(UserAccounts.ConfiguredUserId));
+        Assert.False(sessions.IsRevoked(sessionId));
+        Assert.True(UserSession.SessionEpoch(older) < sessions.Epoch(UserAccounts.ConfiguredUserId));
+    }
+
+    [Fact]
+    public async Task SigningInIssuesAnIdAndTheCurrentEpoch()
+    {
+        var account = Configured();
+        var controller = Controller(account);
+        sessions.AdvanceEpoch(UserAccounts.ConfiguredUserId);
+
+        Assert.IsType<NoContentResult>(await controller.Login(new LoginRequest("admin", "password"),
+            CancellationToken.None));
+
+        await authentication.Received(1).SignInAsync(controller.HttpContext,
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            Arg.Is<ClaimsPrincipal>(p => !string.IsNullOrEmpty(UserSession.SessionId(p)) && UserSession.SessionEpoch(p) == 1),
+            Arg.Any<AuthenticationProperties>());
     }
 
     [Fact]
@@ -462,6 +505,7 @@ public sealed class AuthControllerTests
         var services = new ServiceCollection()
             .AddApplication()
             .AddSingleton(account)
+            .AddSingleton<ISessionRegistry>(sessions)
             .AddSingleton(Substitute.For<IUserHistory>())
             .AddSingleton(Substitute.For<IPasskeyCeremonies>())
             .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))

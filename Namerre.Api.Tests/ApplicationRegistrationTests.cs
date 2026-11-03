@@ -112,6 +112,7 @@ public sealed class ApplicationRegistrationTests
         services.AddSingleton<IWatchedFileStore>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddSingleton<IWatchFolderDiagnostics>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddSingleton<IUserStore>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
+        services.AddSingleton<ISessionRegistry>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddSingleton<IPasswordHasher>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddSingleton<IPasskeyCeremonies>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));
         services.AddSingleton<IAdministratorConfiguration>(_ => throw new InvalidOperationException("Not used by sender lifetime test."));

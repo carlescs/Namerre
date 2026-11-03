@@ -139,6 +139,18 @@ describe('Auth', () => {
     expect(auth.username()).toBeNull();
   });
 
+  it('ends the other sessions with CSRF protection and stays signed in', async () => {
+    auth.username.set('admin');
+    const revoke = auth.signOutOtherSessions();
+    http.expectOne('/api/auth/session').flush({ username: 'admin', requiresSetup: false });
+    document.cookie = 'XSRF-TOKEN=revoke-csrf; Path=/';
+    const request = await vi.waitFor(() => http.expectOne('/api/auth/sessions/revoke-others'));
+    expect(request.request.method).toBe('POST');
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    await revoke;
+    expect(auth.username()).toBe('admin');
+  });
+
   it('keeps the session visible if sign-out fails', async () => {
     auth.username.set('admin');
     const logout = auth.logout();

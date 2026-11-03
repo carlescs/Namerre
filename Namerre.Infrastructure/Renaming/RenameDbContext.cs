@@ -14,6 +14,8 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
     public DbSet<UserPasskeyRow> UserPasskeys => Set<UserPasskeyRow>();
     public DbSet<RenamePresetRow> Presets => Set<RenamePresetRow>();
     public DbSet<WatchedFileRow> WatchedFiles => Set<WatchedFileRow>();
+    public DbSet<RevokedSessionRow> RevokedSessions => Set<RevokedSessionRow>();
+    public DbSet<SessionEpochRow> SessionEpochs => Set<SessionEpochRow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -103,6 +105,18 @@ public sealed class RenameDbContext(DbContextOptions<RenameDbContext> options) :
             entity.Property(e => e.RunId).HasMaxLength(100);
             entity.HasIndex(e => new { e.Folder, e.Status });
         });
+        modelBuilder.Entity<RevokedSessionRow>(entity =>
+        {
+            entity.HasKey(e => e.SessionId);
+            entity.Property(e => e.SessionId).HasMaxLength(64);
+            entity.HasIndex(e => e.ExpiresAtUnix);
+        });
+        modelBuilder.Entity<SessionEpochRow>(entity =>
+        {
+            entity.HasKey(e => e.UserId);
+            // The configured administrator has user ID 0 and no row in Users, so there is no foreign key.
+            entity.Property(e => e.UserId).ValueGeneratedNever();
+        });
     }
 }
 
@@ -156,6 +170,21 @@ public sealed class RenamePresetRow
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Revision { get; set; }
+}
+
+/// <summary>A session that was signed out; see <c>Application.Authentication.ISessionRegistry</c>.</summary>
+public sealed class RevokedSessionRow
+{
+    public string SessionId { get; set; } = "";
+    /// <summary>When the session's cookie expires anyway (Unix seconds), after which the row is pruned.</summary>
+    public long ExpiresAtUnix { get; set; }
+}
+
+/// <summary>The user's session epoch; sessions issued with a lower one are ended.</summary>
+public sealed class SessionEpochRow
+{
+    public long UserId { get; set; }
+    public long Epoch { get; set; }
 }
 
 /// <summary>

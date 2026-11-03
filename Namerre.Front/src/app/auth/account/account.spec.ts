@@ -15,6 +15,7 @@ describe('Account', () => {
   const removePasskey = vi.fn<(id: number) => Promise<void>>();
   const renamePasskey = vi.fn<(id: number, name: string) => Promise<void>>();
   const reauthenticateWithPasskey = vi.fn<() => Promise<void>>();
+  const signOutOtherSessions = vi.fn<() => Promise<void>>();
   const passkeysEnabled = signal(false);
   const passkeys = signal<Passkey[]>([]);
   const passkey: Passkey = {
@@ -48,6 +49,7 @@ describe('Account', () => {
       removePasskey,
       renamePasskey,
       reauthenticateWithPasskey,
+      signOutOtherSessions,
     ]) {
       mock.mockReset().mockResolvedValue();
     }
@@ -86,6 +88,7 @@ describe('Account', () => {
             removePasskey,
             renamePasskey,
             reauthenticateWithPasskey,
+            signOutOtherSessions,
           },
         },
       ],
@@ -384,5 +387,37 @@ describe('Account', () => {
     await vi.waitFor(() => expect(removePassword).toHaveBeenCalled());
     expect(reauthenticateWithPasskey).toHaveBeenCalled();
     expect(reauthenticate).not.toHaveBeenCalled();
+  });
+
+  it('signs out of the other sessions and says so', async () => {
+    const { fixture, element } = await render();
+    buttonNamed(element, 'Sign out of other sessions').click();
+    await vi.waitFor(() => expect(signOutOtherSessions).toHaveBeenCalledOnce());
+    await fixture.whenStable();
+    expect(element.textContent).toContain('Signed out of every other session.');
+    expect(element.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('offers to sign out of other sessions to the configured administrator too', async () => {
+    managedByConfiguration.set(true);
+    const { fixture, element } = await render();
+    buttonNamed(element, 'Sign out of other sessions').click();
+    await vi.waitFor(() => expect(signOutOtherSessions).toHaveBeenCalledOnce());
+    await fixture.whenStable();
+    expect(element.textContent).toContain('Signed out of every other session.');
+  });
+
+  it('reports a failure to sign out of the other sessions', async () => {
+    signOutOtherSessions.mockRejectedValue(
+      new HttpErrorResponse({ status: 503, error: { message: 'Unable to save the change.' } }),
+    );
+    const { fixture, element } = await render();
+    buttonNamed(element, 'Sign out of other sessions').click();
+    await vi.waitFor(() => expect(signOutOtherSessions).toHaveBeenCalled());
+    await fixture.whenStable();
+    expect(element.querySelector('[role="alert"]')?.textContent).toContain(
+      'Unable to save the change.',
+    );
+    expect(element.textContent).not.toContain('Signed out of every other session.');
   });
 });
