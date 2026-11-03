@@ -215,6 +215,16 @@ export class Auth {
     await this.refresh();
   }
 
+  /** Renames one of the user's passkeys; only the label changes, so no confirmation is needed. */
+  async renamePasskey(passkeyId: number, name: string): Promise<void> {
+    await this.refresh();
+    this.passkeys.set(
+      await firstValueFrom(
+        this.http.patch<Passkey[]>(`/api/auth/passkeys/${passkeyId}`, { name: name.trim() }),
+      ),
+    );
+  }
+
   async removePasskey(passkeyId: number): Promise<void> {
     await this.refresh();
     await firstValueFrom(this.http.delete(`/api/auth/passkeys/${passkeyId}`));

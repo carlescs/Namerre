@@ -69,6 +69,13 @@ export class Account {
     validators: [Validators.maxLength(100)],
   });
   protected readonly passkeyForm = new FormGroup({ name: this.passkeyName });
+  /** The passkey being renamed, if any, and its new name. */
+  protected readonly renaming = signal<number | null>(null);
+  protected readonly newPasskeyName = new FormControl('', {
+    nonNullable: true,
+    validators: [Validators.required, Validators.pattern(/\S/), Validators.maxLength(100)],
+  });
+  protected readonly renameForm = new FormGroup({ name: this.newPasskeyName });
   /** Whether this browser can create and use passkeys here (HTTPS or localhost). */
   protected readonly passkeysSupported = passkeysSupported();
   /** Passkeys can confirm it is the user when they have one and the browser can use it. */
@@ -212,6 +219,38 @@ export class Account {
 
   protected signInAgain(): void {
     this.auth.startSingleSignOn('account');
+  }
+
+  protected startRenaming(passkey: Passkey): void {
+    this.newPasskeyName.reset(passkey.name);
+    this.renaming.set(passkey.id);
+    this.accessError.set('');
+    this.accessStatus.set('');
+  }
+
+  protected cancelRenaming(): void {
+    this.renaming.set(null);
+  }
+
+  protected async renamePasskey(passkey: Passkey): Promise<void> {
+    if (this.busy() || this.newPasskeyName.invalid) return;
+    const name = this.newPasskeyName.value.trim();
+    if (name === passkey.name) {
+      this.renaming.set(null);
+      return;
+    }
+    this.busy.set(true);
+    this.accessError.set('');
+    this.accessStatus.set('');
+    try {
+      await this.auth.renamePasskey(passkey.id, name);
+      this.renaming.set(null);
+      this.accessStatus.set(`Renamed ${passkey.name} to ${name}.`);
+    } catch (error: unknown) {
+      this.accessError.set(this.describe(error, 'Unable to rename the passkey.'));
+    } finally {
+      this.busy.set(false);
+    }
   }
 
   protected async removePasskey(passkey: Passkey): Promise<void> {

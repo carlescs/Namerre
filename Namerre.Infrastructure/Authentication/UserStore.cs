@@ -111,6 +111,10 @@ public sealed class UserStore(RenameStore store) : IUserStore
             return true;
         });
 
+    public bool TryRenamePasskey(long userId, long passkeyId, string name) => Run(db =>
+        db.UserPasskeys.Where(p => p.Id == passkeyId && p.UserId == userId)
+            .ExecuteUpdate(setters => setters.SetProperty(p => p.Name, name)) == 1);
+
     public bool TryRemovePasskey(long userId, string expectedStamp, string newStamp, long passkeyId) => Run(db =>
     {
         using var transaction = db.Database.BeginTransaction();

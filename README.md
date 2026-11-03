@@ -348,8 +348,9 @@ and select **Add a passkey**. Like linking single sign-on, adding a passkey is a
 it needs a sign-in within the last ten minutes, the password, or another passkey. Then select
 **Sign in with a passkey** on the sign-in page. A passkey sign-in counts as a fresh sign-in, so
 the next sensitive changes need no further confirmation, and a user without a password confirms
-sensitive changes with a passkey. The break-glass administrator from the server configuration
-cannot have passkeys.
+sensitive changes with a passkey. To rename a passkey later, select **Rename** next to it; a new
+name is only a label, so it needs no confirmation and keeps every session signed in. The
+break-glass administrator from the server configuration cannot have passkeys.
 
 - Passkeys are discoverable credentials that require user verification. No attestation is
   requested, so any authenticator the browser accepts works (platform authenticators, security
@@ -379,8 +380,9 @@ The passkey endpoints are under `api/auth`: `POST passkey/options` (anonymous) s
 returning `{ options, ticket }`; `POST passkey/login` (`ticket`, `credential` as WebAuthn JSON)
 signs in, and `POST passkey/reauthenticate` confirms the signed-in user with one of their own
 passkeys. `POST passkeys/options` (optional `password`) starts registering one, `POST passkeys`
-(`ticket`, `credential`, optional `name`) finishes it and returns the user's passkeys, and
-`DELETE passkeys/{id}` removes one. Failed passkey sign-ins return a generic 401.
+(`ticket`, `credential`, optional `name`) finishes it and returns the user's passkeys,
+`PATCH passkeys/{id}` (`name`) renames one and returns the user's passkeys (`PasskeyNameRequired`
+when the name is empty), and `DELETE passkeys/{id}` removes one. Failed passkey sign-ins return a generic 401.
 
 **Upgrading from a single administrator.** The `AddUsers` migration runs on the first start
 after upgrading: the existing administrator becomes the first `Admin` user and keeps its

@@ -398,6 +398,7 @@ public sealed class InstallationTests : IDisposable
         public void RecordSignIn(long userId, long? loginId, DateTimeOffset at) => throw Failure();
         public bool TryAddPasskey(long userId, string expectedStamp, string newStamp, UserPasskeyRecord passkey)
             => throw Failure();
+        public bool TryRenamePasskey(long userId, long passkeyId, string name) => throw Failure();
         public bool TryRemovePasskey(long userId, string expectedStamp, string newStamp, long passkeyId)
             => throw Failure();
         public bool TryRecordPasskeySignIn(long userId, long passkeyId, uint expectedSignCount, uint signCount,

@@ -228,7 +228,7 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
   recent sign-in or the password).
 - Passkeys (WebAuthn): `Application/Authentication/PasskeyAccounts` (singleton) runs the ceremonies
   through the `IPasskeyCeremonies` port and applies `UserAccounts` rules (`AddPasskey`,
-  `RemovePasskey`, `FindPasskey`, `TryRecordPasskeySignIn`, which updates the counter only if it is
+  `RenamePasskey`, `RemovePasskey`, `FindPasskey`, `TryRecordPasskeySignIn`, which updates the counter only if it is
   still the one verified against and fails the sign-in otherwise, storage failures included; at most
   20 per user, merges included, credential IDs unique
   across users, one random user handle per user). `Infrastructure/Authentication/PasskeyCeremonies`
@@ -236,7 +236,8 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
   attestation; its opaque state holds the original options and expected origin. Thin requests:
   `BeginPasskeySignInQuery`, `PasskeySignInCommand`, `BeginPasskeyRegistrationCommand` (confirms
   like linking SSO), `CompletePasskeyRegistrationCommand` (pinned to the confirmed stamp),
-  `RemovePasskeyCommand` (own account and `api/users`). `Namerre.Api/Authentication/PasskeyLogin`
+  `RenamePasskeyCommand` (own account; a label only, so the stamp stays), `RemovePasskeyCommand`
+  (own account and `api/users`). `Namerre.Api/Authentication/PasskeyLogin`
   derives the relying party (configured `Origin`, else the request's scheme and host) and carries
   the state through the browser in time-limited Data Protection tickets bound to a purpose (and
   user + stamp for registration), redeemed once against an in-memory nonce set; a random protector
