@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { Auth } from '../auth/auth';
+import { Confirmations } from '../dialogs/confirmations';
 import { stubDialogsThatToggle } from '../dialogs.testing';
 import { Users } from './users';
 import type { UserView } from './users-api';
@@ -76,6 +77,21 @@ describe('Users', () => {
     const input = element.querySelector(selector) as HTMLInputElement;
     input.value = value;
     input.dispatchEvent(new Event('input'));
+  }
+
+  /** Answers the confirmation the page asked for, after checking its heading. */
+  async function answer(
+    fixture: { whenStable(): Promise<unknown> },
+    heading: string,
+    confirmed = true,
+  ): Promise<void> {
+    await fixture.whenStable();
+    const confirmations = TestBed.inject(Confirmations);
+    expect(confirmations.current()?.heading).toBe(heading);
+    confirmations.answer(confirmed);
+    // Let the page continue after the answer before checking what it did.
+    await new Promise((resolve) => setTimeout(resolve));
+    await fixture.whenStable();
   }
 
   function buttonNamed(element: HTMLElement, text: string): HTMLButtonElement {
@@ -321,6 +337,7 @@ describe('Users', () => {
       (element.querySelector('[aria-label="Unlink alice"]') as HTMLButtonElement).disabled,
     ).toBe(false);
     (element.querySelector('[aria-label="Remove passkey Phone"]') as HTMLButtonElement).click();
+    await answer(fixture, 'Remove passkey Phone?');
     const removal = http.expectOne('/api/users/2/passkeys/9');
     expect(removal.request.method).toBe('DELETE');
     removal.flush(alice);
@@ -330,6 +347,25 @@ describe('Users', () => {
     expect(element.querySelector('[role="status"]')?.textContent).toContain(
       'Removed passkey Phone from alice',
     );
+  });
+
+  it('deletes a user only once the deletion is confirmed', async () => {
+    const { fixture, element } = await render();
+    (element.querySelector('[aria-label="Manage alice"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    buttonNamed(element, 'Delete user').click();
+    await answer(fixture, 'Delete alice?', false);
+    http.expectNone('/api/users/2');
+
+    buttonNamed(element, 'Delete user').click();
+    await answer(fixture, 'Delete alice?');
+    const removal = http.expectOne('/api/users/2');
+    expect(removal.request.method).toBe('DELETE');
+    removal.flush(null);
+    await settle(fixture);
+    http.expectOne('/api/users').flush([admin]);
+    await settle(fixture);
+    expect(element.querySelector('[role="status"]')?.textContent).toContain('Deleted alice.');
   });
 
   it('links a single sign-on identity by subject', async () => {
@@ -357,6 +393,7 @@ describe('Users', () => {
     merge.click();
     await fixture.whenStable();
     buttonNamed(element, 'Merge user').click();
+    await answer(fixture, 'Merge alice?');
     const request = http.expectOne('/api/users/1/merge');
     expect(request.request.body).toEqual({ sourceUserId: 2 });
     request.flush({ ...admin, logins: alice.logins });

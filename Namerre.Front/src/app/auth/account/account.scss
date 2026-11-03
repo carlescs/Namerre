@@ -6,3 +6,13 @@ form {
 label {
   margin-bottom: 0.5rem;
 }
+
+dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: 85vh;
+  padding: 1.5rem;
+
+  form {
+    max-width: none;
+  }
+}

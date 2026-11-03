@@ -1,0 +1,12 @@
+@for (request of requests(); track request) {
+  <app-confirm-dialog
+    [heading]="request.heading"
+    [confirmLabel]="request.confirmLabel ?? 'Confirm'"
+    [cancelLabel]="request.cancelLabel ?? 'Cancel'"
+    [danger]="request.danger ?? false"
+    (confirmed)="confirmations.answer(true)"
+    (cancelled)="confirmations.answer(false)"
+  >
+    <p>{{ request.message }}</p>
+  </app-confirm-dialog>
+}

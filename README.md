@@ -371,9 +371,10 @@ and select **Add a passkey**. Like linking single sign-on, adding a passkey is a
 it needs a sign-in within the last ten minutes, the password, or another passkey. Then select
 **Sign in with a passkey** on the sign-in page. A passkey sign-in counts as a fresh sign-in, so
 the next sensitive changes need no further confirmation, and a user without a password confirms
-sensitive changes with a passkey. To rename a passkey later, select **Rename** next to it; a new
-name is only a label, so it needs no confirmation and keeps every session signed in. The
-break-glass administrator from the server configuration cannot have passkeys.
+sensitive changes with a passkey. To rename a passkey later, select **Rename** next to it and
+enter the new name; a new name is only a label, so it needs no confirmation and keeps every session
+signed in. **Remove** asks you to confirm first and, like other sensitive changes, needs a recent
+sign-in; also delete the passkey from your device or password manager afterwards. The break-glass administrator from the server configuration cannot have passkeys.
 
 - Passkeys are discoverable credentials that require user verification. No attestation is
   requested, so any authenticator the browser accepts works (platform authenticators, security
@@ -862,7 +863,7 @@ and a cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return is prefi
 signed-in session and are sent with `Cache-Control: no-store`.
 
 Administrators can delete settled runs (completed or recovered) from history, either from the
-list or the run details, after an inline confirmation (`DELETE /api/rename-runs/{id}`).
+list or the run details, after confirming in a dialog (`DELETE /api/rename-runs/{id}`).
 Deleting a rename run also deletes its rollback runs and its prepared plan; deleting a
 rollback run keeps the original run. Files on disk are never touched, but deleted
 history can no longer be used for rollback. Runs awaiting recovery, or with a queued or

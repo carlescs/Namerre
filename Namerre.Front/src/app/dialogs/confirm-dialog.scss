@@ -1,0 +1,9 @@
+dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: 85vh;
+  padding: 1.5rem;
+}
+
+.body > :last-child {
+  margin-bottom: 0;
+}

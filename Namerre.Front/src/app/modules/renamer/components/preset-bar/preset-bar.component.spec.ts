@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { Confirmations } from '../../../../dialogs/confirmations';
 import type { PluginInstance, PresetView } from '../../rename-api';
 import { PresetBarComponent } from './preset-bar.component';
 
@@ -124,8 +125,11 @@ describe('PresetBarComponent', () => {
     await fixture.whenStable();
     button('Delete').click();
     await fixture.whenStable();
+    const confirmations = TestBed.inject(Confirmations);
+    expect(confirmations.current()?.heading).toBe('Delete Series?');
     http.expectNone('/api/rename-presets/p1');
-    button('Confirm delete').click();
+    confirmations.answer(true);
+    await fixture.whenStable();
     const remove = http.expectOne('/api/rename-presets/p1');
     expect(remove.request.method).toBe('DELETE');
     remove.flush(null);

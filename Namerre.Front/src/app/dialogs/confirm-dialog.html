@@ -1,0 +1,26 @@
+<dialog
+  #dialog
+  role="alertdialog"
+  [attr.aria-labelledby]="id + '-heading'"
+  [attr.aria-describedby]="id + '-body'"
+  [attr.aria-busy]="busy()"
+  (cancel)="$event.preventDefault(); cancel()"
+>
+  <h2 [id]="id + '-heading'" class="mt-0 text-lg">{{ heading() }}</h2>
+  <div [id]="id + '-body'" class="body"><ng-content /></div>
+  <div class="actions mt-4 justify-end gap-2">
+    <button type="button" [autofocus]="danger()" (click)="cancel()" [disabled]="busy()">
+      {{ cancelLabel() }}
+    </button>
+    <button
+      type="button"
+      [class.btn-danger]="danger()"
+      [class.btn-primary]="!danger()"
+      [autofocus]="!danger()"
+      (click)="confirm()"
+      [disabled]="busy() || confirmDisabled()"
+    >
+      {{ confirmLabel() }}
+    </button>
+  </div>
+</dialog>

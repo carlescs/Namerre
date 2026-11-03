@@ -111,29 +111,28 @@
         <p class="error" role="alert">{{ selectionError() }}</p>
       }
       @if (pendingBulkDelete() && chosenRuns().size) {
-        <section class="surface mt-3 p-5" role="group" aria-label="Confirm bulk deletion">
+        <app-confirm-dialog
+          heading="Delete {{ chosenRuns().size }} {{
+            chosenRuns().size === 1 ? 'record' : 'records'
+          }}?"
+          [confirmLabel]="'Confirm deletion of ' + chosenRuns().size"
+          danger
+          [busy]="deleting()"
+          [confirmDisabled]="tooManyRuns()"
+          (confirmed)="confirmBulkDelete()"
+          (cancelled)="cancelDelete()"
+        >
           <p>
-            Delete {{ chosenRuns().size }} {{ chosenRuns().size === 1 ? 'record' : 'records' }}?
             Rename records also take their undo records and saved settings with them. Files on disk
             are not touched, but you will no longer be able to undo these from here.
           </p>
-          <div class="actions">
-            <button
-              type="button"
-              (click)="confirmBulkDelete()"
-              [disabled]="deleting() || tooManyRuns()"
-            >
-              Confirm deletion of {{ chosenRuns().size }}
-            </button>
-            <button type="button" (click)="cancelDelete()" [disabled]="deleting()">Cancel</button>
-          </div>
           @if (deleting()) {
             <p role="status">Deleting…</p>
           }
           @if (deleteError()) {
             <p class="error" role="alert">{{ deleteError() }}</p>
           }
-        </section>
+        </app-confirm-dialog>
       }
     }
     <ul class="my-4 space-y-3">
@@ -593,24 +592,27 @@
     }
   </ng-template>
   <ng-template #deleteConfirmation let-target>
-    <section class="mt-3" role="group" aria-label="Confirm deletion">
+    <app-confirm-dialog
+      heading="Delete this {{ kindLabel(target.kind) | lowercase }} record?"
+      confirmLabel="Confirm deletion"
+      danger
+      [busy]="deleting()"
+      (confirmed)="confirmDelete()"
+      (cancelled)="cancelDelete()"
+    >
       <p>
-        Delete this {{ kindLabel(target.kind) | lowercase }} record{{
-          target.kind === 'Rename' ? ', its undo records and its saved settings' : ''
-        }}? Files on disk are not touched, but you will no longer be able to undo this from here.
+        {{
+          target.kind === 'Rename'
+            ? 'This also deletes its undo records and its saved settings. '
+            : ''
+        }}Files on disk are not touched, but you will no longer be able to undo this from here.
       </p>
-      <div class="actions">
-        <button type="button" (click)="confirmDelete()" [disabled]="deleting()">
-          Confirm deletion
-        </button>
-        <button type="button" (click)="cancelDelete()" [disabled]="deleting()">Cancel</button>
-      </div>
       @if (deleting()) {
         <p role="status">Deleting…</p>
       }
       @if (deleteError()) {
         <p class="error" role="alert">{{ deleteError() }}</p>
       }
-    </section>
+    </app-confirm-dialog>
   </ng-template>
 </main>

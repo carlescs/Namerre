@@ -2,6 +2,7 @@ import { Component, DestroyRef, inject, input, type OnInit, output, signal } fro
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import type { Observable } from 'rxjs';
+import { Confirmations } from '../../../../dialogs/confirmations';
 import {
   type PluginInstance,
   type PresetSummary,
@@ -34,6 +35,7 @@ export class PresetBarComponent implements OnInit {
   readonly loaded = output<PresetView>();
   private readonly api = inject(RenameApi);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly confirmations = inject(Confirmations);
   protected readonly maxNameLength = MAX_NAME_LENGTH;
   protected readonly presets = signal<PresetSummary[]>([]);
   protected readonly selected = new FormControl('', { nonNullable: true });
@@ -48,7 +50,6 @@ export class PresetBarComponent implements OnInit {
   /** The preset last loaded or saved; "Save changes" overwrites it. */
   protected readonly active = signal<PresetSummary | null>(null);
   protected readonly busy = signal(false);
-  protected readonly confirmingDelete = signal(false);
   protected readonly message = signal('');
   protected readonly error = signal('');
 
@@ -99,24 +100,23 @@ export class PresetBarComponent implements OnInit {
     });
   }
 
-  protected remove(): void {
+  protected async remove(): Promise<void> {
     const id = this.selected.value;
-    if (!id) return;
-    if (!this.confirmingDelete()) {
-      this.confirmingDelete.set(true);
-      return;
-    }
+    if (!id || this.busy()) return;
     const name = this.presets().find((preset) => preset.id === id)?.name ?? 'the preset';
+    const confirmed = await this.confirmations.ask({
+      heading: `Delete ${name}?`,
+      message: 'The preset is deleted for everyone. Your current steps are kept.',
+      confirmLabel: 'Delete preset',
+      danger: true,
+    });
+    if (!confirmed || this.selected.value !== id) return;
     this.run(this.api.deletePreset(id), () => {
       if (this.active()?.id === id) this.active.set(null);
       this.selected.setValue('');
       this.message.set(`Deleted ${name}.`);
       this.refresh();
     });
-  }
-
-  protected cancelDelete(): void {
-    this.confirmingDelete.set(false);
   }
 
   private request(): SavePresetRequest {
@@ -154,7 +154,6 @@ export class PresetBarComponent implements OnInit {
   private run<T>(request: Observable<T>, done: (value: T) => void): void {
     if (this.busy()) return;
     this.busy.set(true);
-    this.confirmingDelete.set(false);
     this.message.set('');
     this.error.set('');
     request.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({

@@ -52,6 +52,7 @@
     @if (workflow.pending()) {
       <app-workflow-mode-warning />
     }
+    <app-confirmation-host />
   } @else if (error()) {
     <div class="text-center"><button type="button" (click)="initialize()">Retry</button></div>
   } @else {

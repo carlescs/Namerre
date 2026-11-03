@@ -16,6 +16,7 @@ import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import { BehaviorSubject, catchError, EMPTY, exhaustMap, type Subscription, timer } from 'rxjs';
 import { Auth } from '../../../../auth/auth';
+import { ConfirmDialog } from '../../../../dialogs/confirm-dialog';
 import {
   type DeletableRuns,
   isSettledRun,
@@ -48,6 +49,7 @@ import {
 } from './run-display';
 @Component({
   imports: [
+    ConfirmDialog,
     RouterLink,
     DatePipe,
     FaIconComponent,

@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   afterNextRender,
+  afterRenderEffect,
   Component,
   computed,
   DOCUMENT,
@@ -9,8 +10,11 @@ import {
   Injector,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Confirmations } from '../../dialogs/confirmations';
+import { closeModal, openModal } from '../../dialogs/modal';
 import {
   Auth,
   type LinkedLogin,
@@ -47,6 +51,9 @@ export class Account {
   private readonly document = inject(DOCUMENT);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
+  private readonly confirmations = inject(Confirmations);
+  private readonly confirmDialog = viewChild<ElementRef<HTMLDialogElement>>('confirmDialog');
+  private readonly renameDialog = viewChild<ElementRef<HTMLDialogElement>>('renameDialog');
   protected readonly form = new FormGroup(
     {
       currentPassword: new FormControl('', {
@@ -81,8 +88,9 @@ export class Account {
     validators: [Validators.maxLength(100)],
   });
   protected readonly passkeyForm = new FormGroup({ name: this.passkeyName });
-  /** The passkey being renamed, if any, and its new name. */
-  protected readonly renaming = signal<number | null>(null);
+  /** The passkey being renamed in the rename dialog, if any, and its new name. */
+  protected readonly renaming = signal<Passkey | null>(null);
+  protected readonly renameError = signal('');
   protected readonly newPasskeyName = new FormControl('', {
     nonNullable: true,
     validators: [Validators.required, Validators.pattern(/\S/), Validators.maxLength(100)],
@@ -121,6 +129,25 @@ export class Account {
   );
 
   constructor() {
+    // "Confirm it is you" is a modal dialog, open while a sensitive change waits for it.
+    afterRenderEffect(() => {
+      const dialog = this.confirmDialog()?.nativeElement;
+      if (!dialog) return;
+      if (this.pending()) openModal(dialog);
+      else if (dialog.hasAttribute('open')) closeModal(dialog);
+    });
+    afterRenderEffect(() => {
+      const dialog = this.renameDialog()?.nativeElement;
+      if (!dialog) return;
+      if (this.renaming() === null) {
+        if (dialog.hasAttribute('open')) closeModal(dialog);
+      } else if (!dialog.hasAttribute('open')) {
+        openModal(dialog);
+        const input = dialog.querySelector('input');
+        input?.focus();
+        input?.select();
+      }
+    });
     // The server returns from linking single sign-on through query parameters on `/account`.
     const url = new URL(this.document.location.href);
     const linked = url.searchParams.get('linked');
@@ -186,7 +213,25 @@ export class Account {
     }
   }
 
+  /** Asks before removing the password, then removes it once it is confirmed to be the user. */
+  protected async removePassword(): Promise<void> {
+    const confirmed = await this.confirmations.ask({
+      heading: 'Remove password?',
+      message: `You will sign in with ${
+        this.auth.passkeys().length && this.auth.logins().length
+          ? 'a passkey or single sign-on'
+          : this.auth.passkeys().length
+            ? 'a passkey'
+            : 'single sign-on'
+      } only. Every other browser session is signed out.`,
+      confirmLabel: 'Remove password',
+      danger: true,
+    });
+    if (confirmed) this.request('remove-password');
+  }
+
   protected cancel(): void {
+    if (this.busy()) return;
     this.pending.set(null);
     this.confirmPassword.reset();
   }
@@ -256,31 +301,27 @@ export class Account {
 
   protected startRenaming(passkey: Passkey): void {
     this.newPasskeyName.reset(passkey.name);
-    this.renaming.set(passkey.id);
+    this.renameError.set('');
     this.accessError.set('');
     this.accessStatus.set('');
-    // The Rename button that had focus is gone; move keyboard focus into the editor that replaced it.
-    this.focusAfterRender(`[data-rename-input="${passkey.id}"]`, true);
+    this.renaming.set(passkey);
   }
 
   protected cancelRenaming(): void {
+    if (this.busy()) return;
     this.stopRenaming();
   }
 
-  /** Closes the editor and returns focus to the passkey's Rename button. */
+  /** Closes the rename dialog and returns focus to the passkey's Rename button. */
   private stopRenaming(): void {
-    const id = this.renaming();
+    const passkey = this.renaming();
     this.renaming.set(null);
-    if (id !== null) this.focusAfterRender(`[data-rename-passkey="${id}"]`);
-  }
-
-  private focusAfterRender(selector: string, select = false): void {
+    if (passkey === null) return;
     afterNextRender(
-      () => {
-        const element = this.host.nativeElement.querySelector<HTMLElement>(selector);
-        element?.focus();
-        if (select && element instanceof HTMLInputElement) element.select();
-      },
+      () =>
+        this.host.nativeElement
+          .querySelector<HTMLElement>(`[data-rename-passkey="${passkey.id}"]`)
+          ?.focus(),
       { injector: this.injector },
     );
   }
@@ -293,17 +334,43 @@ export class Account {
       return;
     }
     this.busy.set(true);
-    this.accessError.set('');
-    this.accessStatus.set('');
+    this.renameError.set('');
     try {
       await this.auth.renamePasskey(passkey.id, name);
+      this.busy.set(false);
       this.stopRenaming();
       this.accessStatus.set(`Renamed ${passkey.name} to ${name}.`);
     } catch (error: unknown) {
-      this.accessError.set(this.describe(error, 'Unable to rename the passkey.'));
+      // Keep the dialog open and explain there, rather than behind it.
+      this.renameError.set(this.describe(error, 'Unable to rename the passkey.'));
     } finally {
       this.busy.set(false);
     }
+  }
+
+  /** Asks before removing a passkey, then removes it once it is confirmed to be the user. */
+  protected async removePasskey(passkey: Passkey): Promise<void> {
+    if (this.busy()) return;
+    const confirmed = await this.confirmations.ask({
+      heading: `Remove passkey ${passkey.name}?`,
+      message:
+        'You will no longer be able to sign in with it, and every other browser session is signed out.',
+      confirmLabel: 'Remove passkey',
+      danger: true,
+    });
+    if (confirmed && !this.busy()) this.request('remove-passkey', passkey);
+  }
+
+  /** Asks before unlinking a single sign-on identity, then unlinks it once it is confirmed to be the user. */
+  protected async unlink(login: LinkedLogin): Promise<void> {
+    if (this.busy()) return;
+    const confirmed = await this.confirmations.ask({
+      heading: `Unlink ${login.displayName}?`,
+      message: 'You will no longer be able to sign in with this single sign-on identity.',
+      confirmLabel: 'Unlink',
+      danger: true,
+    });
+    if (confirmed && !this.busy()) this.request('unlink', login);
   }
 
   private async run(action: Pending, password?: string): Promise<void> {
