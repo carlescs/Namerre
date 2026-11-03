@@ -228,7 +228,9 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
   recent sign-in or the password).
 - Passkeys (WebAuthn): `Application/Authentication/PasskeyAccounts` (singleton) runs the ceremonies
   through the `IPasskeyCeremonies` port and applies `UserAccounts` rules (`AddPasskey`,
-  `RemovePasskey`, `FindPasskey`, `RecordPasskeySignIn`; at most 20 per user, credential IDs unique
+  `RemovePasskey`, `FindPasskey`, `TryRecordPasskeySignIn`, which updates the counter only if it is
+  still the one verified against and fails the sign-in otherwise, storage failures included; at most
+  20 per user, merges included, credential IDs unique
   across users, one random user handle per user). `Infrastructure/Authentication/PasskeyCeremonies`
   implements the port with Fido2NetLib: discoverable credentials, user verification required, no
   attestation; its opaque state holds the original options and expected origin. Thin requests:
@@ -237,7 +239,9 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
   `RemovePasskeyCommand` (own account and `api/users`). `Namerre.Api/Authentication/PasskeyLogin`
   derives the relying party (configured `Origin`, else the request's scheme and host) and carries
   the state through the browser in time-limited Data Protection tickets bound to a purpose (and
-  user + stamp for registration), redeemed once against an in-memory nonce set. A passkey sign-in
+  user + stamp for registration), redeemed once against an in-memory nonce set; a random protector
+  subpurpose per process makes tickets die with it, so a restart cannot revive a redeemed one. The
+  registration state leaves out the excluded credentials to stay small. A passkey sign-in
   is a fresh sign-in (`UserSession.IsRecent`). Merging moves passkeys with the identities.
   `Namerre.Infrastructure.UnitTests/Authentication/SoftwareAuthenticator` (linked into
   `Namerre.Api.Tests`) is an ES256 software authenticator that answers real WebAuthn JSON.

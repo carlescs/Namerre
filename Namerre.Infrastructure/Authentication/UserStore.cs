@@ -121,13 +121,16 @@ public sealed class UserStore(RenameStore store) : IUserStore
         return true;
     });
 
-    public void RecordPasskeySignIn(long userId, long passkeyId, uint signCount, DateTimeOffset at) => Run(db =>
+    public bool TryRecordPasskeySignIn(long userId, long passkeyId, uint expectedSignCount, uint signCount,
+        DateTimeOffset at) => Run(db =>
     {
         using var transaction = db.Database.BeginTransaction();
+        if (db.UserPasskeys.Where(p => p.Id == passkeyId && p.UserId == userId && p.SignCount == expectedSignCount)
+                .ExecuteUpdate(setters => setters
+                    .SetProperty(p => p.LastUsedAt, at)
+                    .SetProperty(p => p.SignCount, (long)signCount)) != 1)
+            return false;
         db.Users.Where(u => u.Id == userId).ExecuteUpdate(setters => setters.SetProperty(u => u.LastSignInAt, at));
-        db.UserPasskeys.Where(p => p.Id == passkeyId && p.UserId == userId).ExecuteUpdate(setters => setters
-            .SetProperty(p => p.LastUsedAt, at)
-            .SetProperty(p => p.SignCount, (long)signCount));
         transaction.Commit();
         return true;
     });

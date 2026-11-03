@@ -11,7 +11,7 @@ namespace Namerre.Authentication;
 /// <summary>
 /// Hosting side of passkeys: which relying party a request is for, and the tickets that carry a WebAuthn ceremony's
 /// state through the browser. A ticket is protected and time-limited, bound to its purpose (and, for registration,
-/// to the user version that asked), and works once.
+/// to the user version that asked), and works once, in this process only.
 /// </summary>
 public sealed class PasskeyLogin
 {
@@ -31,7 +31,10 @@ public sealed class PasskeyLogin
         var settings = options.Value.Authentication.Passkeys;
         Enabled = settings.Enabled;
         this.time = time ?? TimeProvider.System;
-        protector = dataProtection.CreateProtector("Namerre.Authentication.Passkeys").ToTimeLimitedDataProtector();
+        // A random subpurpose ties tickets to this process: the used-ticket set lives in memory, so after a restart a
+        // ticket that was already redeemed must not verify again. Namerre runs as one process per database.
+        protector = dataProtection.CreateProtector("Namerre.Authentication.Passkeys",
+            Convert.ToHexString(RandomNumberGenerator.GetBytes(16))).ToTimeLimitedDataProtector();
         if (string.IsNullOrWhiteSpace(settings.Origin))
             return;
         if (!Uri.TryCreate(settings.Origin.Trim(), UriKind.Absolute, out var origin) ||

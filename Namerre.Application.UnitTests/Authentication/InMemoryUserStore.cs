@@ -108,17 +108,20 @@ internal sealed class InMemoryUserStore : IUserStore
         return true;
     }
 
-    public void RecordPasskeySignIn(long userId, long passkeyId, uint signCount, DateTimeOffset at)
+    public bool TryRecordPasskeySignIn(long userId, long passkeyId, uint expectedSignCount, uint signCount,
+        DateTimeOffset at)
     {
         Write();
         var index = users.FindIndex(u => u.Id == userId);
-        if (index >= 0)
-            users[index] = users[index] with
-            {
-                LastSignInAt = at,
-                Passkeys = users[index].Passkeys
-                    .Select(p => p.Id == passkeyId ? p with { SignCount = signCount, LastUsedAt = at } : p).ToArray()
-            };
+        if (index < 0 || !users[index].Passkeys.Any(p => p.Id == passkeyId && p.SignCount == expectedSignCount))
+            return false;
+        users[index] = users[index] with
+        {
+            LastSignInAt = at,
+            Passkeys = users[index].Passkeys
+                .Select(p => p.Id == passkeyId ? p with { SignCount = signCount, LastUsedAt = at } : p).ToArray()
+        };
+        return true;
     }
 
     public bool TryMoveLogin(long loginId, long fromUserId, string fromStamp, long toUserId, string toStamp,

@@ -381,8 +381,7 @@ public sealed class UserAccounts
             if (user.Disabled)
                 throw new AccountException("UserDisabled", "Disabled users cannot register passkeys.", 409);
             if (user.Passkeys.Count >= MaximumPasskeysPerUser)
-                throw new AccountException("TooManyPasskeys",
-                    $"A user can have at most {MaximumPasskeysPerUser} passkeys. Remove one first.", 409);
+                throw AccountException.TooManyPasskeys();
             if (FindPasskey(passkey.CredentialId) is not null)
                 throw PasskeyTaken();
             var record = new UserPasskeyRecord(0, id, passkey.CredentialId, passkey.PublicKey, passkey.UserHandle,
@@ -420,19 +419,18 @@ public sealed class UserAccounts
         }
     }
 
-    /// <summary>Records a verified passkey sign-in and the authenticator's new signature counter.</summary>
-    public void RecordPasskeySignIn(UserRecord user, UserPasskeyRecord passkey, uint signCount)
+    /// <summary>
+    /// Records a verified passkey sign-in and the authenticator's new signature counter. False when the passkey was
+    /// removed, or used again, since <paramref name="passkey"/> was read: the sign-in must then fail. Unlike password
+    /// sign-ins this is not best effort, since clone detection needs the counter; storage failures throw.
+    /// </summary>
+    public bool TryRecordPasskeySignIn(UserRecord user, UserPasskeyRecord passkey, uint signCount)
     {
-        try
-        {
-            store.RecordPasskeySignIn(user.Id, passkey.Id, signCount, time.GetUtcNow());
-            lock (gate)
-                Reload();
-        }
-        catch (UserStorageException exception)
-        {
-            logger.LogWarning(exception, "Unable to record the passkey sign-in of user {UserId}.", user.Id);
-        }
+        var recorded = store.TryRecordPasskeySignIn(user.Id, passkey.Id, passkey.SignCount, signCount,
+            time.GetUtcNow());
+        lock (gate)
+            Reload();
+        return recorded;
     }
 
     private static string PasskeyName(string? name, UserRecord user)
@@ -497,6 +495,8 @@ public sealed class UserAccounts
             if (source.Id == target.Id)
                 throw new AccountException("SameUser", "Choose two different users to merge.", 409);
             EnsureDeletable(actor, source);
+            if (target.Passkeys.Count + source.Passkeys.Count > MaximumPasskeysPerUser)
+                throw AccountException.TooManyPasskeys();
             if (!store.TryMergeUser(source.Id, source.Stamp, target.Id, target.Stamp, NewStamp()))
             {
                 Reload();

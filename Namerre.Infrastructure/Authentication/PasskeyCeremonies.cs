@@ -30,7 +30,10 @@ public sealed class PasskeyCeremonies : IPasskeyCeremonies
         });
         options.Timeout = TimeoutMilliseconds;
         var json = options.ToJson();
-        return new PasskeyChallenge(json, State(relyingParty, json));
+        // Verifying the answer does not need the excluded credentials (uniqueness is checked when storing), and
+        // up to 19 credential IDs of up to 1,023 bytes each would make the ticket far larger than the rest.
+        options.ExcludeCredentials = [];
+        return new PasskeyChallenge(json, State(relyingParty, options.ToJson()));
     }
 
     public async Task<NewPasskey> CompleteRegistration(string state, string responseJson,

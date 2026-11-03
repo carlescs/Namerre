@@ -15,8 +15,7 @@ public sealed class PasskeyAccounts(UserAccounts accounts, IPasskeyCeremonies ce
     {
         var user = accounts.ConfirmOwnChange(userId, recentSignIn, password);
         if (user.Passkeys.Count >= UserAccounts.MaximumPasskeysPerUser)
-            throw new AccountException("TooManyPasskeys",
-                $"A user can have at most {UserAccounts.MaximumPasskeysPerUser} passkeys. Remove one first.", 409);
+            throw AccountException.TooManyPasskeys();
         return new PasskeyRegistration(user,
             ceremonies.BeginRegistration(relyingParty, user, UserAccounts.PasskeyUserHandle(user)));
     }
@@ -65,7 +64,11 @@ public sealed class PasskeyAccounts(UserAccounts accounts, IPasskeyCeremonies ce
         if (accounts.Find(found.User.Id) is not { Disabled: false } user ||
             user.Passkeys.All(p => p.Id != found.Passkey.Id))
             return null;
-        accounts.RecordPasskeySignIn(user, found.Passkey, signCount);
-        return accounts.Find(user.Id) ?? user;
+        // Recording fails when the passkey was removed, or signed in again, meanwhile.
+        if (!accounts.TryRecordPasskeySignIn(user, found.Passkey, signCount))
+            return null;
+        // The snapshot checked above, not a fresh read: if a change (such as removing this passkey) replaced the
+        // credential stamp in between, the session built from it is already invalid.
+        return user;
     }
 }

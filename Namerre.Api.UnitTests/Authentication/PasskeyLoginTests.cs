@@ -63,11 +63,22 @@ public sealed class PasskeyLoginTests
     }
 
     [Fact]
+    public void TicketsDoNotSurviveARestart()
+    {
+        // The same Data Protection keys, as after a restart: the used-ticket set is gone, so the ticket must be too.
+        var keys = new EphemeralDataProtectionProvider();
+        var ticket = Login(keys: keys).Issue(PasskeyLogin.SignInPurpose, "state");
+
+        Assert.Null(Login(keys: keys).Redeem(ticket, PasskeyLogin.SignInPurpose));
+    }
+
+    [Fact]
     public void TicketsOfAnotherInstallationAreRejected()
         => Assert.Null(Login().Redeem(Login().Issue(PasskeyLogin.SignInPurpose, "state"), PasskeyLogin.SignInPurpose));
 
-    private static PasskeyLogin Login(string? origin = null) => new(Options.Create(new NamerreOptions
-    {
-        Authentication = new AuthenticationOptions { Passkeys = new PasskeyOptions { Origin = origin } }
-    }), new EphemeralDataProtectionProvider());
+    private static PasskeyLogin Login(string? origin = null, IDataProtectionProvider? keys = null) => new(
+        Options.Create(new NamerreOptions
+        {
+            Authentication = new AuthenticationOptions { Passkeys = new PasskeyOptions { Origin = origin } }
+        }), keys ?? new EphemeralDataProtectionProvider());
 }

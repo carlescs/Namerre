@@ -400,8 +400,8 @@ public sealed class InstallationTests : IDisposable
             => throw Failure();
         public bool TryRemovePasskey(long userId, string expectedStamp, string newStamp, long passkeyId)
             => throw Failure();
-        public void RecordPasskeySignIn(long userId, long passkeyId, uint signCount, DateTimeOffset at)
-            => throw Failure();
+        public bool TryRecordPasskeySignIn(long userId, long passkeyId, uint expectedSignCount, uint signCount,
+            DateTimeOffset at) => throw Failure();
         private static UserStorageException Failure() => new("Database is read-only.", new IOException("read-only"));
     }
 }

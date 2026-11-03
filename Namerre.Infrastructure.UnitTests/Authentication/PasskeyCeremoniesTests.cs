@@ -47,6 +47,22 @@ public sealed class PasskeyCeremoniesTests : IDisposable
     }
 
     [Fact]
+    public async Task TheStateStaysSmallWithTheLargestExcludedCredentials()
+    {
+        // Nineteen excluded passkeys with the largest credential IDs WebAuthn allows.
+        var existing = Enumerable.Range(0, UserAccounts.MaximumPasskeysPerUser - 1)
+            .Select(i => Stored(new NewPasskey(Enumerable.Repeat((byte)i, 1023).ToArray(), [1], UserHandle, 0)))
+            .ToArray();
+        var registration = ceremonies.BeginRegistration(RelyingParty, User(existing), UserHandle);
+
+        Assert.Equal(existing.Length, Json(registration.OptionsJson).GetProperty("excludeCredentials").GetArrayLength());
+        Assert.True(registration.State.Length < 4096, $"State is {registration.State.Length} characters.");
+        var passkey = await ceremonies.CompleteRegistration(registration.State,
+            authenticator.Create(Json(registration.OptionsJson)), CancellationToken.None);
+        Assert.Equal(authenticator.CredentialId, passkey.CredentialId);
+    }
+
+    [Fact]
     public async Task AnswersFromAnotherOriginAreRejected()
     {
         var registration = ceremonies.BeginRegistration(RelyingParty, User([]), UserHandle);

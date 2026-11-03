@@ -19,6 +19,8 @@ public sealed class AccountException(string code, string message, int status = 4
         409);
     public static AccountException LoginTaken() => new("LoginTaken",
         "This single sign-on identity is already linked to another user.", 409);
+    public static AccountException TooManyPasskeys() => new("TooManyPasskeys",
+        $"A user can have at most {UserAccounts.MaximumPasskeysPerUser} passkeys. Remove one first.", 409);
     public static AccountException RecentSignIn() => new("RecentSignInRequired",
         "Confirm it is you: sign in again or enter your password, then retry.", 403);
 }

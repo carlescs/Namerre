@@ -22,8 +22,13 @@ public interface IUserStore
     bool TryAddPasskey(long userId, string expectedStamp, string newStamp, UserPasskeyRecord passkey);
     /// <summary>Removes a passkey from the user; false when either changed.</summary>
     bool TryRemovePasskey(long userId, string expectedStamp, string newStamp, long passkeyId);
-    /// <summary>Records a passkey sign-in: the user's sign-in time, and the passkey's use and signature counter.</summary>
-    void RecordPasskeySignIn(long userId, long passkeyId, uint signCount, DateTimeOffset at);
+    /// <summary>
+    /// Records a passkey sign-in: the user's sign-in time, and the passkey's use and new signature counter. False,
+    /// recording nothing, when the passkey is gone or its counter is no longer <paramref name="expectedSignCount"/>
+    /// (the one the sign-in was verified against), so a counter never moves backwards.
+    /// </summary>
+    bool TryRecordPasskeySignIn(long userId, long passkeyId, uint expectedSignCount, uint signCount,
+        DateTimeOffset at);
     /// <summary>Moves a link to another user, optionally deleting the user it came from, in one transaction.</summary>
     bool TryMoveLogin(long loginId, long fromUserId, string fromStamp, long toUserId, string toStamp,
         string newStamp, bool deleteSource);

@@ -353,14 +353,18 @@ cannot have passkeys.
 
 - Passkeys are discoverable credentials that require user verification. No attestation is
   requested, so any authenticator the browser accepts works (platform authenticators, security
-  keys, password managers). Each user can register up to 20.
+  keys, password managers). Each user can register up to 20, and a merge that would exceed that is
+  refused.
 - Only the credential ID, public key, signature counter, a random user handle (never the user ID
   or name) and the name are stored, in the database's `UserPasskeys` table (the `AddPasskeys`
-  migration). A signature counter that goes back is refused as a cloned authenticator.
+  migration). A signature counter that goes back is refused as a cloned authenticator, and so is a
+  sign-in that races another use of the same passkey. A sign-in whose counter cannot be saved fails
+  (503) rather than weaken that check.
 - Each sign-in or registration is a one-time challenge: the server returns the WebAuthn options
   with a protected ticket valid for five minutes and bound to its purpose (and, when registering,
   to the user and their current credential stamp). A ticket works once, so a captured answer
-  cannot be replayed.
+  cannot be replayed, and only in the running server: a restart ends ceremonies in progress, which
+  people simply start again.
 - Passkeys belong to the address people open Namerre at: the relying party ID is its host name
   and the browser origin must match. By default both come from each request (`Host` and the
   scheme after `X-Forwarded-Proto`), which suits a reverse proxy that keeps the `Host` header. If

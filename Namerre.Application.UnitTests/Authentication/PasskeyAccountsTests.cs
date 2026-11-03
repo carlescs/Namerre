@@ -130,10 +130,11 @@ public sealed class PasskeyAccountsTests
         var user = await passkeys.SignIn("state", Answer, CancellationToken.None);
 
         Assert.Equal(alice.Id, user?.Id);
-        var passkey = Assert.Single(user!.Passkeys);
+        var stored = accounts.Find(alice.Id)!;
+        var passkey = Assert.Single(stored.Passkeys);
         Assert.Equal(7u, passkey.SignCount);
         Assert.NotNull(passkey.LastUsedAt);
-        Assert.NotNull(user.LastSignInAt);
+        Assert.NotNull(stored.LastSignInAt);
     }
 
     [Fact]
@@ -152,6 +153,66 @@ public sealed class PasskeyAccountsTests
             .Returns(1u);
         accounts.Update(new UserReference(0, "admin"), alice.Id, null, true);
         Assert.Null(await passkeys.SignIn("state", Answer, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ASignInRacingAnotherUseOfThePasskeyFailsAndKeepsTheNewerCounter()
+    {
+        await Register(alice.Stamp, [1, 2, 3]);
+        ceremonies.AssertedCredentialId(Answer).Returns([1, 2, 3]);
+        // Another sign-in with the same passkey records counter 12 while this one is verified against 0.
+        ceremonies.CompleteAssertion("state", Answer, Arg.Any<UserPasskeyRecord>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                store.Tamper(alice.Id, u => u with { Passkeys = [u.Passkeys[0] with { SignCount = 12 }] });
+                return 11u;
+            });
+
+        Assert.Null(await passkeys.SignIn("state", Answer, CancellationToken.None));
+        Assert.Equal(12u, store.List().Single(u => u.Id == alice.Id).Passkeys[0].SignCount);
+    }
+
+    [Fact]
+    public async Task APasskeyRemovedWhileSigningInDoesNotSignIn()
+    {
+        await Register(alice.Stamp, [1, 2, 3]);
+        ceremonies.AssertedCredentialId(Answer).Returns([1, 2, 3]);
+        // An administrator removes the passkey after the service checked it, before the sign-in is recorded.
+        ceremonies.CompleteAssertion("state", Answer, Arg.Any<UserPasskeyRecord>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                store.Tamper(alice.Id, u => u with { Passkeys = [], Stamp = "removed" });
+                return 1u;
+            });
+
+        Assert.Null(await passkeys.SignIn("state", Answer, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ASignInIsRefusedWhenItsCounterCannotBeSaved()
+    {
+        await Register(alice.Stamp, [1, 2, 3]);
+        ceremonies.AssertedCredentialId(Answer).Returns([1, 2, 3]);
+        ceremonies.CompleteAssertion("state", Answer, Arg.Any<UserPasskeyRecord>(), Arg.Any<CancellationToken>())
+            .Returns(1u);
+        store.Failure = new UserStorageException("read-only");
+
+        await Assert.ThrowsAsync<UserStorageException>(() => passkeys.SignIn("state", Answer, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task MergingKeepsThePasskeyLimit()
+    {
+        var admin = accounts.Create(new UserReference(0, "setup"), "root", UserRole.Admin, Password, null);
+        var stamp = alice.Stamp;
+        for (byte i = 0; i < UserAccounts.MaximumPasskeysPerUser; i++)
+            stamp = (await Register(stamp, [i])).Stamp;
+        var rootStamp = (await Register(admin.Stamp, [200], user: admin)).Stamp;
+
+        Assert.Equal("TooManyPasskeys", Assert.Throws<AccountException>(() =>
+            accounts.Merge(new UserReference(admin.Id, "root"), alice.Id, admin.Id)).Code);
+        Assert.Equal(rootStamp, accounts.Find(admin.Id)!.Stamp);
+        Assert.Equal(UserAccounts.MaximumPasskeysPerUser, accounts.Find(alice.Id)!.Passkeys.Count);
     }
 
     [Fact]
