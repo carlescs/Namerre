@@ -70,14 +70,19 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
         });
     }
 
-    /// <param name="returnTo"><c>account</c> confirms a sensitive change: the provider must authenticate the user
-    /// again (<c>prompt=login</c>, <c>max_age=0</c>) and the flow returns to the account page. Anything else is a
-    /// normal sign-in that returns to the app. Fixed addresses avoid open redirects.</param>
+    /// <param name="returnTo"><c>account</c> or <c>users</c> confirms a sensitive change: the provider must
+    /// authenticate the user again (<c>prompt=login</c>, <c>max_age=0</c>) and the flow returns to the account page
+    /// or to the user management page. Anything else is a normal sign-in that returns to the app. Fixed addresses
+    /// avoid open redirects.</param>
     [AllowAnonymous]
     [HttpGet("oidc/login")]
     public Task<IActionResult> OidcLogin(CancellationToken cancellationToken, string? returnTo = null)
-        => Challenge(returnTo == "account" ? FreshSignIn("/account") : new AuthenticationProperties { RedirectUri = "/" },
-            "/?signInError=unavailable", cancellationToken);
+        => Challenge(returnTo switch
+            {
+                "account" => FreshSignIn("/account"),
+                "users" => FreshSignIn("/users"),
+                _ => new AuthenticationProperties { RedirectUri = "/" }
+            }, "/?signInError=unavailable", cancellationToken);
 
     /// <summary>A challenge that makes the provider authenticate again and report when (<c>auth_time</c>).</summary>
     private static OpenIdConnectChallengeProperties FreshSignIn(string redirectUri) => new()

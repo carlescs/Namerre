@@ -324,7 +324,12 @@ exports include `runCreatedBy` and `runOrigin` columns. Deleting a user keeps th
 showing their name, and merging a user moves their history to the target user. User management and linking actions are logged with who did what to which
 user (never passwords, tokens or claims).
 
-The user management API is `api/users` (administrators only): `GET` lists users with their
+The user management API is `api/users` (administrators only). Reading (`GET`) works in any
+administrator session, but every change needs a recent sign-in (within the last 10 minutes, like
+sensitive changes to your own account); an older session gets `403` with `RecentSignInRequired`
+until the administrator confirms with their password, a passkey or by signing in again with single
+sign-on (the Users page asks and then repeats the change), so a stolen session cookie alone cannot
+create administrators, reset passwords or link identities. `GET` lists users with their
 sign-in methods, `POST` creates one (`username`, `role`, and a `password`, a single sign-on
 `subject`, or both), `PATCH /{id}` changes `role` or `disabled`, `PUT`/`DELETE /{id}/password`
 sets or removes the password, `POST /{id}/logins` links an identity (`subject`) or moves one

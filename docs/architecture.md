@@ -254,6 +254,14 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
   `RenameService` through `Viewer` (null for administrators and background work, from
   `ICurrentUser.IsAdmin`), so someone else's record is `NotFound`, and `HubRenameNotifier` only
   nudges administrators and the owner (`RenameChange.OwnerId`, never serialized).
+- `UsersController` also carries `RecentSignInFilter` (an authorization filter ordered after
+  `[Authorize]`): safe methods pass, every other request needs `UserSession.IsRecent` (an injectable
+  `TimeProvider`, 10 minutes) and is otherwise answered exactly like
+  `AccountException.RecentSignIn()` (`403 { code: "RecentSignInRequired", message }`, built by
+  `AccountExceptionFilter.Result`). It applies to the whole controller, so new endpoints are covered
+  by default. The Users page catches that code, shows the shared `ConfirmIdentity` component (password
+  via `POST api/auth/reauthenticate`, passkey, or single sign-on through
+  `oidc/login?returnTo=users`) in a dialog and sends the refused change again.
 - `AuthenticationSetup.AdminPolicy` (`RequireAdmin`) guards `api/users`, watch folders and run
   deletion; `AccountException` (Application) carries refusals, which `AccountExceptionFilter` maps to
   `{ code, message }` with the exception's status. `HttpCurrentUser` feeds

@@ -121,9 +121,9 @@ export class Auth {
 
   /**
    * Leaves the app for the identity provider, which returns to `/` after sign-in, or to the account page
-   * when confirming a sensitive change there.
+   * (or the users page) when confirming a sensitive change there.
    */
-  startSingleSignOn(returnTo?: 'account'): void {
+  startSingleSignOn(returnTo?: 'account' | 'users'): void {
     this.document.location.assign(
       returnTo ? `/api/auth/oidc/login?returnTo=${returnTo}` : '/api/auth/oidc/login',
     );

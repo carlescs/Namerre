@@ -259,7 +259,7 @@ public static class AuthenticationSetup
             user = resolved;
             loginId = resolvedLogin;
             // Only fixed return addresses, which avoids open redirects.
-            context.ReturnUri = context.ReturnUri == "/account" ? "/account" : "/";
+            context.ReturnUri = context.ReturnUri is "/account" or "/users" ? context.ReturnUri : "/";
         }
 
         accounts.RecordSignIn(user, loginId);
