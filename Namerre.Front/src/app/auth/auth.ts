@@ -121,9 +121,9 @@ export class Auth {
 
   /**
    * Leaves the app for the identity provider, which returns to `/` after sign-in, or to the account page
-   * when confirming a sensitive change there.
+   * (or the users page) when confirming a sensitive change there.
    */
-  startSingleSignOn(returnTo?: 'account'): void {
+  startSingleSignOn(returnTo?: 'account' | 'users'): void {
     this.document.location.assign(
       returnTo ? `/api/auth/oidc/login?returnTo=${returnTo}` : '/api/auth/oidc/login',
     );
@@ -249,6 +249,15 @@ export class Auth {
     await this.refresh();
     await firstValueFrom(this.http.post('/api/auth/password', { currentPassword, newPassword }));
     await this.refresh();
+  }
+
+  /**
+   * Ends every other session of this user, on any browser or device, and keeps this one. Needs no
+   * confirmation: it can only sign people out.
+   */
+  async signOutOtherSessions(): Promise<void> {
+    await this.refresh();
+    await firstValueFrom(this.http.post('/api/auth/sessions/revoke-others', {}));
   }
 
   /** Ends the session; single sign-on sessions then leave for the identity provider's sign-out. */

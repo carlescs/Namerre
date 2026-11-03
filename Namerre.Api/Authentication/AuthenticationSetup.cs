@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Claims;
@@ -15,11 +16,15 @@ namespace Namerre.Authentication;
 
 public static class AuthenticationSetup
 {
-    // Login (password and passkey), setup and password changes share these limits; each password attempt costs a
-    // full password hash.
+    // Anonymous sign-in (password and passkey) and setup: a small budget per client address, checked first, then a
+    // shared ceiling across all clients. Each password attempt costs a full password hash.
     public const string LoginPolicy = "login";
+    // Signed-in account endpoints (password change, re-confirmation, passkey registration, SSO linking): a small
+    // budget per user, with no shared ceiling so anonymous traffic can never block them.
+    public const string AccountPolicy = "account";
     internal const int LoginLimitPerClient = 5;
     internal const int LoginLimitShared = 60;
+    internal const int AccountLimitPerUser = 5;
 
     /// <summary>Authorization policy for administrator-only endpoints.</summary>
     public const string AdminPolicy = "RequireAdmin";
@@ -38,7 +43,7 @@ public static class AuthenticationSetup
                 options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
                 options.Cookie.SameSite = SameSiteMode.Strict;
                 options.Cookie.Path = "/";
-                options.ExpireTimeSpan = TimeSpan.FromHours(8);
+                options.ExpireTimeSpan = SessionPolicy.Lifetime;
                 options.SlidingExpiration = false;
                 options.Events.OnRedirectToLogin = context =>
                 {
@@ -54,7 +59,8 @@ public static class AuthenticationSetup
                 {
                     var services = context.HttpContext.RequestServices;
                     if (context.Principal is null || !IsValidSession(context.Principal,
-                            services.GetRequiredService<UserAccounts>(), services.GetRequiredService<OidcLogin>()))
+                            services.GetRequiredService<UserAccounts>(), services.GetRequiredService<OidcLogin>(),
+                            services.GetRequiredService<UserSessions>()))
                         context.RejectPrincipal();
                     return Task.CompletedTask;
                 };
@@ -77,14 +83,18 @@ public static class AuthenticationSetup
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            // Each client gets its own small budget, so one source cannot lock the administrator out...
-            options.AddPolicy(LoginPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
-                ClientPartition(context.Connection.RemoteIpAddress), _ => LoginWindow(LoginLimitPerClient)));
-            // ...and a shared ceiling still bounds guessing from many addresses at once.
-            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-                context.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName == LoginPolicy
-                    ? RateLimitPartition.GetFixedWindowLimiter("administrator", _ => LoginWindow(LoginLimitShared))
-                    : RateLimitPartition.GetNoLimiter(""));
+            // The shared ceiling is part of the login policy itself, not a global limiter: the middleware takes a
+            // global permit before the endpoint's, so a client rejected by its own budget would still burn a
+            // shared permit and could exhaust the ceiling for everyone.
+            var shared = new FixedWindowRateLimiter(LoginWindow(LoginLimitShared));
+            options.AddPolicy(LoginPolicy, context => RateLimitPartition.Get(
+                ClientPartition(context.Connection.RemoteIpAddress),
+                _ => new ClientThenSharedLimiter(new FixedWindowRateLimiter(LoginWindow(LoginLimitPerClient)), shared)));
+            options.AddPolicy(AccountPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+                context.User.Identity?.IsAuthenticated == true && UserSession.UserId(context.User) is { } id
+                    ? "user:" + id.ToString(CultureInfo.InvariantCulture)
+                    : "client:" + ClientPartition(context.Connection.RemoteIpAddress),
+                _ => LoginWindow(AccountLimitPerUser)));
         });
         return services;
     }
@@ -116,13 +126,16 @@ public static class AuthenticationSetup
     /// <summary>
     /// A session stays valid while its user exists, is enabled and keeps the same credential stamp (and, for single
     /// sign-on sessions, while single sign-on settings are unchanged). The stamp changes with the user's role,
-    /// password and links, so the role claim never outlives a change.
+    /// password and links, so the role claim never outlives a change. A session also ends on the server when it is
+    /// signed out or the user ends their other sessions (see <see cref="UserSessions"/>).
     /// </summary>
-    internal static bool IsValidSession(ClaimsPrincipal principal, UserAccounts accounts, OidcLogin oidc)
+    internal static bool IsValidSession(ClaimsPrincipal principal, UserAccounts accounts, OidcLogin oidc,
+        UserSessions sessions)
     {
         if (UserSession.UserId(principal) is not { } id || accounts.Find(id) is not { Disabled: false } user ||
             principal.FindFirst(UserSession.StampClaim)?.Value != user.Stamp ||
-            principal.FindFirst(ClaimTypes.Role)?.Value != user.Role.ToString())
+            principal.FindFirst(ClaimTypes.Role)?.Value != user.Role.ToString() ||
+            !sessions.IsActive(UserSession.SessionId(principal), id, UserSession.SessionEpoch(principal)))
             return false;
         return !UserSession.IsSingleSignOn(principal) || oidc.IsValidSession(principal);
     }
@@ -259,7 +272,7 @@ public static class AuthenticationSetup
             user = resolved;
             loginId = resolvedLogin;
             // Only fixed return addresses, which avoids open redirects.
-            context.ReturnUri = context.ReturnUri == "/account" ? "/account" : "/";
+            context.ReturnUri = context.ReturnUri is "/account" or "/users" ? context.ReturnUri : "/";
         }
 
         accounts.RecordSignIn(user, loginId);
@@ -268,7 +281,7 @@ public static class AuthenticationSetup
         // The provider's authentication time, not the callback's, decides whether the sign-in counts as recent:
         // a provider session reused without signing in again must not unlock sensitive changes.
         context.Principal = UserSession.Create(user, UserSession.SingleSignOnMethod, oidc.Stamp,
-            AuthenticatedAt(context.Principal, now));
+            AuthenticatedAt(context.Principal, now), services.GetRequiredService<UserSessions>().CurrentEpoch(user.Id));
         properties.IsPersistent = false;
         properties.Items.Remove(OidcLogin.LinkUserItem);
         properties.Items.Remove(OidcLogin.LinkStampItem);

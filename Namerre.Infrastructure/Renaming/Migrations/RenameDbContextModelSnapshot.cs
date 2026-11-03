@@ -162,6 +162,35 @@ namespace Namerre.Infrastructure.Renaming.Migrations
                     b.ToTable("Settings");
                 });
 
+            modelBuilder.Entity("Namerre.Infrastructure.Renaming.RevokedSessionRow", b =>
+                {
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ExpiresAtUnix")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("SessionId");
+
+                    b.HasIndex("ExpiresAtUnix");
+
+                    b.ToTable("RevokedSessions");
+                });
+
+            modelBuilder.Entity("Namerre.Infrastructure.Renaming.SessionEpochRow", b =>
+                {
+                    b.Property<long>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Epoch")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("SessionEpochs");
+                });
+
             modelBuilder.Entity("Namerre.Infrastructure.Renaming.UserLoginRow", b =>
                 {
                     b.Property<long>("Id")

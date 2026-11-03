@@ -355,6 +355,11 @@ public sealed class OidcAuthenticationTests
         using var accepted = await client.PostAsJsonAsync("/api/auth/password",
             new { newPassword = "alice-new-password" }); // betterleaks:allow
         Assert.Equal(HttpStatusCode.NoContent, accepted.StatusCode);
+
+        // User management confirms the same way and returns to its own page.
+        using var forUsers = await provider.SignIn(client, "/api/auth/oidc/login?returnTo=users");
+        Assert.Equal("/users", forUsers.Headers.Location!.OriginalString);
+        Assert.Equal(("login", "0"), (provider.AuthorizationQuery!["prompt"], provider.AuthorizationQuery["max_age"]));
     }
 
     [Fact]

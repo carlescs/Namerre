@@ -153,6 +153,68 @@ public sealed class AuthenticationTests
         Assert.Equal(HttpStatusCode.OK, session.StatusCode);
     }
 
+    [Fact]
+    public async Task OneNoisyClientCannotExhaustTheSharedCeiling()
+    {
+        using var factory = ClientAddressFactory();
+        using var noisy = await ClientAt(factory, "192.0.2.10");
+        const int attempts = Namerre.Authentication.AuthenticationSetup.LoginLimitShared + 20;
+        var rejected = 0;
+        for (var attempt = 0; attempt < attempts; attempt++)
+        {
+            using var response = await noisy.PostAsJsonAsync("/api/auth/login",
+                new { AuthWebApplicationFactory.Username, password = "incorrect" });
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                rejected++;
+        }
+        Assert.Equal(attempts - Namerre.Authentication.AuthenticationSetup.LoginLimitPerClient, rejected);
+
+        using var other = await ClientAt(factory, "198.51.100.20");
+        using var login = await other.PostAsJsonAsync("/api/auth/login",
+            new { AuthWebApplicationFactory.Username, AuthWebApplicationFactory.Password });
+        Assert.Equal(HttpStatusCode.NoContent, login.StatusCode);
+    }
+
+    [Fact]
+    public async Task AccountEndpointsAreLimitedPerUserAndNotByAnonymousTraffic()
+    {
+        using var factory = ClientAddressFactory();
+        using var admin = await ClientAt(factory, "192.0.2.10");
+        using var signIn = await admin.PostAsJsonAsync("/api/auth/login",
+            new { AuthWebApplicationFactory.Username, AuthWebApplicationFactory.Password });
+        Assert.Equal(HttpStatusCode.NoContent, signIn.StatusCode);
+        await AuthWebApplicationFactory.RefreshCsrf(admin);
+
+        // Anonymous traffic from many clients fills the shared sign-in ceiling.
+        const int clients = Namerre.Authentication.AuthenticationSetup.LoginLimitShared
+            / Namerre.Authentication.AuthenticationSetup.LoginLimitPerClient;
+        // The administrator's own sign-in used one permit, so the last client may be cut short.
+        await Task.WhenAll(Enumerable.Range(0, clients + 1).Select(async index =>
+        {
+            using var client = await ClientAt(factory, $"203.0.113.{index + 1}");
+            for (var attempt = 0; attempt < Namerre.Authentication.AuthenticationSetup.LoginLimitPerClient; attempt++)
+            {
+                using var invalid = await client.PostAsJsonAsync("/api/auth/login",
+                    new { AuthWebApplicationFactory.Username, password = "incorrect" });
+                Assert.Contains(invalid.StatusCode,
+                    new[] { HttpStatusCode.Unauthorized, HttpStatusCode.TooManyRequests });
+            }
+        }));
+        using var anonymous = await ClientAt(factory, "192.0.2.99");
+        using var blocked = await anonymous.PostAsJsonAsync("/api/auth/login",
+            new { AuthWebApplicationFactory.Username, AuthWebApplicationFactory.Password });
+        Assert.Equal(HttpStatusCode.TooManyRequests, blocked.StatusCode);
+
+        // The signed-in user still has their own budget, which is spent per user.
+        for (var attempt = 0; attempt < Namerre.Authentication.AuthenticationSetup.AccountLimitPerUser; attempt++)
+        {
+            using var response = await admin.PostAsJsonAsync("/api/auth/reauthenticate", new { password = "incorrect" });
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+        using var exhausted = await admin.PostAsJsonAsync("/api/auth/reauthenticate", new { password = "incorrect" });
+        Assert.Equal(HttpStatusCode.TooManyRequests, exhausted.StatusCode);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -204,6 +266,201 @@ public sealed class AuthenticationTests
             new { AuthWebApplicationFactory.Username, AuthWebApplicationFactory.Password });
         Assert.NotEqual(HttpStatusCode.NoContent, response.StatusCode);
         Assert.False(response.Headers.TryGetValues("Set-Cookie", out _));
+    }
+
+    [Fact]
+    public async Task ACookieCapturedBeforeLogoutIsRejectedAfterIt()
+    {
+        using var factory = new AuthWebApplicationFactory();
+        using var client = AuthWebApplicationFactory.AnonymousClient(factory);
+        var cookie = await SignInCapturingCookie(client);
+        using var copy = CookieClient(factory, cookie);
+        Assert.Equal(HttpStatusCode.OK, (await copy.GetAsync("/api/rename-plugins")).StatusCode);
+
+        await AuthWebApplicationFactory.RefreshCsrf(client);
+        using var logout = await client.PostAsJsonAsync("/api/auth/logout", new { });
+        Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await copy.GetAsync("/api/rename-plugins")).StatusCode);
+        // Signing in again is a new session; the ended one stays ended.
+        using var again = AuthWebApplicationFactory.AnonymousClient(factory);
+        await SignInCapturingCookie(again);
+        Assert.Equal(HttpStatusCode.OK, (await again.GetAsync("/api/rename-plugins")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await copy.GetAsync("/api/rename-plugins")).StatusCode);
+    }
+
+    [Fact]
+    public async Task SigningOutOfOtherSessionsKeepsTheCurrentOneAndEndsTheConfiguredAdministratorsOthers()
+    {
+        using var factory = new AuthWebApplicationFactory();
+        using var current = AuthWebApplicationFactory.AnonymousClient(factory);
+        using var other = AuthWebApplicationFactory.AnonymousClient(factory);
+        await SignInCapturingCookie(current);
+        await SignInCapturingCookie(other);
+        Assert.Equal(HttpStatusCode.OK, (await other.GetAsync("/api/rename-plugins")).StatusCode);
+
+        await AuthWebApplicationFactory.RefreshCsrf(current);
+        using var revoked = await current.PostAsync("/api/auth/sessions/revoke-others", null);
+        Assert.Equal(HttpStatusCode.NoContent, revoked.StatusCode);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await other.GetAsync("/api/rename-plugins")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await current.GetAsync("/api/rename-plugins")).StatusCode);
+        // Repeating it, and signing in afterwards, keeps working.
+        using var again = await current.PostAsync("/api/auth/sessions/revoke-others", null);
+        Assert.Equal(HttpStatusCode.NoContent, again.StatusCode);
+        using var fresh = AuthWebApplicationFactory.AnonymousClient(factory);
+        await SignInCapturingCookie(fresh);
+        Assert.Equal(HttpStatusCode.OK, (await fresh.GetAsync("/api/rename-plugins")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await current.GetAsync("/api/rename-plugins")).StatusCode);
+        // The current session can still be signed out afterwards.
+        using var logout = await current.PostAsJsonAsync("/api/auth/logout", new { });
+        Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await current.GetAsync("/api/rename-plugins")).StatusCode);
+    }
+
+    [Fact]
+    public async Task SigningOutOfOtherSessionsRequiresASession()
+    {
+        using var factory = new AuthWebApplicationFactory();
+        using var client = AuthWebApplicationFactory.AnonymousClient(factory);
+        using var response = await client.PostAsync("/api/auth/sessions/revoke-others", null);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SigningOutOfOtherSessionsEndsAStoredUsersOthers()
+    {
+        var workspace = Path.Combine(Path.GetTempPath(), $"namerre-sessions-{Guid.NewGuid():N}");
+        try
+        {
+            using var factory = StoredFactory(workspace, withoutConfiguredAdministrator: true);
+            using var setup = AuthWebApplicationFactory.AnonymousClient(factory);
+            await AuthWebApplicationFactory.RefreshCsrf(setup);
+            using var installed = await setup.PostAsJsonAsync("/api/auth/setup", new
+            {
+                token = factory.Services.GetRequiredService<Namerre.Application.Authentication.UserAccounts>().SetupToken,
+                username = "installed",
+                password = AuthWebApplicationFactory.Password
+            });
+            Assert.Equal(HttpStatusCode.NoContent, installed.StatusCode);
+            using var current = AuthWebApplicationFactory.AnonymousClient(factory);
+            using var other = AuthWebApplicationFactory.AnonymousClient(factory);
+            await SignInCapturingCookie(current, "installed");
+            await SignInCapturingCookie(other, "installed");
+
+            await AuthWebApplicationFactory.RefreshCsrf(current);
+            using var revoked = await current.PostAsync("/api/auth/sessions/revoke-others", null);
+            Assert.Equal(HttpStatusCode.NoContent, revoked.StatusCode);
+
+            Assert.Equal(HttpStatusCode.Unauthorized, (await other.GetAsync("/api/rename-plugins")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await current.GetAsync("/api/rename-plugins")).StatusCode);
+        }
+        finally
+        {
+            DeleteQuietly(workspace);
+        }
+    }
+
+    [Fact]
+    public async Task EndedSessionsStayEndedAfterARestartAndTheKeptOneSurvives()
+    {
+        var workspace = Path.Combine(Path.GetTempPath(), $"namerre-sessions-{Guid.NewGuid():N}");
+        try
+        {
+            string loggedOut;
+            string other;
+            string kept;
+            using (var factory = StoredFactory(workspace))
+            {
+                using var first = AuthWebApplicationFactory.AnonymousClient(factory);
+                using var second = AuthWebApplicationFactory.AnonymousClient(factory);
+                using var third = AuthWebApplicationFactory.AnonymousClient(factory);
+                loggedOut = await SignInCapturingCookie(first);
+                other = await SignInCapturingCookie(second);
+                kept = await SignInCapturingCookie(third);
+                await AuthWebApplicationFactory.RefreshCsrf(first);
+                Assert.Equal(HttpStatusCode.NoContent, (await first.PostAsJsonAsync("/api/auth/logout", new { })).StatusCode);
+                await AuthWebApplicationFactory.RefreshCsrf(third);
+                using var revoked = await third.PostAsync("/api/auth/sessions/revoke-others", null);
+                Assert.Equal(HttpStatusCode.NoContent, revoked.StatusCode);
+                // The session that stays is re-issued with a new cookie.
+                kept = Assert.Single(revoked.Headers.GetValues("Set-Cookie"),
+                    value => value.StartsWith("__Host-namerre-session=", StringComparison.Ordinal)).Split(';')[0];
+            }
+
+            // A new process reads the same database and the same data protection keys.
+            using var restarted = StoredFactory(workspace);
+            using var loggedOutCopy = CookieClient(restarted, loggedOut);
+            using var otherCopy = CookieClient(restarted, other);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await loggedOutCopy.GetAsync("/api/rename-plugins")).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await otherCopy.GetAsync("/api/rename-plugins")).StatusCode);
+            using var keptCopy = CookieClient(restarted, kept);
+            Assert.Equal(HttpStatusCode.OK, (await keptCopy.GetAsync("/api/rename-plugins")).StatusCode);
+            using var signedInAgain = AuthWebApplicationFactory.AnonymousClient(restarted);
+            await SignInCapturingCookie(signedInAgain);
+            Assert.Equal(HttpStatusCode.OK, (await signedInAgain.GetAsync("/api/rename-plugins")).StatusCode);
+        }
+        finally
+        {
+            DeleteQuietly(workspace);
+        }
+    }
+
+    /// <summary>
+    /// The test application with a data directory, so sessions and users are stored; optionally without the
+    /// configured administrator.
+    /// </summary>
+    private static WebApplicationFactory<Program> StoredFactory(string workspace, bool withoutConfiguredAdministrator = false)
+        => new AuthWebApplicationFactory().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration(
+            (_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Namerre:RootPath"] = Directory.CreateDirectory(Path.Combine(workspace, "media")).FullName,
+                ["Namerre:DataPath"] = Path.Combine(workspace, "data")
+            }).AddInMemoryCollection(withoutConfiguredAdministrator
+                ? new Dictionary<string, string?>
+                {
+                    ["Namerre:Authentication:Username"] = "",
+                    ["Namerre:Authentication:PasswordHash"] = ""
+                }
+                : [])));
+
+    /// <summary>Signs in and returns the session cookie, the way another device would hold a copy of it.</summary>
+    private static async Task<string> SignInCapturingCookie(HttpClient client,
+        string username = AuthWebApplicationFactory.Username)
+    {
+        await AuthWebApplicationFactory.RefreshCsrf(client);
+        using var login = await client.PostAsJsonAsync("/api/auth/login",
+            new { username, AuthWebApplicationFactory.Password });
+        Assert.Equal(HttpStatusCode.NoContent, login.StatusCode);
+        await AuthWebApplicationFactory.RefreshCsrf(client);
+        var cookie = Assert.Single(login.Headers.GetValues("Set-Cookie"),
+            value => value.StartsWith("__Host-namerre-session=", StringComparison.Ordinal));
+        return cookie.Split(';')[0];
+    }
+
+    /// <summary>A client that only presents a copied session cookie.</summary>
+    private static HttpClient CookieClient(WebApplicationFactory<Program> factory, string cookie)
+    {
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            AllowAutoRedirect = false,
+            HandleCookies = false
+        });
+        client.DefaultRequestHeaders.Add("Cookie", cookie);
+        return client;
+    }
+
+    private static void DeleteQuietly(string directory)
+    {
+        try
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, true);
+        }
+        catch (IOException)
+        {
+        }
     }
 
     private sealed record Session(string? Username);

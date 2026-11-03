@@ -1,0 +1,59 @@
+<div role="group" aria-label="Confirm it is you">
+  <p class="mt-0">Confirm it is you to make this change.</p>
+  @if (canUsePasskey()) {
+    <div class="actions mb-4">
+      <button
+        [class.btn-primary]="!auth.hasPassword()"
+        type="button"
+        (click)="confirmWithPasskey()"
+        [disabled]="busy()"
+      >
+        Use a passkey
+      </button>
+    </div>
+  }
+  @if (auth.hasPassword()) {
+    <form [formGroup]="form" (ngSubmit)="confirmWithPassword()">
+      <label for="confirm-identity-password">Enter your password.</label>
+      <input
+        id="confirm-identity-password"
+        type="password"
+        formControlName="password"
+        autocomplete="current-password"
+        maxlength="1024"
+        required
+      />
+      @if (error()) {
+        <p class="error mt-3" role="alert">{{ error() }}</p>
+      }
+      <div class="actions mt-4 justify-end gap-2">
+        <button type="button" (click)="cancelled.emit()" [disabled]="busy()">Cancel</button>
+        <button class="btn-primary" type="submit" [disabled]="busy() || password.invalid">
+          Confirm
+        </button>
+      </div>
+    </form>
+  } @else {
+    @if (canUseSingleSignOn()) {
+      <p>{{ canUsePasskey() ? 'Or sign' : 'Sign' }} in again with single sign-on, then retry.</p>
+    } @else if (!canUsePasskey()) {
+      <p>Sign out and sign in again, then retry.</p>
+    }
+    @if (error()) {
+      <p class="error mt-3" role="alert">{{ error() }}</p>
+    }
+    <div class="actions justify-end gap-2">
+      <button type="button" (click)="cancelled.emit()" [disabled]="busy()">Cancel</button>
+      @if (canUseSingleSignOn()) {
+        <button
+          [class.btn-primary]="!canUsePasskey()"
+          type="button"
+          (click)="signInAgain()"
+          [disabled]="busy()"
+        >
+          Sign in again
+        </button>
+      }
+    </div>
+  }
+</div>

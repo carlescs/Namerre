@@ -204,7 +204,7 @@ public sealed class UsersApiTests : IDisposable
     public async Task MergingAUserMovesItsIdentitiesAndRunHistory()
     {
         File.WriteAllText(Path.Combine(Root, "alpha.txt"), "A");
-        using var factory = Factory(new()
+        using var factory = Factory(settings: new()
         {
             ["Namerre:Authentication:Oidc:Authority"] = "https://keycloak.test/realms/media",
             ["Namerre:Authentication:Oidc:ClientId"] = "namerre",
@@ -261,6 +261,121 @@ public sealed class UsersApiTests : IDisposable
         throw new TimeoutException();
     }
 
+    public static TheoryData<string, string, object?> ChangeEndpoints => new()
+    {
+        { "POST", "/api/users", new { username = "mallory", password = "mallory-long-password" } },
+        { "PATCH", "/api/users/99", new { role = "Admin" } },
+        { "PUT", "/api/users/99/password", new { password = "mallory-long-password" } },
+        { "DELETE", "/api/users/99/password", null },
+        { "POST", "/api/users/99/logins", new { subject = "attacker" } },
+        { "POST", "/api/users/99/merge", new { sourceUserId = 98 } },
+        { "DELETE", "/api/users/99/logins/1", null },
+        { "DELETE", "/api/users/99/passkeys/1", null },
+        { "DELETE", "/api/users/99", null }
+    };
+
+    [Theory]
+    [MemberData(nameof(ChangeEndpoints))]
+    public async Task ChangesNeedARecentSignInButReadingDoesNot(string method, string path, object? body)
+    {
+        var clock = new ManualClock(DateTimeOffset.UtcNow);
+        using var factory = Factory(clock);
+        using var admin = await Installed(factory);
+        var self = (await admin.GetFromJsonAsync<JsonElement>("/api/auth/session")).GetProperty("userId").GetInt64();
+
+        // Within ten minutes of signing in, the request reaches its handler (here it fails on the unknown user).
+        Assert.NotEqual("RecentSignInRequired", await CodeOf(await Send(admin, method, path, body)));
+
+        var before = (await admin.GetFromJsonAsync<JsonElement>("/api/users")).GetRawText();
+        clock.Advance(UserSession.RecentSignIn + TimeSpan.FromMinutes(1));
+
+        // Reading stays available to an older session.
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/users")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync($"/api/users/{self}")).StatusCode);
+
+        await AssertCode(await Send(admin, method, path, body), HttpStatusCode.Forbidden, "RecentSignInRequired");
+        Assert.Equal(before, (await admin.GetFromJsonAsync<JsonElement>("/api/users")).GetRawText());
+
+        // Confirming the password makes the session recent again, and the same request reaches its handler.
+        using var confirm = await admin.PostAsJsonAsync("/api/auth/reauthenticate", new { password = AdminPassword });
+        Assert.Equal(HttpStatusCode.NoContent, confirm.StatusCode);
+        await AuthWebApplicationFactory.RefreshCsrf(admin);
+        Assert.NotEqual("RecentSignInRequired", await CodeOf(await Send(admin, method, path, body)));
+    }
+
+    [Fact]
+    public async Task AConfirmedOlderSessionManagesUsersAndTheWindowEndsAgain()
+    {
+        var clock = new ManualClock(DateTimeOffset.UtcNow);
+        using var factory = Factory(clock);
+        using var admin = await Installed(factory);
+        clock.Advance(TimeSpan.FromMinutes(30));
+        await AssertCode(await Send(admin, "POST", "/api/users", new { username = "heidi", password = "heidi-long-password" }),
+            HttpStatusCode.Forbidden, "RecentSignInRequired");
+
+        using var wrong = await admin.PostAsJsonAsync("/api/auth/reauthenticate", new { password = "not-the-password" });
+        Assert.Equal(HttpStatusCode.Forbidden, wrong.StatusCode);
+        await AssertCode(await Send(admin, "POST", "/api/users", new { username = "heidi", password = "heidi-long-password" }),
+            HttpStatusCode.Forbidden, "RecentSignInRequired");
+
+        using var confirm = await admin.PostAsJsonAsync("/api/auth/reauthenticate", new { password = AdminPassword });
+        Assert.Equal(HttpStatusCode.NoContent, confirm.StatusCode);
+        await AuthWebApplicationFactory.RefreshCsrf(admin);
+        using var created = await Send(admin, "POST", "/api/users", new { username = "heidi", password = "heidi-long-password" });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt64();
+
+        clock.Advance(TimeSpan.FromMinutes(11));
+        await AssertCode(await Send(admin, "DELETE", $"/api/users/{id}", null), HttpStatusCode.Forbidden,
+            "RecentSignInRequired");
+    }
+
+    [Fact]
+    public async Task UsersWhoAreNotAdministratorsKeepTheirOwnRefusal()
+    {
+        using var factory = Factory();
+        using var admin = await Installed(factory);
+        using (await admin.PostAsJsonAsync("/api/users", new { username = "ivan", password = "ivan-long-password" })) { }
+        using var ivan = await SignIn(factory, "ivan", "ivan-long-password");
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(ivan, "POST", "/api/users",
+            new { username = "x", password = "x-long-password-1" })).StatusCode);
+        Assert.Null(await CodeOf(await Send(ivan, "DELETE", "/api/users/1", null)));
+        var anonymous = AuthWebApplicationFactory.AnonymousClient(factory);
+        await AuthWebApplicationFactory.RefreshCsrf(anonymous);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Send(anonymous, "DELETE", "/api/users/1", null)).StatusCode);
+    }
+
+    private static Task<HttpResponseMessage> Send(HttpClient client, string method, string path, object? body)
+    {
+        var request = new HttpRequestMessage(new HttpMethod(method), path);
+        if (body is not null)
+            request.Content = JsonContent.Create(body);
+        return client.SendAsync(request);
+    }
+
+    private static async Task<string?> CodeOf(HttpResponseMessage response)
+    {
+        using (response)
+        {
+            try
+            {
+                return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString();
+            }
+            catch (Exception exception) when (exception is JsonException or KeyNotFoundException
+                or InvalidOperationException)
+            {
+                return null;
+            }
+        }
+    }
+
+    private sealed class ManualClock(DateTimeOffset start) : TimeProvider
+    {
+        private DateTimeOffset now = start;
+        public override DateTimeOffset GetUtcNow() => now;
+        public void Advance(TimeSpan by) => now += by;
+    }
+
     private static async Task AssertCode(HttpResponseMessage response, HttpStatusCode status, string code)
     {
         using (response)
@@ -297,15 +412,21 @@ public sealed class UsersApiTests : IDisposable
         return client;
     }
 
-    private WebApplicationFactory<Program> Factory(Dictionary<string, string?>? settings = null)
-        => new AuthWebApplicationFactory().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration(
-            (_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Namerre:Authentication:Username"] = "",
-                ["Namerre:Authentication:PasswordHash"] = "",
-                ["Namerre:RootPath"] = Root,
-                ["Namerre:DataPath"] = Data
-            }).AddInMemoryCollection(settings ?? [])));
+    private WebApplicationFactory<Program> Factory(TimeProvider? clock = null,
+        Dictionary<string, string?>? settings = null)
+        => new AuthWebApplicationFactory().WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Namerre:Authentication:Username"] = "",
+                    ["Namerre:Authentication:PasswordHash"] = "",
+                    ["Namerre:RootPath"] = Root,
+                    ["Namerre:DataPath"] = Data
+                }).AddInMemoryCollection(settings ?? []));
+            if (clock is not null)
+                builder.ConfigureServices(services => services.AddSingleton(clock));
+        });
 
     public void Dispose()
     {

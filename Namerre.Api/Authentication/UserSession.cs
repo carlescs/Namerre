@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Namerre.Application.Authentication;
 
@@ -19,10 +20,17 @@ public static class UserSession
     /// <summary>The single sign-on settings stamp (see <see cref="OidcLogin.Stamp"/>) on single sign-on sessions.</summary>
     public const string OidcStampClaim = "oidc-stamp";
     public const string SignedInAtClaim = "signed-in-at";
+    /// <summary>The random ID that lets the server end this one session (see <see cref="UserSessions"/>).</summary>
+    public const string SessionIdClaim = "session-id";
+    /// <summary>The user's session epoch when the session was issued; ending the user's other sessions raises it.</summary>
+    public const string SessionEpochClaim = "session-epoch";
     /// <summary>How long after signing in sensitive account changes are allowed without confirming again.</summary>
     public static readonly TimeSpan RecentSignIn = TimeSpan.FromMinutes(10);
 
-    public static ClaimsPrincipal Create(UserRecord user, string method, string? oidcStamp, DateTimeOffset signedInAt)
+    /// <param name="epoch">The user's current session epoch (<see cref="UserSessions.CurrentEpoch"/>).</param>
+    /// <param name="sessionId">Only to keep an existing session's ID; a new session gets a random one.</param>
+    public static ClaimsPrincipal Create(UserRecord user, string method, string? oidcStamp, DateTimeOffset signedInAt,
+        long epoch = 0, string? sessionId = null)
     {
         List<Claim> claims =
         [
@@ -31,17 +39,33 @@ public static class UserSession
             new(ClaimTypes.Role, user.Role.ToString()),
             new(StampClaim, user.Stamp),
             new(MethodClaim, method),
-            new(SignedInAtClaim, signedInAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture))
+            new(SignedInAtClaim, signedInAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)),
+            new(SessionIdClaim, sessionId ?? NewSessionId()),
+            new(SessionEpochClaim, epoch.ToString(CultureInfo.InvariantCulture))
         ];
         if (oidcStamp is not null)
             claims.Add(new(OidcStampClaim, oidcStamp));
         return new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
     }
 
-    /// <summary>The same session for a changed user record, keeping its method and sign-in time.</summary>
-    public static ClaimsPrincipal Renew(ClaimsPrincipal current, UserRecord user, DateTimeOffset? signedInAt = null)
+    /// <summary>
+    /// The same session for a changed user record, keeping its ID, method and sign-in time, and its epoch unless
+    /// <paramref name="epoch"/> says the session survived ending the user's other sessions.
+    /// </summary>
+    public static ClaimsPrincipal Renew(ClaimsPrincipal current, UserRecord user, DateTimeOffset? signedInAt = null,
+        long? epoch = null)
         => Create(user, Method(current), current.FindFirst(OidcStampClaim)?.Value,
-            signedInAt ?? SignedInAt(current) ?? DateTimeOffset.UnixEpoch);
+            signedInAt ?? SignedInAt(current) ?? DateTimeOffset.UnixEpoch, epoch ?? SessionEpoch(current),
+            SessionId(current));
+
+    private static string NewSessionId() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(24));
+
+    public static string? SessionId(ClaimsPrincipal principal) => principal.FindFirst(SessionIdClaim)?.Value;
+
+    /// <summary>The epoch the session was issued with; sessions from before epochs existed count as 0.</summary>
+    public static long SessionEpoch(ClaimsPrincipal principal)
+        => long.TryParse(principal.FindFirst(SessionEpochClaim)?.Value, NumberStyles.None,
+            CultureInfo.InvariantCulture, out var epoch) ? epoch : 0;
 
     public static long? UserId(ClaimsPrincipal principal)
         => long.TryParse(principal.FindFirst(ClaimTypes.NameIdentifier)?.Value, NumberStyles.None,

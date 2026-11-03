@@ -340,6 +340,16 @@
         </div>
       </form>
     </dialog>
+    <dialog
+      #confirmDialog
+      aria-labelledby="confirm-heading"
+      (cancel)="$event.preventDefault(); cancelConfirm()"
+    >
+      <h2 id="confirm-heading" class="mt-0 text-lg">Confirm it is you</h2>
+      @if (confirming()) {
+        <app-confirm-identity (confirmed)="confirmed()" (cancelled)="cancelConfirm()" />
+      }
+    </dialog>
   } @else if (!error()) {
     <p role="status">Loading users…</p>
   }

@@ -56,3 +56,15 @@ acab354266215569122d58bfc4dd7716d34ce0f9:Namerre.Infrastructure.UnitTests/Authen
 71b0d878e775eb85f285f4540f7c507125af2a7d:Namerre.Application.UnitTests/Authentication/PasskeyAccountsTests.cs:generic-password:11
 71b0d878e775eb85f285f4540f7c507125af2a7d:Namerre.Api.Tests/PasskeyApiTests.cs:generic-password:19
 71b0d878e775eb85f285f4540f7c507125af2a7d:Namerre.Api.Tests/PasskeyApiTests.cs:generic-password:20
+c5cc47d1b515dd79404570a6be039c8d3f47a71b:Namerre.Api.Tests/UsersApiTests.cs:generic-password:266
+c5cc47d1b515dd79404570a6be039c8d3f47a71b:Namerre.Api.Tests/UsersApiTests.cs:generic-password:268
+c5cc47d1b515dd79404570a6be039c8d3f47a71b:Namerre.Api.Tests/UsersApiTests.cs:generic-password:313
+c5cc47d1b515dd79404570a6be039c8d3f47a71b:Namerre.Api.Tests/UsersApiTests.cs:generic-password:316
+c5cc47d1b515dd79404570a6be039c8d3f47a71b:Namerre.Api.Tests/UsersApiTests.cs:generic-password:318
+c5cc47d1b515dd79404570a6be039c8d3f47a71b:Namerre.Api.Tests/UsersApiTests.cs:generic-password:324
+c5cc47d1b515dd79404570a6be039c8d3f47a71b:Namerre.Api.Tests/UsersApiTests.cs:generic-password:338
+c5cc47d1b515dd79404570a6be039c8d3f47a71b:Namerre.Api.Tests/UsersApiTests.cs:generic-password:341
+070e2139d70846855f682adc530db8da9509ff1f:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:166
+070e2139d70846855f682adc530db8da9509ff1f:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:198
+070e2139d70846855f682adc530db8da9509ff1f:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:211
+070e2139d70846855f682adc530db8da9509ff1f:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:214

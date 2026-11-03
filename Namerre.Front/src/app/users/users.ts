@@ -18,8 +18,10 @@ import {
   type LinkedLogin,
   minimumPasswordLength,
   type Passkey,
+  serverCode,
   type UserRole,
 } from '../auth/auth';
+import { ConfirmIdentity } from '../auth/confirm-identity/confirm-identity';
 import { openModal } from '../workflow-mode/workflow-onboarding';
 import { type MoveSource, UsersApi, type UserView } from './users-api';
 
@@ -34,10 +36,11 @@ const optionalPassword = [Validators.minLength(minimumPasswordLength), Validator
 /**
  * Administrator page for local users: create, change role, disable, reset or remove passwords, link and
  * unlink single sign-on identities, and delete. The server enforces every rule (last administrator,
- * own account, last sign-in method); this page shows its explanations.
+ * own account, last sign-in method); this page shows its explanations. Every change needs a recent sign-in:
+ * when the server asks for one, the administrator confirms it is them and the change is sent again.
  */
 @Component({
-  imports: [DatePipe, ReactiveFormsModule, RouterLink],
+  imports: [ConfirmIdentity, DatePipe, ReactiveFormsModule, RouterLink],
   selector: 'app-users',
   styleUrl: './users.scss',
   templateUrl: './users.html',
@@ -64,6 +67,10 @@ export class Users implements OnInit {
   protected readonly minimumPasswordLength = minimumPasswordLength;
   protected readonly createError = signal('');
   private readonly createDialog = viewChild<ElementRef<HTMLDialogElement>>('createDialog');
+  private readonly confirmDialog = viewChild<ElementRef<HTMLDialogElement>>('confirmDialog');
+  /** Sends the change the server refused for lack of a recent sign-in again, once the user confirmed. */
+  private retry: (() => Promise<unknown>) | null = null;
+  protected readonly confirming = signal(false);
   protected readonly createForm = new FormGroup({
     username: new FormControl('', {
       nonNullable: true,
@@ -171,11 +178,12 @@ export class Users implements OnInit {
         displayName: null,
       }),
       `Created ${username.trim()}.`,
+      () => {
+        this.closeCreate();
+        this.createForm.reset({ username: '', role: 'User', password: '', subject: '' });
+      },
     );
-    if (created) {
-      this.closeCreate();
-      this.createForm.reset({ username: '', role: 'User', password: '', subject: '' });
-    } else {
+    if (!created) {
       // Keep the dialog open and explain there, rather than behind it.
       this.createError.set(this.error());
       this.error.set('');
@@ -198,11 +206,11 @@ export class Users implements OnInit {
 
   protected async resetPassword(user: UserView): Promise<void> {
     if (this.passwordForm.invalid) return;
-    const updated = await this.apply(
+    await this.apply(
       this.api.setPassword(user.id, this.passwordForm.value),
       `${user.hasPassword ? 'Reset' : 'Set'} the password of ${user.username}. Their sessions ended.`,
+      () => this.passwordForm.reset(),
     );
-    if (updated) this.passwordForm.reset();
   }
 
   protected removePassword(user: UserView): Promise<unknown> {
@@ -215,11 +223,11 @@ export class Users implements OnInit {
   protected async link(user: UserView): Promise<void> {
     if (this.linkForm.invalid) return;
     const { subject, displayName } = this.linkForm.getRawValue();
-    const updated = await this.apply(
+    await this.apply(
       this.api.link(user.id, subject.trim(), displayName.trim() || null),
       `Linked the identity to ${user.username}.`,
+      () => this.linkForm.reset(),
     );
-    if (updated) this.linkForm.reset();
   }
 
   protected async move(user: UserView): Promise<void> {
@@ -227,15 +235,15 @@ export class Users implements OnInit {
     if (loginId === null) return;
     const owner = this.movable().find((entry) => entry.login.id === Number(loginId))?.owner;
     if (source === 'merge' && !owner) return;
-    const updated = await this.apply(
+    await this.apply(
       source === 'merge' && owner
         ? this.api.merge(user.id, owner.id)
         : this.api.moveLogin(user.id, Number(loginId), source === 'delete'),
       source === 'merge'
         ? `Merged ${owner?.username ?? 'the user'} into ${user.username}, with its identities and run history.`
         : `Moved the identity to ${user.username}${source === 'delete' ? ' and deleted the user it left' : ''}.`,
+      () => this.moveForm.reset({ loginId: null, source: 'keep' }),
     );
-    if (updated) this.moveForm.reset({ loginId: null, source: 'keep' });
   }
 
   protected unlink(user: UserView, login: LinkedLogin): Promise<unknown> {
@@ -253,11 +261,10 @@ export class Users implements OnInit {
   }
 
   protected async remove(user: UserView): Promise<void> {
-    const removed = await this.apply(this.api.delete(user.id), `Deleted ${user.username}.`);
-    if (removed) {
+    await this.apply(this.api.delete(user.id), `Deleted ${user.username}.`, () => {
       this.selectedId.set(null);
       this.confirmingDelete.set(false);
-    }
+    });
   }
 
   protected async load(): Promise<void> {
@@ -268,8 +275,38 @@ export class Users implements OnInit {
     }
   }
 
-  /** Sends one change, then reloads every user; returns false when the server refused it. */
-  private async apply(request: Observable<unknown>, success: string): Promise<boolean> {
+  /** The user confirmed it is them: sends the refused change again. */
+  protected async confirmed(): Promise<void> {
+    this.closeConfirm();
+    const retry = this.retry;
+    this.retry = null;
+    if (retry) await retry();
+  }
+
+  protected cancelConfirm(): void {
+    this.retry = null;
+    this.closeConfirm();
+    this.createError.set('');
+  }
+
+  private closeConfirm(): void {
+    this.confirming.set(false);
+    const dialog = this.confirmDialog()?.nativeElement;
+    if (!dialog) return;
+    if (typeof dialog.close === 'function') dialog.close();
+    else dialog.removeAttribute('open');
+  }
+
+  /**
+   * Sends one change, then reloads every user; returns false when the server refused it. `done` runs after
+   * it succeeded, also when it was sent again after confirming. A change that needs a recent sign-in asks
+   * the user to confirm first instead of failing.
+   */
+  private async apply(
+    request: Observable<unknown>,
+    success: string,
+    done?: () => void,
+  ): Promise<boolean> {
     if (this.busy()) return false;
     this.busy.set(true);
     this.error.set('');
@@ -277,9 +314,18 @@ export class Users implements OnInit {
     try {
       await firstValueFrom(request);
       this.status.set(success);
+      done?.();
       return true;
     } catch (error: unknown) {
-      this.error.set(this.describe(error));
+      if (serverCode(error) === 'RecentSignInRequired') {
+        // Observables from the HTTP client are cold, so sending the same one again repeats the request.
+        this.retry = () => this.apply(request, success, done);
+        this.confirming.set(true);
+        const dialog = this.confirmDialog()?.nativeElement;
+        if (dialog) openModal(dialog);
+      } else {
+        this.error.set(this.describe(error));
+      }
       return false;
     } finally {
       await this.load();

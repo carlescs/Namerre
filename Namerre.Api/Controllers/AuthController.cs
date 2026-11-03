@@ -70,14 +70,19 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
         });
     }
 
-    /// <param name="returnTo"><c>account</c> confirms a sensitive change: the provider must authenticate the user
-    /// again (<c>prompt=login</c>, <c>max_age=0</c>) and the flow returns to the account page. Anything else is a
-    /// normal sign-in that returns to the app. Fixed addresses avoid open redirects.</param>
+    /// <param name="returnTo"><c>account</c> or <c>users</c> confirms a sensitive change: the provider must
+    /// authenticate the user again (<c>prompt=login</c>, <c>max_age=0</c>) and the flow returns to the account page
+    /// or to the user management page. Anything else is a normal sign-in that returns to the app. Fixed addresses
+    /// avoid open redirects.</param>
     [AllowAnonymous]
     [HttpGet("oidc/login")]
     public Task<IActionResult> OidcLogin(CancellationToken cancellationToken, string? returnTo = null)
-        => Challenge(returnTo == "account" ? FreshSignIn("/account") : new AuthenticationProperties { RedirectUri = "/" },
-            "/?signInError=unavailable", cancellationToken);
+        => Challenge(returnTo switch
+            {
+                "account" => FreshSignIn("/account"),
+                "users" => FreshSignIn("/users"),
+                _ => new AuthenticationProperties { RedirectUri = "/" }
+            }, "/?signInError=unavailable", cancellationToken);
 
     /// <summary>A challenge that makes the provider authenticate again and report when (<c>auth_time</c>).</summary>
     private static OpenIdConnectChallengeProperties FreshSignIn(string redirectUri) => new()
@@ -91,7 +96,7 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     /// Starts linking a single sign-on identity to the signed-in user. Linking is sensitive, so it needs a recent
     /// sign-in or the user's password. Returns a short-lived address for the browser to open.
     /// </summary>
-    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
+    [EnableRateLimiting(AuthenticationSetup.AccountPolicy)]
     [HttpPost("oidc/link")]
     public async Task<IActionResult> LinkSingleSignOn(ConfirmRequest request, CancellationToken cancellationToken)
     {
@@ -192,7 +197,8 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
             return Unauthorized(new { message = "Invalid username or password." });
         }
 
-        await SignInAsync(UserSession.Create(verified, UserSession.PasswordMethod, null, Now));
+        await SignInAsync(UserSession.Create(verified, UserSession.PasswordMethod, null, Now,
+            await sender.Send(new SessionEpochQuery(verified.Id), cancellationToken)));
         NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "password"), new("namerre.auth.outcome", "success"));
         logger.LogInformation("User {UserId} ({Username}) signed in from {RemoteAddress}", verified.Id,
             LogText.Clean(verified.Username), HttpContext.Connection.RemoteIpAddress);
@@ -233,7 +239,8 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
         }
 
         // Passkeys require user verification, so this is a fresh sign-in.
-        await SignInAsync(UserSession.Create(verified, UserSession.PasskeyMethod, null, Now));
+        await SignInAsync(UserSession.Create(verified, UserSession.PasskeyMethod, null, Now,
+            await sender.Send(new SessionEpochQuery(verified.Id), cancellationToken)));
         NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "passkey"), new("namerre.auth.outcome", "success"));
         logger.LogInformation("User {UserId} ({Username}) signed in with a passkey from {RemoteAddress}", verified.Id,
             LogText.Clean(verified.Username), HttpContext.Connection.RemoteIpAddress);
@@ -244,7 +251,7 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     /// Confirms it is the user with one of their passkeys, so sensitive changes in the next few minutes need no
     /// further prompt. Takes a challenge from <see cref="PasskeySignInOptions"/>.
     /// </summary>
-    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
+    [EnableRateLimiting(AuthenticationSetup.AccountPolicy)]
     [RequestSizeLimit(PasskeyRequestLimit)]
     [HttpPost("passkey/reauthenticate")]
     public async Task<IActionResult> PasskeyReauthenticate(PasskeyCredentialRequest request,
@@ -265,7 +272,7 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     /// Starts registering a passkey for the signed-in user. Adding a sign-in method is sensitive, so it needs a
     /// recent sign-in or the user's password.
     /// </summary>
-    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
+    [EnableRateLimiting(AuthenticationSetup.AccountPolicy)]
     [HttpPost("passkeys/options")]
     public async Task<IActionResult> PasskeyRegistrationOptions(ConfirmRequest request,
         CancellationToken cancellationToken)
@@ -325,7 +332,7 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     }
 
     /// <summary>Confirms the password again, so sensitive changes in the next few minutes need no further prompt.</summary>
-    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
+    [EnableRateLimiting(AuthenticationSetup.AccountPolicy)]
     [HttpPost("reauthenticate")]
     public async Task<IActionResult> Reauthenticate(ConfirmRequest request, CancellationToken cancellationToken)
     {
@@ -340,7 +347,7 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     /// Changes the password, or sets one for a user who only signed in with single sign-on so far. Setting a first
     /// password needs a recent sign-in instead of the current password.
     /// </summary>
-    [EnableRateLimiting(AuthenticationSetup.LoginPolicy)]
+    [EnableRateLimiting(AuthenticationSetup.AccountPolicy)]
     [HttpPost("password")]
     public async Task<IActionResult> ChangePassword(ChangePasswordRequest request, CancellationToken cancellationToken)
     {
@@ -362,9 +369,26 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
         return NoContent();
     }
 
+    /// <summary>
+    /// Ends every other session of the signed-in user, on any device, and keeps this one. Works for every account,
+    /// including the administrator configured in server settings.
+    /// </summary>
+    [HttpPost("sessions/revoke-others")]
+    public async Task<IActionResult> RevokeOtherSessions(CancellationToken cancellationToken)
+    {
+        var user = await RequireUser(cancellationToken);
+        var epoch = await sender.Send(new EndOtherSessionsCommand(Reference(user)), cancellationToken);
+        // Re-issue this session with the new epoch, so only it survives.
+        await RenewAsync(user, epoch: epoch);
+        return NoContent();
+    }
+
     [HttpPost("logout")]
     public async Task<IActionResult> Logout(CancellationToken cancellationToken)
     {
+        // Cookies are stateless, so the server must remember the session ended, or a copy of the cookie stays valid.
+        if (UserSession.Reference(User) is { } who && UserSession.SessionId(User) is { } sessionId)
+            await sender.Send(new EndSessionCommand(who, sessionId), cancellationToken);
         var endSessionUrl = UserSession.IsSingleSignOn(User) && oidc.Enabled
             ? await EndSessionUrlAsync(await HttpContext.GetTokenAsync(Authentication.OidcLogin.IdTokenName),
                 cancellationToken)
@@ -456,13 +480,13 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
             .CreateProtector("Namerre.Authentication.LinkSingleSignOn");
 
     /// <summary>Re-issues this session for the changed user, keeping its method, provider tokens and expiry.</summary>
-    private async Task RenewAsync(UserRecord user, DateTimeOffset? signedInAt = null)
+    private async Task RenewAsync(UserRecord user, DateTimeOffset? signedInAt = null, long? epoch = null)
     {
         var current = await HttpContext.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         var properties = current?.Properties ?? new AuthenticationProperties();
         properties.IsPersistent = false;
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
-            UserSession.Renew(User, user, signedInAt), properties);
+            UserSession.Renew(User, user, signedInAt, epoch), properties);
     }
 
     private Task SignInAsync(System.Security.Claims.ClaimsPrincipal principal)

@@ -324,7 +324,12 @@ exports include `runCreatedBy` and `runOrigin` columns. Deleting a user keeps th
 showing their name, and merging a user moves their history to the target user. User management and linking actions are logged with who did what to which
 user (never passwords, tokens or claims).
 
-The user management API is `api/users` (administrators only): `GET` lists users with their
+The user management API is `api/users` (administrators only). Reading (`GET`) works in any
+administrator session, but every change needs a recent sign-in (within the last 10 minutes, like
+sensitive changes to your own account); an older session gets `403` with `RecentSignInRequired`
+until the administrator confirms with their password, a passkey or by signing in again with single
+sign-on (the Users page asks and then repeats the change), so a stolen session cookie alone cannot
+create administrators, reset passwords or link identities. `GET` lists users with their
 sign-in methods, `POST` creates one (`username`, `role`, and a `password`, a single sign-on
 `subject`, or both), `PATCH /{id}` changes `role` or `disabled`, `PUT`/`DELETE /{id}/password`
 sets or removes the password, `POST /{id}/logins` links an identity (`subject`) or moves one
@@ -333,7 +338,8 @@ sets or removes the password, `POST /{id}/logins` links an identity (`subject`) 
 and `DELETE /{id}` deletes the user. Users manage their own account under `api/auth`: `POST password`
 (`currentPassword` may be omitted only by a user without a password, after a recent sign-in),
 `DELETE password`, `POST reauthenticate`, `POST oidc/link` (returns the address that starts linking),
-`GET logins` and `DELETE logins/{id}`, and the passkey endpoints below. `GET api/auth/session`
+`GET logins` and `DELETE logins/{id}`, `POST sessions/revoke-others` (ends the user's other sessions,
+keeping the current one), `POST logout`, and the passkey endpoints below. `GET api/auth/session`
 reports the user's `role`, `hasPassword`, linked `logins` and `passkeys` (and whether passkeys are
 `passkeysEnabled`), so the app hides what the user cannot use. Refusals return
 `{ "code", "message" }`, e.g. `LastAdmin`, `OwnAccount`, `LastSignInMethod`, `LoginTaken`,
@@ -417,8 +423,18 @@ Data Protection keys that encrypt session and antiforgery cookies are stored in 
 `keys` folder, so sessions survive restarts and container replacement. Protect that
 folder like the database: anyone who can read the keys can forge a session cookie.
 Without `Namerre:DataPath`, ASP.NET Core's default key location is used.
-Signing out removes the browser cookie; a stolen copy remains usable until its
-expiry or a credential change. Keep the server, browser, and TLS keys protected.
+Cookies are stateless, so the server also remembers ended sessions. Every session carries a
+random ID and the user's session epoch; **Sign out** revokes that ID on the server, and a
+copied cookie is rejected at once. **Sign out of other sessions** on the **Account** page
+(`POST api/auth/sessions/revoke-others`) raises the user's session epoch, which ends every other
+session of that user on any device while the current one is re-issued and stays signed in. It
+works for every account, including the administrator configured in server settings. Both are
+stored in the SQLite database (`RevokedSessions` and `SessionEpochs`), so they survive restarts;
+revoked IDs are dropped once their eight-hour cookie would have expired anyway. Without
+`Namerre:DataPath` they last only until the process stops. Sessions created before this
+protection existed carry no ID and sign in again once after upgrading. A credential change
+(password, role, link or passkey) still ends a user's sessions through the credential stamp.
+Keep the server, browser, and TLS keys protected.
 
 All controllers and development OpenAPI require authentication, except session
 discovery, first-time setup, login (password and passkey), and the single sign-on redirect and
@@ -426,11 +442,13 @@ callback. The public HTML/assets contain no server file
 information.
 API responses are not cached. State-changing requests (including login and logout)
 require an antiforgery cookie and `X-XSRF-TOKEN` header; the Angular client manages
-these automatically. Login (password and passkey), setup, password changes, re-confirming the password or a passkey,
-and starting a single sign-on link or a passkey registration are limited to five attempts
-per minute for each client address (IPv6 clients are grouped by their /64 network) and
+these automatically. Login (password and passkey) and setup are limited to five attempts per minute for each
+client address (IPv6 clients are grouped by their /64 network), checked first, and then to
 60 attempts per minute across all clients. One noisy client therefore cannot lock
-everyone out, while guessing from many addresses stays bounded. Behind a reverse
+everyone out, while guessing from many addresses stays bounded. Password changes,
+re-confirming the password or a passkey, and starting a single sign-on link or a passkey
+registration need a signed-in session and are limited to five attempts per minute for each
+user, independently of sign-in traffic. Exceeding a limit returns `429`. Behind a reverse
 proxy, configure trusted proxies (see below) so the limit applies to real client
 addresses rather than the proxy. Even so, keep network access restricted to trusted
 users or a VPN rather than exposing the app directly to the public internet.

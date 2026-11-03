@@ -51,6 +51,7 @@ describe('Users', () => {
     auth.role.set('Admin');
     auth.userId.set(1);
     auth.singleSignOn.set({ displayName: 'Keycloak' });
+    auth.hasPassword.set(true);
   });
 
   afterEach(() => {
@@ -146,6 +147,115 @@ describe('Users', () => {
     buttonNamed(element, 'Cancel').click();
     await fixture.whenStable();
     expect(dialog.hasAttribute('open')).toBe(false);
+  });
+
+  const session = { username: 'admin', requiresSetup: false, role: 'Admin', userId: 1 };
+
+  /** Answers the session reads and the password confirmation that `Auth.reauthenticate` makes. */
+  async function confirmWithPassword(
+    fixture: { whenStable(): Promise<unknown> },
+    element: HTMLElement,
+    password: string,
+  ): Promise<void> {
+    fill(element, '#confirm-identity-password', password);
+    await fixture.whenStable();
+    (element.querySelector('app-confirm-identity form') as HTMLFormElement).dispatchEvent(
+      new Event('submit'),
+    );
+    await settle(fixture);
+    http.expectOne('/api/auth/session').flush({ ...session, hasPassword: true });
+    await settle(fixture);
+    const confirm = http.expectOne('/api/auth/reauthenticate');
+    expect(confirm.request.body).toEqual({ password });
+    confirm.flush(null, { status: 204, statusText: 'No Content' });
+    await settle(fixture);
+    http.expectOne('/api/auth/session').flush({ ...session, hasPassword: true });
+    await settle(fixture);
+  }
+
+  const recentSignInRequired = {
+    code: 'RecentSignInRequired',
+    message: 'Confirm it is you: sign in again or enter your password, then retry.',
+  };
+
+  it('asks the administrator to confirm, then sends the refused change again', async () => {
+    const { fixture, element } = await render();
+    (element.querySelector('[aria-label="Manage alice"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    const role = element.querySelector('#user-role') as HTMLSelectElement;
+    role.value = 'Admin';
+    role.dispatchEvent(new Event('change'));
+    http
+      .expectOne('/api/users/2')
+      .flush(recentSignInRequired, { status: 403, statusText: 'Forbidden' });
+    await settle(fixture);
+    http.expectOne('/api/users').flush([admin, alice]);
+    await settle(fixture);
+
+    const confirmDialog = element.querySelector('dialog[aria-labelledby="confirm-heading"]')!;
+    expect(confirmDialog.hasAttribute('open')).toBe(true);
+    expect(element.querySelector('.error')).toBeNull();
+
+    await confirmWithPassword(fixture, element, 'the-admin-password');
+    const retried = http.expectOne('/api/users/2');
+    expect(retried.request.method).toBe('PATCH');
+    expect(retried.request.body).toEqual({ role: 'Admin' });
+    retried.flush({ ...alice, role: 'Admin' });
+    await settle(fixture);
+    http.expectOne('/api/users').flush([admin, { ...alice, role: 'Admin' }]);
+    await settle(fixture);
+    expect(confirmDialog.hasAttribute('open')).toBe(false);
+    expect(element.querySelector('[role="status"]')?.textContent).toContain(
+      'alice is now an administrator',
+    );
+  });
+
+  it('finishes creating a user after the administrator confirmed', async () => {
+    const { fixture, element } = await render();
+    const dialog = element.querySelector('dialog') as HTMLDialogElement;
+    buttonNamed(element, 'Add user').click();
+    fill(element, '#new-username', 'bob');
+    fill(element, '#new-user-password', 'bob-long-password');
+    await fixture.whenStable();
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit'));
+    http
+      .expectOne('/api/users')
+      .flush(recentSignInRequired, { status: 403, statusText: 'Forbidden' });
+    await settle(fixture);
+    http.expectOne('/api/users').flush([admin, alice]);
+    await settle(fixture);
+    expect(dialog.hasAttribute('open')).toBe(true);
+
+    await confirmWithPassword(fixture, element, 'the-admin-password');
+    const retried = http.expectOne('/api/users');
+    expect(retried.request.method).toBe('POST');
+    retried.flush({ ...admin, id: 3, username: 'bob', role: 'User' });
+    await settle(fixture);
+    http.expectOne('/api/users').flush([admin, alice]);
+    await settle(fixture);
+    expect(dialog.hasAttribute('open')).toBe(false);
+    expect(element.querySelector('[role="status"]')?.textContent).toContain('Created bob');
+  });
+
+  it('drops the refused change when the confirmation is cancelled', async () => {
+    const { fixture, element } = await render();
+    (element.querySelector('[aria-label="Manage alice"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    buttonNamed(element, 'Disable').click();
+    http
+      .expectOne('/api/users/2')
+      .flush(recentSignInRequired, { status: 403, statusText: 'Forbidden' });
+    await settle(fixture);
+    http.expectOne('/api/users').flush([admin, alice]);
+    await settle(fixture);
+
+    const confirmDialog = element.querySelector('dialog[aria-labelledby="confirm-heading"]')!;
+    expect(confirmDialog.hasAttribute('open')).toBe(true);
+    (confirmDialog.querySelector('button') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    expect(confirmDialog.hasAttribute('open')).toBe(false);
+    expect(element.querySelector('app-confirm-identity')).toBeNull();
+    http.verify();
   });
 
   it('keeps each user on one line on small screens', async () => {

@@ -139,7 +139,9 @@ startup and refuses unknown applied migrations. Migrations live in
 `Namerre.Infrastructure/Renaming/Migrations`. Add migrations with
 `dotnet ef migrations add <Name> -o Renaming/Migrations` from `Namerre.Infrastructure`.
 
-Local users are stored in the same database (`Users` and `UserLogins` tables, `UserStore` behind the
+Ended sessions are stored there too (`RevokedSessions` and `SessionEpochs`, `SessionRegistry` behind
+the Application `ISessionRegistry`; see Users and authentication). Local users are stored in the same
+database (`Users` and `UserLogins` tables, `UserStore` behind the
 Application `IUserStore`), and so are pipeline presets (`Presets` table, `PresetStore` behind the
 Application `IPresetStore`; `PresetService` validates through `PipelineEngine.ValidatePlugins`,
 served by `RenamePresetsController` at `api/rename-presets`).
@@ -210,16 +212,44 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
 - Controllers reach the rules through thin requests: own account and setup in
   `Application/Authentication` (`RequiresSetupQuery`, `GetUserQuery`, `CompleteSetupCommand`,
   `PasswordSignInCommand`, `VerifyPasswordQuery`, `ConfirmOwnChangeCommand`, `SetPasswordCommand`,
-  `RemoveOwnPasswordCommand`, `UnlinkLoginCommand`, the passkey requests below), administration in `Application/Users`
+  `RemoveOwnPasswordCommand`, `UnlinkLoginCommand`, `EndSessionCommand`, `EndOtherSessionsCommand`,
+  `SessionEpochQuery`, the passkey requests below), administration in `Application/Users`
   (`ListUsersQuery`, `CreateUserCommand`, `UpdateUserCommand`, `RemovePasswordCommand`,
   `LinkLoginCommand`, `MoveLoginCommand`, `MergeUsersCommand`, `DeleteUserCommand`). Authentication
   plumbing that runs outside a controller — cookie validation, the OIDC ticket handler and
   `HubRenameNotifier` — uses `UserAccounts` directly.
 - Every access change (role, disabled, password, link, passkey) replaces the stamp, which
   `AuthenticationSetup.IsValidSession` checks on each request, so sessions end at once.
+- Sessions are stateless cookies, so ending one on purpose needs server state. Each session carries
+  a random `session-id` and the user's `session-epoch` from when it was issued (`UserSession.Create`;
+  `Renew` keeps both unless told otherwise). The Application port `ISessionRegistry` (implemented by
+  `Infrastructure/Authentication/SessionRegistry`) holds revoked session IDs and a per-user epoch;
+  `UserSessions` (singleton, `AddApplication()`) turns that into `IsActive(sessionId, userId, epoch)`,
+  which `IsValidSession` calls on every request, and into `End` (sign-out) and `EndAll`. A session is
+  valid while its ID is not revoked and its epoch is not below the user's current one; a cookie
+  without an ID (issued before this existed) is rejected. `POST api/auth/logout` sends
+  `EndSessionCommand`; `POST api/auth/sessions/revoke-others` sends `EndOtherSessionsCommand`, which
+  advances the epoch, and the controller re-issues the current session with the new epoch so only it
+  survives (`SessionEpochQuery` supplies the epoch for new sign-ins). The epoch is keyed by user ID
+  without a foreign key, so the never-stored break-glass administrator (ID 0, stamp derived from
+  configuration) gets it too. The registry follows the `UserAccounts` approach: this process owns the
+  database exclusively, so `RevokedSessions` (`SessionId`, `ExpiresAtUnix`) and `SessionEpochs`
+  (`UserId`, `Epoch`) are loaded once and served from memory, with every change written through
+  (epoch changes persist before they take effect and fail the request with 503 otherwise; a failed
+  revoke write is logged and still revokes in memory until restart). Revoked IDs are kept for
+  `SessionPolicy.Lifetime` (the eight-hour cookie lifetime) and pruned on load and on each revoke.
+  A server-side session table (ASP.NET `ITicketStore`) was not used: it would add a database read or
+  cache entry per live session and change the cookie format, while a revocation list and an epoch stay
+  small and keep sessions stateless until someone ends them.
 - `UserSession` builds the cookie principal from the local user (ID, name, role claim, stamp,
   method `password`/`passkey`/`oidc`, sign-in time; SSO sessions add the `OidcLogin.Stamp`) and
   defines the live-update group.
+- Rate limits (`AuthenticationSetup.AddRateLimiter`, 429): `LoginPolicy` (`login`, `setup`, `passkey/login`) allows
+  5 attempts/min per client address (IPv6 by /64), checked first, then a shared 60/min ceiling
+  (`ClientThenSharedLimiter`). The ceiling lives in the policy, not in a `GlobalLimiter`: the middleware takes the
+  global permit before the endpoint's, so a client rejected by its own budget would still burn shared permits.
+  `AccountPolicy` (signed-in `password`, `reauthenticate`, `passkey/reauthenticate`, `passkeys/options`,
+  `oidc/link`) allows 5/min per user ID with no shared ceiling, so anonymous traffic cannot block signed-in users.
 - A configured `Namerre:Authentication` account is a never-stored break-glass `Admin` with ID 0.
 - SSO identities are keyed on (issuer = configured authority, `sub`); `OidcLogin.Read` checks
   `RequiredRole`, then `AuthenticationSetup.OnTicketReceived` resolves the linked user, provisions a
@@ -254,6 +284,14 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
   `RenameService` through `Viewer` (null for administrators and background work, from
   `ICurrentUser.IsAdmin`), so someone else's record is `NotFound`, and `HubRenameNotifier` only
   nudges administrators and the owner (`RenameChange.OwnerId`, never serialized).
+- `UsersController` also carries `RecentSignInFilter` (an authorization filter ordered after
+  `[Authorize]`): safe methods pass, every other request needs `UserSession.IsRecent` (an injectable
+  `TimeProvider`, 10 minutes) and is otherwise answered exactly like
+  `AccountException.RecentSignIn()` (`403 { code: "RecentSignInRequired", message }`, built by
+  `AccountExceptionFilter.Result`). It applies to the whole controller, so new endpoints are covered
+  by default. The Users page catches that code, shows the shared `ConfirmIdentity` component (password
+  via `POST api/auth/reauthenticate`, passkey, or single sign-on through
+  `oidc/login?returnTo=users`) in a dialog and sends the refused change again.
 - `AuthenticationSetup.AdminPolicy` (`RequireAdmin`) guards `api/users`, watch folders and run
   deletion; `AccountException` (Application) carries refusals, which `AccountExceptionFilter` maps to
   `{ code, message }` with the exception's status. `HttpCurrentUser` feeds
