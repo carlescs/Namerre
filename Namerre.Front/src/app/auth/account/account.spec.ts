@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Confirmations } from '../../dialogs/confirmations';
 import { Auth, type LinkedLogin, type Passkey } from '../auth';
 import { Account } from './account';
 
@@ -194,6 +195,25 @@ describe('Account', () => {
     ) as HTMLButtonElement;
   }
 
+  /** Answers the confirmation the page asked for, after checking its heading. */
+  async function answer(
+    fixture: { whenStable(): Promise<unknown> },
+    heading: string,
+    confirmed = true,
+  ): Promise<void> {
+    await fixture.whenStable();
+    const confirmations = TestBed.inject(Confirmations);
+    expect(confirmations.current()?.heading).toBe(heading);
+    confirmations.answer(confirmed);
+    // Let the page continue after the answer before checking what it did.
+    await new Promise((resolve) => setTimeout(resolve));
+    await fixture.whenStable();
+  }
+
+  function dialogOf(element: HTMLElement, selector: string): HTMLDialogElement {
+    return element.querySelector(selector)?.closest('dialog') as HTMLDialogElement;
+  }
+
   it('asks single sign-on users to sign in again before setting a first password', async () => {
     hasPassword.set(false);
     logins.set([login]);
@@ -257,7 +277,8 @@ describe('Account', () => {
     logins.set([login]);
     const { fixture, element } = await render();
     buttonNamed(element, 'Remove password').click();
-    await fixture.whenStable();
+    await answer(fixture, 'Remove password?');
+    expect(dialogOf(element, '#confirm-password').hasAttribute('open')).toBe(true);
     fill(element, '#confirm-password', 'my-password');
     await fixture.whenStable();
     buttonNamed(element, 'Confirm').click();
@@ -265,6 +286,18 @@ describe('Account', () => {
     expect(reauthenticate).toHaveBeenCalledWith('my-password');
     await fixture.whenStable();
     expect(element.textContent).toContain('Password removed');
+    expect(element.querySelector('#confirm-password')).toBeNull();
+  });
+
+  it('keeps the password when its removal is not confirmed', async () => {
+    singleSignOn.set({ displayName: 'Keycloak' });
+    logins.set([login]);
+    recentSignIn.set(true);
+    const { fixture, element } = await render();
+    buttonNamed(element, 'Remove password').click();
+    await answer(fixture, 'Remove password?', false);
+    expect(removePassword).not.toHaveBeenCalled();
+    expect(element.querySelector('#confirm-password')).toBeNull();
   });
 
   it('adds a named passkey right away after a recent sign-in', async () => {
@@ -316,34 +349,63 @@ describe('Account', () => {
     hasPassword.set(true);
     ({ fixture, element } = await render());
     remove().click();
+    await answer(fixture, 'Remove passkey Phone?', false);
+    expect(removePasskey).not.toHaveBeenCalled();
+
+    remove().click();
+    await answer(fixture, 'Remove passkey Phone?');
     await vi.waitFor(() => expect(removePasskey).toHaveBeenCalledWith(3));
     await fixture.whenStable();
     expect(element.textContent).toContain('Removed Phone');
   });
 
-  it('renames a passkey in place', async () => {
+  it('renames a passkey in a dialog', async () => {
     supportPasskeys();
     passkeys.set([passkey]);
     const { fixture, element } = await render();
+    const dialog = element.querySelector(
+      'dialog[aria-labelledby="rename-passkey-heading"]',
+    ) as HTMLDialogElement;
+    expect(dialog.hasAttribute('open')).toBe(false);
     (element.querySelector('[aria-label="Rename passkey Phone"]') as HTMLButtonElement).click();
     await fixture.whenStable();
-    const input = element.querySelector(
-      '[aria-label="New name for passkey Phone"]',
-    ) as HTMLInputElement;
+    expect(dialog.hasAttribute('open')).toBe(true);
+    const input = dialog.querySelector('#rename-passkey-name') as HTMLInputElement;
     expect(input.value).toBe('Phone');
+    expect(dialog.textContent).toContain('New name for Phone');
     await vi.waitFor(() => expect(document.activeElement).toBe(input));
 
-    fill(element, '[aria-label="New name for passkey Phone"]', '   ');
+    fill(dialog, '#rename-passkey-name', '   ');
     await fixture.whenStable();
-    expect(buttonNamed(element, 'Save').disabled).toBe(true);
+    expect(buttonNamed(dialog, 'Save').disabled).toBe(true);
 
-    fill(element, '[aria-label="New name for passkey Phone"]', ' Work phone ');
+    fill(dialog, '#rename-passkey-name', ' Work phone ');
     await fixture.whenStable();
-    buttonNamed(element, 'Save').click();
+    buttonNamed(dialog, 'Save').click();
     await vi.waitFor(() => expect(renamePasskey).toHaveBeenCalledWith(3, 'Work phone'));
     await fixture.whenStable();
     expect(element.textContent).toContain('Renamed Phone to Work phone.');
-    expect(element.querySelector('[aria-label="New name for passkey Phone"]')).toBeNull();
+    expect(dialog.hasAttribute('open')).toBe(false);
+    expect(dialog.querySelector('#rename-passkey-name')).toBeNull();
+  });
+
+  it('explains a refused rename inside the dialog', async () => {
+    supportPasskeys();
+    passkeys.set([passkey]);
+    renamePasskey.mockRejectedValue(
+      new HttpErrorResponse({ status: 400, error: { message: 'That name is taken.' } }),
+    );
+    const { fixture, element } = await render();
+    (element.querySelector('[aria-label="Rename passkey Phone"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fill(element, '#rename-passkey-name', 'Laptop');
+    await fixture.whenStable();
+    buttonNamed(element, 'Save').click();
+    await vi.waitFor(() => expect(renamePasskey).toHaveBeenCalled());
+    await fixture.whenStable();
+    const dialog = dialogOf(element, '#rename-passkey-name');
+    expect(dialog.hasAttribute('open')).toBe(true);
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('That name is taken.');
   });
 
   it('cancels renaming a passkey', async () => {
@@ -352,15 +414,42 @@ describe('Account', () => {
     const { fixture, element } = await render();
     (element.querySelector('[aria-label="Rename passkey Phone"]') as HTMLButtonElement).click();
     await fixture.whenStable();
-    buttonNamed(element, 'Cancel').click();
+    const dialog = dialogOf(element, '#rename-passkey-name');
+    buttonNamed(dialog, 'Cancel').click();
     await fixture.whenStable();
-    expect(element.querySelector('[aria-label="New name for passkey Phone"]')).toBeNull();
+    expect(dialog.hasAttribute('open')).toBe(false);
+    expect(element.querySelector('#rename-passkey-name')).toBeNull();
     expect(renamePasskey).not.toHaveBeenCalled();
     await vi.waitFor(() =>
       expect(document.activeElement).toBe(
         element.querySelector('[aria-label="Rename passkey Phone"]'),
       ),
     );
+  });
+
+  it('treats Escape in the rename dialog as cancel', async () => {
+    supportPasskeys();
+    passkeys.set([passkey]);
+    const { fixture, element } = await render();
+    (element.querySelector('[aria-label="Rename passkey Phone"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    const dialog = dialogOf(element, '#rename-passkey-name');
+    dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
+    await fixture.whenStable();
+    expect(dialog.hasAttribute('open')).toBe(false);
+    expect(renamePasskey).not.toHaveBeenCalled();
+  });
+
+  it('unlinks single sign-on only once confirmed', async () => {
+    logins.set([login]);
+    singleSignOn.set({ displayName: 'Keycloak' });
+    const { fixture, element } = await render();
+    (element.querySelector('[aria-label="Unlink alice-sso"]') as HTMLButtonElement).click();
+    await answer(fixture, 'Unlink alice-sso?', false);
+    expect(unlink).not.toHaveBeenCalled();
+    (element.querySelector('[aria-label="Unlink alice-sso"]') as HTMLButtonElement).click();
+    await answer(fixture, 'Unlink alice-sso?');
+    await vi.waitFor(() => expect(unlink).toHaveBeenCalledWith(7));
   });
 
   it('lets passkey-only users confirm with a passkey before setting a password', async () => {
@@ -382,7 +471,7 @@ describe('Account', () => {
     logins.set([login]);
     const { fixture, element } = await render();
     buttonNamed(element, 'Remove password').click();
-    await fixture.whenStable();
+    await answer(fixture, 'Remove password?');
     buttonNamed(element, 'Use a passkey').click();
     await vi.waitFor(() => expect(removePassword).toHaveBeenCalled());
     expect(reauthenticateWithPasskey).toHaveBeenCalled();

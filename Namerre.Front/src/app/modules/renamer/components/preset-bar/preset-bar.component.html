@@ -10,7 +10,7 @@
   <div class="grid items-end gap-x-4 sm:grid-cols-[1fr_auto]">
     <label class="min-w-0"
       >Saved presets
-      <select [formControl]="selected" (change)="cancelDelete()">
+      <select [formControl]="selected">
         <option value="">
           {{ presets().length ? 'Choose a preset' : 'No presets yet' }}
         </option>
@@ -23,16 +23,9 @@
     </label>
     <div class="actions mb-3 gap-2">
       <button type="button" (click)="load()" [disabled]="!selected.value || busy()">Load</button>
-      @if (confirmingDelete()) {
-        <button type="button" class="btn-danger" (click)="remove()" [disabled]="busy()">
-          Confirm delete
-        </button>
-        <button type="button" (click)="cancelDelete()">Keep</button>
-      } @else {
-        <button type="button" (click)="remove()" [disabled]="!selected.value || busy()">
-          Delete
-        </button>
-      }
+      <button type="button" (click)="remove()" [disabled]="!selected.value || busy()">
+        Delete
+      </button>
     </div>
     <label class="min-w-0"
       >Preset name

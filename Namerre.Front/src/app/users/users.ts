@@ -22,7 +22,8 @@ import {
   type UserRole,
 } from '../auth/auth';
 import { ConfirmIdentity } from '../auth/confirm-identity/confirm-identity';
-import { openModal } from '../workflow-mode/workflow-onboarding';
+import { Confirmations } from '../dialogs/confirmations';
+import { closeModal, openModal } from '../dialogs/modal';
 import { type MoveSource, UsersApi, type UserView } from './users-api';
 
 /** An identity linked to some user, offered to move to another one. */
@@ -49,6 +50,7 @@ export class Users implements OnInit {
   protected readonly auth = inject(Auth);
   private readonly api = inject(UsersApi);
   private readonly router = inject(Router);
+  private readonly confirmations = inject(Confirmations);
   protected readonly users = signal<UserView[] | null>(null);
   protected readonly selectedId = signal<number | null>(null);
   protected readonly selected = computed(
@@ -63,7 +65,6 @@ export class Users implements OnInit {
   protected readonly busy = signal(false);
   protected readonly error = signal('');
   protected readonly status = signal('');
-  protected readonly confirmingDelete = signal(false);
   protected readonly minimumPasswordLength = minimumPasswordLength;
   protected readonly createError = signal('');
   private readonly createDialog = viewChild<ElementRef<HTMLDialogElement>>('createDialog');
@@ -130,7 +131,6 @@ export class Users implements OnInit {
 
   protected select(user: UserView): void {
     this.selectedId.set(this.selectedId() === user.id ? null : user.id);
-    this.confirmingDelete.set(false);
     this.passwordForm.reset();
     this.linkForm.reset();
     this.moveForm.reset({ loginId: null, source: 'keep' });
@@ -161,9 +161,7 @@ export class Users implements OnInit {
 
   protected closeCreate(): void {
     const dialog = this.createDialog()?.nativeElement;
-    if (!dialog) return;
-    if (typeof dialog.close === 'function') dialog.close();
-    else dialog.removeAttribute('open');
+    if (dialog) closeModal(dialog);
   }
 
   protected async create(): Promise<void> {
@@ -213,7 +211,14 @@ export class Users implements OnInit {
     );
   }
 
-  protected removePassword(user: UserView): Promise<unknown> {
+  protected async removePassword(user: UserView): Promise<unknown> {
+    const confirmed = await this.confirmations.ask({
+      heading: 'Remove password?',
+      message: `${user.username} will no longer be able to sign in with a password.`,
+      confirmLabel: 'Remove password',
+      danger: true,
+    });
+    if (!confirmed) return false;
     return this.apply(
       this.api.removePassword(user.id),
       `Removed the password of ${user.username}.`,
@@ -235,6 +240,24 @@ export class Users implements OnInit {
     if (loginId === null) return;
     const owner = this.movable().find((entry) => entry.login.id === Number(loginId))?.owner;
     if (source === 'merge' && !owner) return;
+    if (source !== 'keep') {
+      const confirmed = await this.confirmations.ask(
+        source === 'merge'
+          ? {
+              heading: `Merge ${owner?.username ?? 'the user'}?`,
+              message: `Its identities and run history move to ${user.username}, then ${owner?.username ?? 'it'} is deleted.`,
+              confirmLabel: 'Merge user',
+              danger: true,
+            }
+          : {
+              heading: `Delete ${owner?.username ?? 'the user'}?`,
+              message: `The identity moves to ${user.username}, then the user it leaves is deleted. Its runs keep its name.`,
+              confirmLabel: 'Move and delete',
+              danger: true,
+            },
+      );
+      if (!confirmed) return;
+    }
     await this.apply(
       source === 'merge' && owner
         ? this.api.merge(user.id, owner.id)
@@ -246,14 +269,28 @@ export class Users implements OnInit {
     );
   }
 
-  protected unlink(user: UserView, login: LinkedLogin): Promise<unknown> {
+  protected async unlink(user: UserView, login: LinkedLogin): Promise<unknown> {
+    const confirmed = await this.confirmations.ask({
+      heading: `Unlink ${login.displayName}?`,
+      message: `${user.username} will no longer be able to sign in with this identity.`,
+      confirmLabel: 'Unlink',
+      danger: true,
+    });
+    if (!confirmed) return false;
     return this.apply(
       this.api.unlink(user.id, login.id),
       `Unlinked ${login.displayName} from ${user.username}.`,
     );
   }
 
-  protected removePasskey(user: UserView, passkey: Passkey): Promise<unknown> {
+  protected async removePasskey(user: UserView, passkey: Passkey): Promise<unknown> {
+    const confirmed = await this.confirmations.ask({
+      heading: `Remove passkey ${passkey.name}?`,
+      message: `${user.username} will no longer be able to sign in with it.`,
+      confirmLabel: 'Remove passkey',
+      danger: true,
+    });
+    if (!confirmed) return false;
     return this.apply(
       this.api.removePasskey(user.id, passkey.id),
       `Removed passkey ${passkey.name} from ${user.username}.`,
@@ -261,10 +298,16 @@ export class Users implements OnInit {
   }
 
   protected async remove(user: UserView): Promise<void> {
-    await this.apply(this.api.delete(user.id), `Deleted ${user.username}.`, () => {
-      this.selectedId.set(null);
-      this.confirmingDelete.set(false);
+    const confirmed = await this.confirmations.ask({
+      heading: `Delete ${user.username}?`,
+      message: 'Their runs stay in the history under their name.',
+      confirmLabel: 'Delete user',
+      danger: true,
     });
+    if (!confirmed) return;
+    await this.apply(this.api.delete(user.id), `Deleted ${user.username}.`, () =>
+      this.selectedId.set(null),
+    );
   }
 
   protected async load(): Promise<void> {
@@ -292,9 +335,7 @@ export class Users implements OnInit {
   private closeConfirm(): void {
     this.confirming.set(false);
     const dialog = this.confirmDialog()?.nativeElement;
-    if (!dialog) return;
-    if (typeof dialog.close === 'function') dialog.close();
-    else dialog.removeAttribute('open');
+    if (dialog) closeModal(dialog);
   }
 
   /**

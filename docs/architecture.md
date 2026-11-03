@@ -333,6 +333,15 @@ routes in `src/app/app.routes.ts`. Use same-origin `/api/...` URLs.
   (`simple-presets.ts` builds and recognises them);
   `Namerre.Application.UnitTests/Renaming/SimplePresetTests` links that file and previews every
   preset and select choice against the built-in catalog.
+- **Dialogs and confirmations.** Every confirmation is a modal `<dialog>` (`src/app/dialogs`;
+  `modal.ts` opens and closes one, falling back to the `open` attribute where `showModal` is
+  missing). For a yes/no question, `await inject(Confirmations).ask({ heading, message,
+  confirmLabel, danger })`: `ConfirmationHost` (in the app shell) shows it and the promise resolves
+  to the answer. When the dialog must stay open for progress or errors (run deletion), render
+  `<app-confirm-dialog>` with `@if`, project the content and bind `busy`; it opens when rendered,
+  closes when removed, and Escape counts as Cancel. Destructive dialogs (`danger`) focus Cancel
+  first. Dialogs with a form (passkey rename, "Confirm it is you", add user) are `<dialog>`s in the
+  page that keep server errors inside the dialog.
 - **Plugin editor.** `plugin-editor` renders each step's options from the descriptor's `form`, so a
   new plugin needs no frontend change unless it has extra UI (like TMDB's template preview).
 - **Build output.** Angular builds into `Namerre.Api/wwwroot` with no `browser` subdirectory

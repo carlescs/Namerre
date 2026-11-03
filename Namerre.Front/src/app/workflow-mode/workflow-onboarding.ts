@@ -1,4 +1,5 @@
 import { afterNextRender, Component, type ElementRef, inject, viewChild } from '@angular/core';
+import { openModal } from '../dialogs/modal';
 import { WorkflowMode, type WorkflowModeValue } from './workflow-mode';
 
 /** First-run prompt asking which workflow mode to use in this browser. */
@@ -24,11 +25,4 @@ export class WorkflowOnboarding {
     this.dialog().nativeElement.close();
     this.workflow.dismiss();
   }
-}
-
-/** Opens a dialog as a modal where supported, else as a plain open dialog. */
-export function openModal(dialog: HTMLDialogElement): void {
-  if (dialog.open) return;
-  if (typeof dialog.showModal === 'function') dialog.showModal();
-  else dialog.setAttribute('open', '');
 }
