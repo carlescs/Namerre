@@ -68,3 +68,7 @@ c5cc47d1b515dd79404570a6be039c8d3f47a71b:Namerre.Api.Tests/UsersApiTests.cs:gene
 070e2139d70846855f682adc530db8da9509ff1f:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:198
 070e2139d70846855f682adc530db8da9509ff1f:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:211
 070e2139d70846855f682adc530db8da9509ff1f:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:214
+08330029595567ceb60a717dd65a56a05561ed20:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:142
+08330029595567ceb60a717dd65a56a05561ed20:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:199
+99bc084b1f0c017e4a9a9707fa43a5a8c8070e07:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:490
+99bc084b1f0c017e4a9a9707fa43a5a8c8070e07:Namerre.Api.Tests/AuthenticationTests.cs:generic-password:497
