@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { faCheck, faPencil, faRotateLeft, faXmark } from '@fortawesome/free-solid-svg-icons';
-import type { PlanView, TargetOverride } from '../../rename-api';
+import type { PlanView, TargetOverride } from '../../rename-models';
 import { NameChangeComponent } from '../name-change/name-change.component';
 
 @Component({

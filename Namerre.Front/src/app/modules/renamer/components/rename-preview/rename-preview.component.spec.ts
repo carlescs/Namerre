@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import type { PreviewFile, PreviewResult } from '../../rename-api';
+import type { PreviewFile, PreviewResult } from '../../rename-models';
 import { RenamePreviewComponent } from './rename-preview.component';
 
 describe('RenamePreviewComponent', () => {

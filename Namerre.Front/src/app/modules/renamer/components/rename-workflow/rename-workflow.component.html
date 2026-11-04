@@ -1,13 +1,13 @@
 <nav class="surface mb-6 p-2" aria-label="Renaming progress">
   <ol class="grid grid-cols-2 gap-1 lg:flex">
-    @for (item of stages(); track item.id; let i = $index) {
+    @for (item of store.stages(); track item.id; let i = $index) {
       <li class="min-w-0 lg:flex-1">
-        @if (i < stageIndex()) {
+        @if (i < store.stageIndex()) {
           <button
             type="button"
             class="step step-complete step-link w-full text-left"
-            (click)="goToStep(i)"
-            [disabled]="preparing() || executing()"
+            (click)="store.goToStep(i)"
+            [disabled]="store.preparing() || store.executing()"
           >
             <span class="step-number" aria-hidden="true">
               <svg
@@ -26,8 +26,8 @@
         } @else {
           <div
             class="step"
-            [class.step-active]="item.id === stage()"
-            [attr.aria-current]="item.id === stage() ? 'step' : null"
+            [class.step-active]="item.id === store.stage()"
+            [attr.aria-current]="item.id === store.stage() ? 'step' : null"
           >
             <span class="step-number" aria-hidden="true">{{ i + 1 }}</span>
             <span class="text-xs font-semibold">{{ item.title }}</span>
@@ -39,82 +39,84 @@
 </nav>
 <div class="surface">
   <header class="stage-header border-b border-slate-200 dark:border-slate-800 px-5 py-6 sm:px-8">
-    <p class="eyebrow mt-0">Step {{ stageIndex() + 1 }} of {{ stages().length }}</p>
-    @let current = stages()[stageIndex()];
+    <p class="eyebrow mt-0">Step {{ store.stageIndex() + 1 }} of {{ store.stages().length }}</p>
+    @let current = store.stages()[store.stageIndex()];
     <h2 #stageHeading tabindex="-1" class="focus-visible:outline-none">{{ current.title }}</h2>
     <p class="mb-0 max-w-2xl text-slate-500 dark:text-slate-400">
       {{ current.description }}
     </p>
   </header>
-  <div class="wizard-screens workflow-content p-5 sm:p-8" [class.backwards]="backwards()">
-    <div class="wizard-screen" [hidden]="screen() !== 'files'">
+  <div class="wizard-screens workflow-content p-5 sm:p-8" [class.backwards]="store.backwards()">
+    <div class="wizard-screen" [hidden]="store.screen() !== 'files'">
       <ng-content />
     </div>
-    @if (mode() === 'advanced') {
+    @if (store.mode() === 'advanced') {
       <!-- Created when Advanced opens, so the editor starts from the steps Simple built. -->
       <app-plugin-configuration
         class="wizard-screen"
-        [hidden]="screen() !== 'plugins'"
-        [catalog]="catalog()"
-        [loaded]="catalogLoaded()"
-        [error]="catalogError()"
-        [initialPlugins]="plugins()"
-        [plugins]="plugins()"
+        [hidden]="store.screen() !== 'plugins'"
+        [catalog]="store.catalog()"
+        [loaded]="store.catalogLoaded()"
+        [error]="store.catalogError()"
+        [initialPlugins]="store.plugins()"
+        [plugins]="store.plugins()"
         [runOptions]="{
-          verifyContent: verifyContent(),
-          deleteEmptyFolders: deleteEmptyFolders(),
-          numberCollisions: numberCollisions(),
+          verifyContent: store.verifyContent(),
+          deleteEmptyFolders: store.deleteEmptyFolders(),
+          numberCollisions: store.numberCollisions(),
         }"
-        (retryRequested)="loadCatalog()"
-        (pluginsChanged)="changePlugins($event)"
-        (presetLoaded)="applyPreset($event)"
+        (retryRequested)="store.loadCatalog()"
+        (pluginsChanged)="store.changePlugins($event)"
+        (presetLoaded)="store.applyPreset($event)"
       />
     } @else {
       <app-preset-picker
         class="wizard-screen"
-        [hidden]="screen() !== 'preset'"
-        [plugins]="plugins()"
-        [disabled]="preparing() || executing()"
-        (pluginsChanged)="choosePreset($event)"
+        [hidden]="store.screen() !== 'preset'"
+        [plugins]="store.plugins()"
+        [disabled]="store.preparing() || store.executing()"
+        (pluginsChanged)="store.choosePreset($event)"
       />
     }
-    @if (tmdbPlugins().length) {
+    @if (store.tmdbPlugins().length) {
       <app-tmdb-matching
         class="wizard-screen"
-        [hidden]="screen() !== 'matching'"
-        [rows]="matchRows()"
-        [suggesting]="suggesting()"
-        [suggestProgress]="suggestProgress()"
-        [loadingPreview]="loadingPreview()"
-        [hasPreview]="!!preview()"
-        [disabled]="!validCollection() || preparing() || executing()"
-        [acceptableMatches]="pendingMatches().length"
-        (searchRequested)="suggestMatches($event)"
-        (allAccepted)="acceptAllMatches()"
-        (suggestionAccepted)="acceptSuggestion($event)"
-        (matchRequested)="match($event.fileId, $event.step)"
-        (previewRequested)="refreshPreview()"
+        [hidden]="store.screen() !== 'matching'"
+        [rows]="store.matchRows()"
+        [suggesting]="store.suggesting()"
+        [suggestProgress]="store.suggestProgress()"
+        [loadingPreview]="store.loadingPreview()"
+        [hasPreview]="!!store.preview()"
+        [disabled]="!store.validCollection() || store.preparing() || store.executing()"
+        [acceptableMatches]="store.pendingMatches().length"
+        (searchRequested)="store.suggestMatches($event)"
+        (allAccepted)="store.acceptAllMatches()"
+        (suggestionAccepted)="store.acceptSuggestion($event)"
+        (matchRequested)="store.match($event.fileId, $event.step)"
+        (previewRequested)="store.refreshPreview()"
         (fileRemoved)="fileRemoved.emit($event)"
       />
     }
     <app-rename-preview
       class="wizard-screen"
-      [hidden]="screen() !== 'preview'"
-      [result]="preview()"
-      [loading]="loadingPreview()"
-      [disabled]="!validCollection() || suggesting() || preparing() || executing()"
-      (previewRequested)="refreshPreview()"
+      [hidden]="store.screen() !== 'preview'"
+      [result]="store.preview()"
+      [loading]="store.loadingPreview()"
+      [disabled]="
+        !store.validCollection() || store.suggesting() || store.preparing() || store.executing()
+      "
+      (previewRequested)="store.refreshPreview()"
       (filesExcluded)="excludeFiles($event)"
     >
-      @if (mode() === 'advanced') {
+      @if (store.mode() === 'advanced') {
         <label class="flex items-start gap-2 text-sm">
           <input
             #numbered
             id="number-collisions"
             type="checkbox"
-            [checked]="numberCollisions()"
-            (change)="setNumberCollisions(numbered.checked)"
-            [disabled]="preparing() || executing()"
+            [checked]="store.numberCollisions()"
+            (change)="store.setNumberCollisions(numbered.checked)"
+            [disabled]="store.preparing() || store.executing()"
           />
           <span>
             Add a number when names collide, e.g. Name (1).ext or, for subtitles, Name.1.en.srt.
@@ -129,9 +131,9 @@
             #quickCheck
             id="quick-check"
             type="checkbox"
-            [checked]="!verifyContent()"
-            (change)="verifyContent.set(!quickCheck.checked)"
-            [disabled]="preparing() || executing()"
+            [checked]="!store.verifyContent()"
+            (change)="store.setVerifyContent(!quickCheck.checked)"
+            [disabled]="store.preparing() || store.executing()"
           />
           <span>
             Quick check: skip content hashing and only compare file size and modification time.
@@ -146,9 +148,9 @@
             #emptyFolders
             id="delete-empty-folders"
             type="checkbox"
-            [checked]="deleteEmptyFolders()"
-            (change)="deleteEmptyFolders.set(emptyFolders.checked)"
-            [disabled]="preparing() || executing()"
+            [checked]="store.deleteEmptyFolders()"
+            (change)="store.setDeleteEmptyFolders(emptyFolders.checked)"
+            [disabled]="store.preparing() || store.executing()"
           />
           <span>
             Delete folders left empty after their files are moved out.
@@ -162,24 +164,24 @@
     </app-rename-preview>
     <app-rename-confirmation
       class="wizard-screen"
-      [hidden]="screen() !== 'confirmation'"
-      [plan]="plan()"
+      [hidden]="store.screen() !== 'confirmation'"
+      [plan]="store.plan()"
       [fileCount]="files().length"
-      [verifyContent]="verifyContent()"
-      [preparing]="preparing()"
-      [executing]="executing()"
-      [canConfirm]="canConfirm()"
-      [canRetry]="!!planId() && !!error() && !checkingOverride()"
-      [canEdit]="canConfirm()"
-      [checkingEdit]="checkingOverride()"
-      (confirmRequested)="confirm()"
-      (retryRequested)="retryPlan()"
-      (targetEdited)="overrideTarget($event.fileId, $event.targetPath)"
-      (editReset)="overrideTarget($event, null)"
+      [verifyContent]="store.verifyContent()"
+      [preparing]="store.preparing()"
+      [executing]="store.executing()"
+      [canConfirm]="store.canConfirm()"
+      [canRetry]="!!store.planId() && !!store.error() && !store.checkingOverride()"
+      [canEdit]="store.canConfirm()"
+      [checkingEdit]="store.checkingOverride()"
+      (confirmRequested)="store.confirm()"
+      (retryRequested)="store.retryPlan()"
+      (targetEdited)="store.overrideTarget($event.fileId, $event.targetPath)"
+      (editReset)="store.overrideTarget($event, null)"
     />
   </div>
-  @if (error() && stage() !== 'files') {
-    <p class="error mx-5 sm:mx-8" role="alert">{{ error() }}</p>
+  @if (store.error() && store.stage() !== 'files') {
+    <p class="error mx-5 sm:mx-8" role="alert">{{ store.error() }}</p>
   }
   <nav
     class="actions wizard-navigation sticky bottom-0 z-10 justify-between rounded-b-2xl border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 px-5 py-4 backdrop-blur-sm sm:px-8"
@@ -187,60 +189,83 @@
   >
     <button
       type="button"
-      (click)="back()"
-      [disabled]="stage() === 'files' || preparing() || executing()"
+      (click)="store.back()"
+      [disabled]="store.stage() === 'files' || store.preparing() || store.executing()"
     >
       Back
     </button>
-    @if (stage() === 'matching' && !loadingPreview() && unmatchedFiles(); as count) {
+    @if (
+      store.stage() === 'matching' && !store.loadingPreview() && store.unmatchedFiles();
+      as count
+    ) {
       <span class="text-xs text-amber-800 dark:text-amber-300" role="status"
         >{{ count }} {{ count === 1 ? 'file needs' : 'files need' }} a TMDB match</span
       >
     } @else {
       <span class="hidden text-xs text-slate-500 dark:text-slate-400 sm:block" role="status"
-        >{{ files().length }} / {{ maxFiles() }} files selected</span
+        >{{ files().length }} / {{ store.maxFiles() }} files selected</span
       >
     }
-    @switch (stage()) {
+    @switch (store.stage()) {
       @case ('files') {
-        <button class="btn-primary" type="button" (click)="next()" [disabled]="!validCollection()">
-          {{ mode() === 'simple' ? 'Next: choose a preset' : 'Next: configure plugins' }}
+        <button
+          class="btn-primary"
+          type="button"
+          (click)="store.next()"
+          [disabled]="!store.validCollection()"
+        >
+          {{ store.mode() === 'simple' ? 'Next: choose a preset' : 'Next: configure plugins' }}
         </button>
       }
       @case ('preset') {
         <button
           class="btn-primary"
           type="button"
-          (click)="next()"
-          [disabled]="!simplePreset() || !validCollection()"
+          (click)="store.next()"
+          [disabled]="!store.simplePreset() || !store.validCollection()"
         >
-          {{ tmdbPlugins().length ? 'Next: match metadata' : 'Next: review and rename' }}
+          {{ store.tmdbPlugins().length ? 'Next: match metadata' : 'Next: review and rename' }}
         </button>
       }
       @case ('plugins') {
         <button
           class="btn-primary"
           type="button"
-          (click)="next()"
-          [disabled]="!catalogLoaded() || !validCollection()"
+          (click)="store.next()"
+          [disabled]="!store.catalogLoaded() || !store.validCollection()"
         >
-          {{ tmdbPlugins().length ? 'Next: match metadata' : 'Next: review filenames' }}
+          {{ store.tmdbPlugins().length ? 'Next: match metadata' : 'Next: review filenames' }}
         </button>
       }
       @case ('matching') {
-        <button class="btn-primary" type="button" (click)="next()" [disabled]="!canReview()">
-          {{ mode() === 'simple' ? 'Next: review and rename' : 'Next: review filenames' }}
+        <button
+          class="btn-primary"
+          type="button"
+          (click)="store.next()"
+          [disabled]="!store.canReview()"
+        >
+          {{ store.mode() === 'simple' ? 'Next: review and rename' : 'Next: review filenames' }}
         </button>
       }
       @case ('preview') {
-        <button class="btn-primary" type="button" (click)="prepare()" [disabled]="!canPrepare()">
-          {{ verifyContent() ? 'Hash files and continue' : 'Check files and continue' }}
+        <button
+          class="btn-primary"
+          type="button"
+          (click)="store.prepare()"
+          [disabled]="!store.canPrepare()"
+        >
+          {{ store.verifyContent() ? 'Hash files and continue' : 'Check files and continue' }}
         </button>
       }
       @case ('review') {
-        @if (!showingPlan()) {
-          <button class="btn-primary" type="button" (click)="prepare()" [disabled]="!canPrepare()">
-            {{ verifyContent() ? 'Hash files and continue' : 'Check files and continue' }}
+        @if (!store.showingPlan()) {
+          <button
+            class="btn-primary"
+            type="button"
+            (click)="store.prepare()"
+            [disabled]="!store.canPrepare()"
+          >
+            {{ store.verifyContent() ? 'Hash files and continue' : 'Check files and continue' }}
           </button>
         }
       }
@@ -252,12 +277,12 @@
 >
   <p class="m-0">Preview first. Your files stay unchanged until final confirmation.</p>
 </footer>
-@if (matching(); as context) {
+@if (store.matching(); as context) {
   <app-tmdb-picker
     class="workflow-content"
     [context]="context"
-    (stateChanged)="rememberMatch($event)"
-    (confirmed)="acceptMatch($event)"
-    (dismissed)="matching.set(null)"
+    (stateChanged)="store.rememberMatch($event)"
+    (confirmed)="store.acceptMatch($event)"
+    (dismissed)="store.closeMatch()"
   />
 }

@@ -1,4 +1,4 @@
-import type { PluginDescriptor } from './rename-api';
+import type { PluginDescriptor } from './rename-models';
 
 /** Mirrors the built-in catalog served by `/api/rename-plugins` (`Application/Renaming/Plugins`). */
 export const literalPlugin: PluginDescriptor = {

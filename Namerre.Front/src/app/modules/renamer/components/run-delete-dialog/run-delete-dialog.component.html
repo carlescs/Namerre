@@ -1,0 +1,20 @@
+<app-confirm-dialog
+  heading="Delete this {{ kindLabel(run().kind) | lowercase }} record?"
+  confirmLabel="Confirm deletion"
+  danger
+  [busy]="deleting()"
+  (confirmed)="confirmed.emit()"
+  (cancelled)="cancelled.emit()"
+>
+  <p>
+    {{
+      run().kind === 'Rename' ? 'This also deletes its undo records and its saved settings. ' : ''
+    }}Files on disk are not touched, but you will no longer be able to undo this from here.
+  </p>
+  @if (deleting()) {
+    <p role="status">Deleting…</p>
+  }
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+</app-confirm-dialog>

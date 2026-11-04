@@ -3,14 +3,13 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import type { Observable } from 'rxjs';
 import { Confirmations } from '../../../../dialogs/confirmations';
-import {
-  type PluginInstance,
-  type PresetSummary,
-  type PresetView,
-  RenameApi,
-  renameError,
-  type SavePresetRequest,
-} from '../../rename-api';
+import { RenameApi, renameError } from '../../rename-api';
+import type {
+  PluginInstance,
+  PresetSummary,
+  PresetView,
+  SavePresetRequest,
+} from '../../rename-models';
 
 /** Run options a preset keeps next to its steps. */
 export interface PresetRunOptions {

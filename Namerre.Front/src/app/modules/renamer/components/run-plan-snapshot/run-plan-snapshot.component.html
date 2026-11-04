@@ -1,0 +1,44 @@
+<details #approvedPlan (toggle)="approvedPlan.open && inspect()">
+  <summary>Show saved settings and file fingerprints</summary>
+  @if (loading()) {
+    <p role="status">Loading saved settings…</p>
+  }
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+    <button type="button" (click)="inspect()">Try again</button>
+  }
+  @if (plan(); as snapshot) {
+    <p class="text-xs text-slate-500 dark:text-slate-400">
+      Plan {{ snapshot.id }}, version {{ snapshot.version }} · {{ snapshot.status }}
+    </p>
+    <ol class="space-y-3">
+      @for (plugin of snapshot.pipeline.plugins; track plugin.instanceId) {
+        <li>
+          <strong>{{ pluginName(plugin.typeId) }}</strong>
+          @if (!plugin.enabled) {
+            <span class="text-xs text-slate-500 dark:text-slate-400"> (Disabled)</span>
+          }
+          <dl class="mt-1 mb-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5 text-xs">
+            @for (option of optionEntries(plugin.options); track option.label) {
+              <dt class="text-slate-500 dark:text-slate-400">{{ option.label }}</dt>
+              <dd class="m-0">{{ option.value }}</dd>
+            }
+          </dl>
+        </li>
+      }
+    </ol>
+    @if (!snapshot.pipeline.plugins.length) {
+      <p>No rename steps were used.</p>
+    }
+    <ul class="space-y-2">
+      @for (file of snapshot.files; track file.id) {
+        <li>
+          <code>{{ file.sourcePath }}</code> → <code>{{ file.targetPath }}</code>
+          <span class="block text-xs text-slate-500 dark:text-slate-400"
+            >Fingerprint (SHA-256): <code>{{ file.hash }}</code></span
+          >
+        </li>
+      }
+    </ul>
+  }
+</details>

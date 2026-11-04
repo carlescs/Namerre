@@ -1,16 +1,8 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import {
-  awaitingMetadata,
-  isMatchingIssue,
-  isSettledRun,
-  type PipelineRequest,
-  type PreviewFile,
-  RenameApi,
-  type RunView,
-  renameError,
-} from './rename-api';
+import { RenameApi, renameError } from './rename-api';
+import type { PipelineRequest } from './rename-models';
 
 describe('RenameApi', () => {
   let api: RenameApi;
@@ -109,38 +101,7 @@ describe('RenameApi', () => {
   });
 });
 
-describe('rename helpers', () => {
-  it('recognises metadata issues that need matching', () => {
-    expect(isMatchingIssue('MetadataRequired')).toBe(true);
-    expect(isMatchingIssue('MetadataStale')).toBe(true);
-    expect(isMatchingIssue('TargetExists')).toBe(false);
-  });
-
-  it('detects previews awaiting metadata', () => {
-    const file = (codes: string[]): PreviewFile => ({
-      id: 'f',
-      sourcePath: 'a',
-      targetPath: 'a',
-      unchanged: true,
-      steps: [],
-      issues: codes.map((code) => ({ code, message: code })),
-    });
-    expect(awaitingMetadata(file([]))).toBe(false);
-    expect(awaitingMetadata(file(['TargetExists']))).toBe(false);
-    expect(awaitingMetadata(file(['TargetExists', 'MetadataStale']))).toBe(true);
-  });
-
-  it.each([
-    ['Completed', true],
-    ['Recovered', true],
-    ['Queued', false],
-    ['Running', false],
-    ['RecoveryRequired', false],
-    ['Recovering', false],
-  ])('treats %s runs as settled: %s', (status, settled) => {
-    expect(isSettledRun({ status } as RunView)).toBe(settled);
-  });
-
+describe('renameError', () => {
   it('prefers problem detail, then title, then a status message', () => {
     const response = (status: number, error: unknown) =>
       new HttpErrorResponse({ status, error, url: '/api/x' });

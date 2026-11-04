@@ -1,5 +1,5 @@
 import type { FormGroup } from '@angular/forms';
-import type { PluginOptions } from './rename-api';
+import type { PluginOptions } from './rename-models';
 
 /** The `preset` value of hand-written templates (`TmdbPlugin.CustomPreset` on the server). */
 export const customPreset = 'custom';

@@ -4,9 +4,9 @@ import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { WorkflowMode, workflowModeStorageKey } from '../../../../workflow-mode/workflow-mode';
 import { counterPlugin, tmdbPlugin } from '../../plugin-catalog.testing';
-import type { PlanView, PreviewResult } from '../../rename-api';
 import { RenameEvents } from '../../rename-events';
 import { FakeRenameEvents } from '../../rename-events.testing';
+import type { PlanView, PreviewResult } from '../../rename-models';
 import type { RenamerFile } from '../../renamer-file';
 import { RenameWorkflowComponent } from './rename-workflow.component';
 

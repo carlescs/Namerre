@@ -8,6 +8,8 @@ import { workflowModeStorageKey } from '../../../../workflow-mode/workflow-mode'
 import { defaultLimits, WorkloadLimits } from '../../../../workload-limits';
 import { tmdbOptionsHash } from '../../options-hash';
 import { casePlugin } from '../../plugin-catalog.testing';
+import { RenameEvents } from '../../rename-events';
+import { FakeRenameEvents } from '../../rename-events.testing';
 import type {
   MetadataSelection,
   PlanView,
@@ -16,9 +18,7 @@ import type {
   TmdbMatch,
   TmdbPickerState,
   TmdbSuggestion,
-} from '../../rename-api';
-import { RenameEvents } from '../../rename-events';
-import { FakeRenameEvents } from '../../rename-events.testing';
+} from '../../rename-models';
 import type { RenamerFile } from '../../renamer-file';
 import { PluginEditorComponent } from '../plugin-editor/plugin-editor.component';
 import { TmdbPickerComponent } from '../tmdb-picker/tmdb-picker.component';

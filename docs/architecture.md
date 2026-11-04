@@ -365,8 +365,22 @@ routes in `src/app/app.routes.ts`. Use same-origin `/api/...` URLs.
   admin-only controls (watch folders, run deletion) are hidden for users.
 - **Renamer.** The root route lazy-loads `modules/renamer`; `rename-api.ts` is the HTTP client for
   the resource-style renaming endpoints (`/api/rename-plugins`, `/api/rename-previews`,
-  `/api/rename-plans`, …). The workflow is a staged wizard (`rename-workflow` component) across
-  file selection, plugin configuration, TMDB matching, preview, confirmation and run history.
+  `/api/rename-plans`, …) plus `renameError`/`operationId`, and `rename-models.ts` holds the
+  request/response shapes and pure helpers over them. The workflow is a staged wizard
+  (`rename-workflow` component) across file selection, plugin configuration, TMDB matching,
+  preview, confirmation and run history. Its state and transitions (stage, step draft, run options,
+  preview → prepare → execute lifecycle, TMDB suggestions and picker memory, Simple/Advanced
+  switches) live in `WorkflowStore` (`rename-workflow/workflow-store.ts`), a signals-based service
+  the component provides and renders; the component only feeds it the collection and moves focus
+  when `stageEntered` fires. Test state logic in `workflow-store.spec.ts` and rendering in the
+  component specs.
+- **Run history.** `run-history` is the page shell for `/runs` and `/runs/:id` (route, heading and
+  focus); it renders `run-list` (paging, single and bulk deletion, watch folders) or `run-detail`
+  (per-file outcomes, reviewed undo and recovery, operation log). `run-detail` starts over when its
+  `runId` input changes and shows the saved settings through `run-plan-snapshot`, which reads the
+  plan only when opened, and a checked undo through `run-undo-review`, which owns the folder cleanup
+  choice and emits the safe files; `run-detail` sends the undo with the check's operation id. Both share `run-delete-button` and `run-delete-dialog`; the parent owns
+  the delete request. `run-history.component.spec.ts` covers the page end to end.
   Completed stages in its progress list are buttons (`goToStep`) that jump back with the same
   cleanup as **Back**; forward moves only go through `next()` and its checks.
 - **Modes.** Chosen per browser through the `WorkflowMode` service (`src/app/workflow-mode`,
@@ -409,8 +423,9 @@ Betterleaks, commitlint on PRs) runs on PRs to `main`/`next` and is reused by `r
 runs CI, then semantic-release (`release.config.mjs`) on pushes to `main` (stable) and `next`
 (`-pre.N`), creates the tag and GitHub release, and calls `docker.yml` for the new tag; Docker images
 are built and published only for version tags (a hand-pushed tag runs CI in `docker.yml` first).
-CI's `betterleaks` job scans the full Git history with a pinned Betterleaks release on PRs and
-pushes; the lefthook `pre-commit` hook scans staged changes when `betterleaks` is on PATH.
+CI's `betterleaks` job scans with a pinned Betterleaks release: a PR's own commits
+(`base..merge`), and the full history of the checked-out commit on other runs, never other
+branches, so a finding elsewhere cannot fail an unrelated PR; the lefthook `pre-commit` hook scans staged changes when `betterleaks` is on PATH.
 Issue and PR labels are declared in `.github/labels.json` (defaults, `security`, `pentest`,
 `breaking change`, `dependencies` and `area: …` labels); `labels.yml` creates or updates them on
 pushes to `main` that touch the file (or on demand), and never deletes labels missing from it.

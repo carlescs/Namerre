@@ -1,4 +1,4 @@
-import type { PluginOptions, TmdbMatch } from './rename-api';
+import type { PluginOptions, TmdbMatch } from './rename-models';
 
 // Fake metadata used only to illustrate templates; the server renders the confirmed match.
 export const sampleMovie: TmdbMatch = {

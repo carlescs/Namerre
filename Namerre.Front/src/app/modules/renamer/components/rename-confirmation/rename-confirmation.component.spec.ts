@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import type { PlanView } from '../../rename-api';
+import type { PlanView } from '../../rename-models';
 import { RenameConfirmationComponent } from './rename-confirmation.component';
 
 describe('RenameConfirmationComponent', () => {

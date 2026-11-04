@@ -1,4 +1,4 @@
-import type { PluginOptions } from './rename-api';
+import type { PluginOptions } from './rename-models';
 
 export function tmdbOptionsHash(options: PluginOptions): string {
   return optionsHash(options.language ?? 'en-US');

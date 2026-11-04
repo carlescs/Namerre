@@ -1,4 +1,4 @@
-import { HIGH_CONFIDENCE } from './rename-api';
+import { HIGH_CONFIDENCE } from './rename-models';
 import vectors from './test-vectors/confidence.json';
 
 describe('High match confidence shared test vectors', () => {

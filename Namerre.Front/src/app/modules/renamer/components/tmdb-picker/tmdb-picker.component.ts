@@ -14,15 +14,14 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import type { Subscription } from 'rxjs';
 import { tmdbOptionsHash } from '../../options-hash';
-import {
-  type MatchContext,
-  type MetadataSelection,
-  RenameApi,
-  renameError,
-  type TmdbMatch,
-  type TmdbPickerState,
-  type TmdbRequest,
-} from '../../rename-api';
+import { RenameApi, renameError } from '../../rename-api';
+import type {
+  MatchContext,
+  MetadataSelection,
+  TmdbMatch,
+  TmdbPickerState,
+  TmdbRequest,
+} from '../../rename-models';
 import { tmdbFilename } from '../../tmdb-filename';
 
 /** Most episodes one file can be matched to (`TmdbSearchRequest.MaxEpisodesPerFile` on the server). */

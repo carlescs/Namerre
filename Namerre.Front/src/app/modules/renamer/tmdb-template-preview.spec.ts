@@ -1,4 +1,4 @@
-import type { TmdbMatch } from './rename-api';
+import type { TmdbMatch } from './rename-models';
 import vectors from './test-vectors/tmdb-template.json';
 import { sampleEpisode, sampleMovie, tmdbTemplatePreview } from './tmdb-template-preview';
 

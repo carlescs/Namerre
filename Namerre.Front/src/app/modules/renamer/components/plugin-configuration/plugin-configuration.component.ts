@@ -1,5 +1,5 @@
 import { Component, input, output, viewChild } from '@angular/core';
-import type { PluginDescriptor, PluginInstance, PresetView } from '../../rename-api';
+import type { PluginDescriptor, PluginInstance, PresetView } from '../../rename-models';
 import { PluginEditorComponent } from '../plugin-editor/plugin-editor.component';
 import { PresetBarComponent, type PresetRunOptions } from '../preset-bar/preset-bar.component';
 

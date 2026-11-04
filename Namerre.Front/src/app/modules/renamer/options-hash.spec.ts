@@ -1,5 +1,6 @@
 import { optionsHash, tmdbOptionsHash } from './options-hash';
-import { operationId, type PluginOptions } from './rename-api';
+import { operationId } from './rename-api';
+import type { PluginOptions } from './rename-models';
 import vectors from './test-vectors/options-hash.json';
 
 describe('Metadata option binding', () => {
