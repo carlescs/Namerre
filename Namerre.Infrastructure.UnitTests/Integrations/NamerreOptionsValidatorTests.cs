@@ -13,6 +13,18 @@ public sealed class NamerreOptionsValidatorTests
     public void DefaultsAreValid() => Assert.True(Validate(new()).Succeeded);
 
     [Fact]
+    public void RequiringPasskeysForAdministratorsNeedsPasskeys()
+    {
+        static bool Valid(bool enabled) => new NamerreOptionsValidator().Validate(null, new NamerreOptions
+        {
+            Authentication = new() { Passkeys = new() { Enabled = enabled, RequiredForAdministrators = true } }
+        }).Succeeded;
+
+        Assert.True(Valid(true));
+        Assert.False(Valid(false));
+    }
+
+    [Fact]
     public void CompleteTargetsAreValid()
         => Assert.True(Validate(new()
         {

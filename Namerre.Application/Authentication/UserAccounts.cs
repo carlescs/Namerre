@@ -27,6 +27,7 @@ public sealed class UserAccounts
     private readonly TimeProvider time;
     private readonly ILogger<UserAccounts> logger;
     private readonly UserRecord? configured;
+    private readonly bool administratorsRequirePasskey;
     private IReadOnlyDictionary<long, UserRecord> users;
 
     public UserAccounts(IAdministratorConfiguration administrator, IUserStore store, IPasswordHasher passwords,
@@ -38,6 +39,7 @@ public sealed class UserAccounts
         this.time = time ?? TimeProvider.System;
         var username = administrator.Username;
         var passwordHash = administrator.PasswordHash;
+        administratorsRequirePasskey = administrator.AdministratorsRequirePasskey;
         if (!string.IsNullOrEmpty(username) || !string.IsNullOrEmpty(passwordHash))
         {
             if (!IsValidConfiguredUsername(username) || !passwords.IsValidHash(passwordHash))
@@ -79,7 +81,7 @@ public sealed class UserAccounts
             if (SetupToken is null || !CryptographicOperations.FixedTimeEquals(
                     Encoding.UTF8.GetBytes(SetupToken), Encoding.UTF8.GetBytes(token)))
                 return SetupResult.InvalidToken;
-            if (!PasswordPolicy.IsAcceptable(password))
+            if (!PasswordPolicy.IsAcceptable(password, username))
                 return SetupResult.WeakPassword;
             if (NewUsername(username) is not { } canonical)
                 return SetupResult.InvalidUsername;
@@ -97,10 +99,22 @@ public sealed class UserAccounts
     /// </summary>
     public UserRecord? Authenticate(string username, string password)
     {
-        var user = List().FirstOrDefault(u => string.Equals(u.Username, username, StringComparison.Ordinal));
+        var user = FindByUsername(username);
         var verified = passwords.Verify(user?.PasswordHash, password);
         return verified && user is { Disabled: false } ? user : null;
     }
+
+    /// <summary>
+    /// True when the user may not sign in with a password alone: an administrator while
+    /// <see cref="IAdministratorConfiguration.AdministratorsRequirePasskey"/> is set. The break-glass administrator
+    /// cannot have passkeys, so it stays exempt.
+    /// </summary>
+    public bool RequiresPasskey(UserRecord user)
+        => administratorsRequirePasskey && user.Role == UserRole.Admin && user.Id != ConfiguredUserId;
+
+    /// <summary>The user with exactly this username, or null.</summary>
+    public UserRecord? FindByUsername(string username)
+        => List().FirstOrDefault(u => string.Equals(u.Username, username, StringComparison.Ordinal));
 
     /// <summary>Checks the password of a known user, e.g. before a sensitive change.</summary>
     public bool VerifyPassword(UserRecord user, string? password)
@@ -198,7 +212,7 @@ public sealed class UserAccounts
             throw InvalidUsername();
         if (password is null && login is null)
             throw AccountException.LastSignInMethod();
-        if (password is not null && !PasswordPolicy.IsAcceptable(password))
+        if (password is not null && !PasswordPolicy.IsAcceptable(password, username))
             throw WeakPassword();
         var hash = password is null ? null : passwords.Hash(password);
         lock (gate)
@@ -261,7 +275,7 @@ public sealed class UserAccounts
     {
         if (id == ConfiguredUserId && configured is not null)
             throw AccountException.Configured();
-        if (!PasswordPolicy.IsAcceptable(newPassword))
+        if (!PasswordPolicy.IsAcceptable(newPassword, Find(id)?.Username))
             throw WeakPassword();
         var hash = passwords.Hash(newPassword);
         lock (gate)

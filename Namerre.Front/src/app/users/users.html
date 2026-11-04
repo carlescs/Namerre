@@ -139,7 +139,8 @@
                 required
               />
               <p class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
-                At least {{ minimumPasswordLength }} characters. Ends the user's sessions.
+                At least {{ minimumPasswordLength }} characters, not a common password. Ends the
+                user's sessions.
               </p>
               <div class="actions mt-3">
                 <button type="submit" [disabled]="busy() || passwordForm.invalid">

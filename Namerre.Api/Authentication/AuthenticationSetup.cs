@@ -35,6 +35,7 @@ public static class AuthenticationSetup
         services.AddSingleton<PublicOrigin>();
         services.AddSingleton<PublicOrigin>();
         services.AddSingleton<PasskeyLogin>();
+        services.AddSingleton<TrustedDevices>();
         services.AddHttpContextAccessor();
         services.AddSingleton<ICurrentUser, HttpCurrentUser>();
         services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

@@ -26,7 +26,7 @@ namespace Namerre.Controllers;
 public sealed class AuthController(ISender sender, OidcLogin oidc,
     IOptionsMonitor<OpenIdConnectOptions> oidcOptions, IAntiforgery antiforgery, ILogger<AuthController> logger,
     IDataProtectionProvider? dataProtection = null, RenameLimits? limits = null, TimeProvider? time = null,
-    PasskeyLogin? passkeyLogin = null, PublicOrigin? publicOrigin = null)
+    PasskeyLogin? passkeyLogin = null, PublicOrigin? publicOrigin = null, TrustedDevices? trustedDevices = null)
     : ControllerBase
 {
     private static readonly TimeSpan LinkTicketLifetime = TimeSpan.FromMinutes(5);
@@ -34,6 +34,8 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     private const long PasskeyRequestLimit = 64 * 1024;
     private DateTimeOffset Now => (time ?? TimeProvider.System).GetUtcNow();
     private PasskeyLogin Passkeys => passkeyLogin ?? HttpContext.RequestServices.GetRequiredService<PasskeyLogin>();
+    private TrustedDevices Devices
+        => trustedDevices ?? HttpContext.RequestServices.GetRequiredService<TrustedDevices>();
 
     [AllowAnonymous]
     [HttpGet("session")]
@@ -188,16 +190,38 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest request, CancellationToken cancellationToken)
     {
-        var verified = await sender.Send(new PasswordSignInCommand(request.Username, request.Password),
-            cancellationToken);
-        if (verified is null)
+        var result = await sender.Send(new PasswordSignInCommand(request.Username, request.Password,
+            Devices.Read(Request)), cancellationToken);
+        switch (result.Outcome)
         {
-            // The attempted username is not logged: people sometimes type a password into it.
-            NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "password"), new("namerre.auth.outcome", "failure"));
-            logger.LogWarning("Failed sign-in from {RemoteAddress}", HttpContext.Connection.RemoteIpAddress);
-            return Unauthorized(new { message = "Invalid username or password." });
+            case PasswordSignInOutcome.Throttled:
+                // The attempted username is not logged: people sometimes type a password into it.
+                NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "password"), new("namerre.auth.outcome", "throttled"));
+                logger.LogWarning("Throttled sign-in from {RemoteAddress}: too many failed attempts on the account.",
+                    HttpContext.Connection.RemoteIpAddress);
+                return StatusCode(StatusCodes.Status429TooManyRequests, new
+                {
+                    code = "SignInThrottled",
+                    message = "Too many failed sign-ins for this account. Wait a minute and try again."
+                });
+            case PasswordSignInOutcome.PasskeyRequired:
+                // Only reached with the right password, so it reveals nothing to someone guessing.
+                NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "password"), new("namerre.auth.outcome", "denied"));
+                logger.LogWarning("Refused a password sign-in of an administrator from {RemoteAddress}: a passkey is required.",
+                    HttpContext.Connection.RemoteIpAddress);
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    code = "PasskeyRequired",
+                    message = "Administrators sign in with a passkey or single sign-on."
+                });
+            case not PasswordSignInOutcome.SignedIn:
+                NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "password"), new("namerre.auth.outcome", "failure"));
+                logger.LogWarning("Failed sign-in from {RemoteAddress}", HttpContext.Connection.RemoteIpAddress);
+                return Unauthorized(new { message = "Invalid username or password." });
         }
 
+        var verified = result.User!;
+        Devices.Issue(HttpContext, verified.Id);
         await SignInAsync(UserSession.Create(verified, UserSession.PasswordMethod, null, Now,
             await sender.Send(new SessionEpochQuery(verified.Id), cancellationToken)));
         NamerreTelemetry.SignIns.Add(1, new("namerre.auth.method", "password"), new("namerre.auth.outcome", "success"));
@@ -239,6 +263,7 @@ public sealed class AuthController(ISender sender, OidcLogin oidc,
             return Unauthorized(new { message = "The passkey was not accepted." });
         }
 
+        Devices.Issue(HttpContext, verified.Id);
         // Passkeys require user verification, so this is a fresh sign-in.
         await SignInAsync(UserSession.Create(verified, UserSession.PasskeyMethod, null, Now,
             await sender.Send(new SessionEpochQuery(verified.Id), cancellationToken)));

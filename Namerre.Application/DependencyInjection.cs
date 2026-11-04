@@ -39,6 +39,7 @@ public static class DependencyInjection
         services.AddSingleton<IWatchFolders, WatchFolderService>();
         services.AddSingleton<UserAccounts>();
         services.AddSingleton<UserSessions>();
+        services.AddSingleton<SignInThrottle>();
         services.AddSingleton<PasskeyAccounts>();
 
         return services;

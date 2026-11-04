@@ -37,6 +37,15 @@ public static class DependencyInjection
             + $"MaxQueuedJobs {RenameLimits.CeilingQueuedJobs}, MaxConcurrentPreviews {RenameLimits.CeilingConcurrentPreviews}."));
         services.AddSingleton(provider =>
             provider.GetRequiredService<IOptions<NamerreOptions>>().Value.Limits.ToLimits());
+        services.AddSingleton<IValidateOptions<NamerreOptions>>(new ValidateOptions<NamerreOptions>(null,
+            options => options.Authentication.SignInThrottle.ToSettings().IsValid,
+            "Namerre:Authentication:SignInThrottle values are out of range: FreeFailures 1 to "
+            + $"{SignInThrottleSettings.CeilingFreeFailures}, FirstDelaySeconds 1 to MaximumDelaySeconds, "
+            + $"MaximumDelaySeconds up to {SignInThrottleSettings.CeilingDelaySeconds}, FailureMemoryMinutes 1 to "
+            + $"{SignInThrottleSettings.CeilingFailureMemoryMinutes}, MaxTrackedAccounts "
+            + $"{SignInThrottleSettings.MinimumTracked} to {SignInThrottleSettings.CeilingTracked}."));
+        services.AddSingleton(provider =>
+            provider.GetRequiredService<IOptions<NamerreOptions>>().Value.Authentication.SignInThrottle.ToSettings());
         services.AddSingleton<IValidateOptions<NamerreOptions>, NamerreOptionsValidator>();
         services.AddSingleton<IValidateOptions<NamerreOptions>, WatchFolderOptionsValidator>();
         services.AddSingleton<IValidateOptions<NamerreOptions>, DataProtectionOptionsValidator>();

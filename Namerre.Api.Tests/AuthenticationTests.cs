@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
@@ -135,10 +136,11 @@ public sealed class AuthenticationTests
         var attempts = Enumerable.Range(0, clients).Select(async index =>
         {
             using var client = await ClientAt(factory, $"203.0.113.{index + 1}");
+            // Each client guesses at its own username, so the per-account slowdown stays out of the way.
             for (var attempt = 0; attempt < Namerre.Authentication.AuthenticationSetup.LoginLimitPerClient; attempt++)
             {
                 using var invalid = await client.PostAsJsonAsync("/api/auth/login",
-                    new { AuthWebApplicationFactory.Username, password = "incorrect" });
+                    new { username = $"someone-{index}", password = "incorrect" });
                 Assert.Equal(HttpStatusCode.Unauthorized, invalid.StatusCode);
             }
         });
@@ -195,7 +197,7 @@ public sealed class AuthenticationTests
             for (var attempt = 0; attempt < Namerre.Authentication.AuthenticationSetup.LoginLimitPerClient; attempt++)
             {
                 using var invalid = await client.PostAsJsonAsync("/api/auth/login",
-                    new { AuthWebApplicationFactory.Username, password = "incorrect" });
+                    new { username = $"someone-{index}", password = "incorrect" });
                 Assert.Contains(invalid.StatusCode,
                     new[] { HttpStatusCode.Unauthorized, HttpStatusCode.TooManyRequests });
             }
@@ -466,6 +468,64 @@ public sealed class AuthenticationTests
     private sealed record Session(string? Username);
 
     private const string ClientAddressHeader = "X-Test-Client-Address";
+
+    [Fact]
+    public async Task AGuessedAtAccountIsSlowedDownAsConfiguredButNotForAKnownDevice()
+    {
+        using var factory = ClientAddressFactory().WithWebHostBuilder(builder =>
+            builder.ConfigureAppConfiguration((_, configuration) =>
+                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Namerre:Authentication:SignInThrottle:FreeFailures"] = "1",
+                    ["Namerre:Authentication:SignInThrottle:FirstDelaySeconds"] = "2",
+                    ["Namerre:Authentication:SignInThrottle:MaximumDelaySeconds"] = "2"
+                })));
+        using var known = await ClientAt(factory, "198.51.100.1");
+        using (var signIn = await known.PostAsJsonAsync("/api/auth/login",
+                   new { AuthWebApplicationFactory.Username, AuthWebApplicationFactory.Password }))
+            Assert.Equal(HttpStatusCode.NoContent, signIn.StatusCode);
+
+        using var first = await ClientAt(factory, "203.0.113.1");
+        using (var failed = await first.PostAsJsonAsync("/api/auth/login",
+                   new { AuthWebApplicationFactory.Username, password = "incorrect" }))
+            Assert.Equal(HttpStatusCode.Unauthorized, failed.StatusCode);
+        // Turns now come two seconds apart and no attempt waits longer than that: of three at once, one is refused.
+        var guesses = await Task.WhenAll(Enumerable.Range(2, 3).Select(async index =>
+        {
+            using var client = await ClientAt(factory, $"203.0.113.{index}");
+            using var response = await client.PostAsJsonAsync("/api/auth/login",
+                new { AuthWebApplicationFactory.Username, password = "incorrect" });
+            return (response.StatusCode, Body: await response.Content.ReadAsStringAsync());
+        }));
+        var refused = Assert.Single(guesses, guess => guess.StatusCode == HttpStatusCode.TooManyRequests);
+        Assert.Contains("SignInThrottled", refused.Body);
+
+        // The browser that signed in before is not held up by the guesses.
+        await AuthWebApplicationFactory.RefreshCsrf(known);
+        var started = Stopwatch.StartNew();
+        using var again = await known.PostAsJsonAsync("/api/auth/login",
+            new { AuthWebApplicationFactory.Username, AuthWebApplicationFactory.Password });
+        Assert.Equal(HttpStatusCode.NoContent, again.StatusCode);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(2), started.Elapsed.ToString());
+    }
+
+    [Theory]
+    [InlineData("FreeFailures", "0")]
+    [InlineData("FirstDelaySeconds", "31")]
+    [InlineData("MaximumDelaySeconds", "301")]
+    [InlineData("FailureMemoryMinutes", "0")]
+    [InlineData("MaxTrackedAccounts", "10")]
+    public void OutOfRangeSignInThrottleSettingsFailStartup(string key, string value)
+    {
+        using var factory = new AuthWebApplicationFactory().WithWebHostBuilder(builder =>
+            builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(
+                new Dictionary<string, string?> { ["Namerre:Authentication:SignInThrottle:" + key] = value })));
+
+        var exception = Assert.ThrowsAny<Exception>(() => { _ = factory.Server; });
+
+        Assert.Contains("Namerre:Authentication:SignInThrottle",
+            (exception.InnerException ?? exception).Message + exception.Message);
+    }
 
     private static WebApplicationFactory<Program> ClientAddressFactory()
         => new AuthWebApplicationFactory().WithWebHostBuilder(builder =>
