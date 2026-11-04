@@ -3,7 +3,7 @@ import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { defaultLimits, WorkloadLimits } from '../../../../workload-limits';
 import { casePlugin, literalPlugin, regexPlugin, tmdbPlugin } from '../../plugin-catalog.testing';
-import type { PluginDescriptor, PluginInstance } from '../../rename-api';
+import type { PluginDescriptor, PluginInstance } from '../../rename-models';
 import { PluginEditorComponent } from './plugin-editor.component';
 
 // Case defaults to 'upper' here so a fresh card differs from restored drafts.

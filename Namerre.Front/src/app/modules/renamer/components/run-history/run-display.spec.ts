@@ -1,4 +1,4 @@
-import type { RunView } from '../../rename-api';
+import type { RunView } from '../../rename-models';
 import {
   historyEntries,
   isFinishingUp,

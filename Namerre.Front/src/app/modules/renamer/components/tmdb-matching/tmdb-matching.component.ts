@@ -6,7 +6,7 @@ import {
   type StepTrace,
   type TmdbMatch,
   type TmdbMatchRow,
-} from '../../rename-api';
+} from '../../rename-models';
 import { tmdbFilename } from '../../tmdb-filename';
 
 type RowStatus = 'needs' | 'proposed' | 'review' | 'confirmed' | 'problem' | 'waiting';

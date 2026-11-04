@@ -39,17 +39,17 @@ import {
   faTrashCan,
 } from '@fortawesome/free-solid-svg-icons';
 import { WorkloadLimits } from '../../../../workload-limits';
-import {
-  type OptionField,
-  type OptionGroup,
-  operationId,
-  type PluginDescriptor,
-  type PluginInstance,
-  type PluginOptionCell,
-  type PluginOptionRow,
-  type PluginOptions,
-  type StepCondition,
-} from '../../rename-api';
+import { operationId } from '../../rename-api';
+import type {
+  OptionField,
+  OptionGroup,
+  PluginDescriptor,
+  PluginInstance,
+  PluginOptionCell,
+  PluginOptionRow,
+  PluginOptions,
+  StepCondition,
+} from '../../rename-models';
 import { linkTmdbPreset } from '../../tmdb-presets';
 import {
   sampleDoubleEpisode,

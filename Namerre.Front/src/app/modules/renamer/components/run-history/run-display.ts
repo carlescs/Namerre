@@ -1,4 +1,4 @@
-import type { RunView } from '../../rename-api';
+import type { RunView } from '../../rename-models';
 
 export type StatusTone = 'green' | 'blue' | 'amber' | 'red' | 'teal' | 'slate';
 

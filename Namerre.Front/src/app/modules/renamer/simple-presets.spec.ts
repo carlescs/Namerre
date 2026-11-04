@@ -1,4 +1,4 @@
-import type { PluginInstance } from './rename-api';
+import type { PluginInstance } from './rename-models';
 import {
   buildPipeline,
   matchSimplePreset,

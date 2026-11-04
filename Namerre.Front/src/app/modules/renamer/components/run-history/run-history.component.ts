@@ -17,22 +17,20 @@ import { faTrashCan } from '@fortawesome/free-solid-svg-icons';
 import { BehaviorSubject, catchError, EMPTY, exhaustMap, type Subscription, timer } from 'rxjs';
 import { Auth } from '../../../../auth/auth';
 import { ConfirmDialog } from '../../../../dialogs/confirm-dialog';
+import { operationId, RenameApi, renameError } from '../../rename-api';
+import { RenameEvents, refreshOn } from '../../rename-events';
 import {
   type DeletableRuns,
   isSettledRun,
   MAX_RUNS_PER_DELETION,
-  operationId,
   type PlanView,
   type RecoveryPreview,
-  RenameApi,
   type RunPage,
   type RunView,
-  renameError,
   type SelectionPreview,
   type SelectionRequest,
   watchFolderOrigin,
-} from '../../rename-api';
-import { RenameEvents, refreshOn } from '../../rename-events';
+} from '../../rename-models';
 import { WatchFoldersComponent } from '../watch-folders/watch-folders.component';
 import {
   fileCount,

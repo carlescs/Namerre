@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { stubDialogs } from '../../../../dialogs.testing';
 import { tmdbOptionsHash } from '../../options-hash';
-import type { MetadataSelection, TmdbPickerState } from '../../rename-api';
+import type { MetadataSelection, TmdbPickerState } from '../../rename-models';
 import { TmdbPickerComponent } from './tmdb-picker.component';
 
 describe('TmdbPickerComponent', () => {

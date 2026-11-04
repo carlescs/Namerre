@@ -1,5 +1,5 @@
 import { Component, computed, input, output } from '@angular/core';
-import type { PluginInstance } from '../../rename-api';
+import type { PluginInstance } from '../../rename-models';
 import {
   buildPipeline,
   matchSimplePreset,

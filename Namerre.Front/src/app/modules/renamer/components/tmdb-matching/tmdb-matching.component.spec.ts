@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import type { TmdbMatchRow } from '../../rename-api';
+import type { TmdbMatchRow } from '../../rename-models';
 import { TmdbMatchingComponent } from './tmdb-matching.component';
 
 describe('TmdbMatchingComponent', () => {

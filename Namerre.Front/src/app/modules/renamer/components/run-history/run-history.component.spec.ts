@@ -10,9 +10,9 @@ import {
 } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 import { Auth } from '../../../../auth/auth';
-import type { RunView } from '../../rename-api';
 import { RenameEvents } from '../../rename-events';
 import { FakeRenameEvents } from '../../rename-events.testing';
+import type { RunView } from '../../rename-models';
 import { RunHistoryComponent } from './run-history.component';
 
 describe('RunHistoryComponent', () => {

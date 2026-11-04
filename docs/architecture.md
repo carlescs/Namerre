@@ -344,8 +344,15 @@ routes in `src/app/app.routes.ts`. Use same-origin `/api/...` URLs.
   admin-only controls (watch folders, run deletion) are hidden for users.
 - **Renamer.** The root route lazy-loads `modules/renamer`; `rename-api.ts` is the HTTP client for
   the resource-style renaming endpoints (`/api/rename-plugins`, `/api/rename-previews`,
-  `/api/rename-plans`, …). The workflow is a staged wizard (`rename-workflow` component) across
-  file selection, plugin configuration, TMDB matching, preview, confirmation and run history.
+  `/api/rename-plans`, …) plus `renameError`/`operationId`, and `rename-models.ts` holds the
+  request/response shapes and pure helpers over them. The workflow is a staged wizard
+  (`rename-workflow` component) across file selection, plugin configuration, TMDB matching,
+  preview, confirmation and run history. Its state and transitions (stage, step draft, run options,
+  preview → prepare → execute lifecycle, TMDB suggestions and picker memory, Simple/Advanced
+  switches) live in `WorkflowStore` (`rename-workflow/workflow-store.ts`), a signals-based service
+  the component provides and renders; the component only feeds it the collection and moves focus
+  when `stageEntered` fires. Test state logic in `workflow-store.spec.ts` and rendering in the
+  component specs.
   Completed stages in its progress list are buttons (`goToStep`) that jump back with the same
   cleanup as **Back**; forward moves only go through `next()` and its checks.
 - **Modes.** Chosen per browser through the `WorkflowMode` service (`src/app/workflow-mode`,

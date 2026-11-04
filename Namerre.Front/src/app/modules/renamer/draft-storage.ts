@@ -1,4 +1,4 @@
-import type { PluginInstance } from './rename-api';
+import type { PluginInstance } from './rename-models';
 import type { RenamerFile } from './renamer-file';
 
 // The unfinished workflow survives reloads in this browser only. TMDB confirmations are not kept:

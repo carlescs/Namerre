@@ -1,5 +1,5 @@
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import type { PluginInstance } from '../../rename-api';
+import type { PluginInstance } from '../../rename-models';
 import { buildPipeline, presetDefaults, simplePresets } from '../../simple-presets';
 import { PresetPickerComponent } from './preset-picker.component';
 

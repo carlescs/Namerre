@@ -1,4 +1,5 @@
-import { operationId, type PluginInstance, type PluginOptions } from './rename-api';
+import { operationId } from './rename-api';
+import type { PluginInstance, PluginOptions } from './rename-models';
 import presets from './simple-presets.json';
 
 /** One step of a built-in preset, as the server's plugin catalog reads it. */

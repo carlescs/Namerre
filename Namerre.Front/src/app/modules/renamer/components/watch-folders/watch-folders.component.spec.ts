@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { type WatchFolderStatus, watchFolderOrigin } from '../../rename-api';
+import { type WatchFolderStatus, watchFolderOrigin } from '../../rename-models';
 import { WatchFoldersComponent } from './watch-folders.component';
 
 describe('WatchFoldersComponent', () => {

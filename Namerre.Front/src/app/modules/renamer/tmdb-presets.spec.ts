@@ -1,5 +1,5 @@
 import { FormControl, FormGroup } from '@angular/forms';
-import type { PluginOptions } from './rename-api';
+import type { PluginOptions } from './rename-models';
 import { customPreset, linkTmdbPreset, tmdbPresets } from './tmdb-presets';
 import { sampleEpisode, sampleMovie, tmdbTemplatePreview } from './tmdb-template-preview';
 

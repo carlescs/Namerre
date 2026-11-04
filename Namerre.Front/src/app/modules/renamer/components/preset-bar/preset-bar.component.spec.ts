@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { Confirmations } from '../../../../dialogs/confirmations';
-import type { PluginInstance, PresetView } from '../../rename-api';
+import type { PluginInstance, PresetView } from '../../rename-models';
 import { PresetBarComponent } from './preset-bar.component';
 
 describe('PresetBarComponent', () => {

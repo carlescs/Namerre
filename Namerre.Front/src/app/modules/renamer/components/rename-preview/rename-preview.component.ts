@@ -4,7 +4,7 @@ import {
   isMatchingIssue,
   type PreviewFile,
   type PreviewResult,
-} from '../../rename-api';
+} from '../../rename-models';
 import { NameChangeComponent } from '../name-change/name-change.component';
 
 type PreviewStatus = 'rename' | 'unchanged' | 'problem';

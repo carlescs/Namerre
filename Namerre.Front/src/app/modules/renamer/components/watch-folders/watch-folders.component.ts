@@ -2,7 +2,8 @@ import { DatePipe, PercentPipe } from '@angular/common';
 import { Component, DestroyRef, inject, type OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { catchError, EMPTY, interval, startWith, switchMap } from 'rxjs';
-import { RenameApi, renameError, type WatchFolderStatus } from '../../rename-api';
+import { RenameApi, renameError } from '../../rename-api';
+import type { WatchFolderStatus } from '../../rename-models';
 
 /** How often the panel re-reads the folders' state. */
 const REFRESH_MS = 30_000;
