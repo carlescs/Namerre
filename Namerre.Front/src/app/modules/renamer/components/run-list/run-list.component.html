@@ -1,0 +1,199 @@
+@if (loading()) {
+  <p role="status">Loading history…</p>
+}
+@if (error()) {
+  <p class="error" role="alert">{{ error() }}</p>
+  <button class="mb-5" type="button" (click)="refresh()" [disabled]="loading()">Try again</button>
+}
+@if (auth.isAdmin()) {
+  <app-watch-folders />
+}
+@if (history(); as list) {
+  @if (!list.items.length) {
+    <div class="surface my-6 p-10 text-center">
+      <h2 class="text-lg">A fresh start</h2>
+      <p class="text-slate-500 dark:text-slate-400">Nothing has been renamed yet.</p>
+      <a routerLink="/" class="font-medium"
+        >Start renaming <span aria-hidden="true">&rarr;</span></a
+      >
+    </div>
+  }
+  @if (list.items.length && auth.isAdmin()) {
+    <div class="flex flex-wrap items-center gap-3" role="group" aria-label="Bulk actions">
+      <label class="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          [checked]="allRunsChosen()"
+          [indeterminate]="someRunsChosen() && !allRunsChosen()"
+          (change)="toggleAllRuns()"
+          [disabled]="deleting() || !deletableRunIds().length"
+        />
+        Select all on this page
+      </label>
+      <span class="text-sm text-slate-500 dark:text-slate-400"
+        >{{ chosenRuns().size }} selected</span
+      >
+      @if (chosenRuns().size) {
+        <button type="button" class="text-sm" (click)="clearRuns()" [disabled]="deleting()">
+          Clear selection
+        </button>
+      }
+      <button
+        type="button"
+        class="ml-auto"
+        (click)="requestBulkDelete()"
+        [disabled]="
+          !chosenRuns().size ||
+          tooManyRuns() ||
+          deleting() ||
+          selectingEveryPage() ||
+          pendingBulkDelete()
+        "
+      >
+        <fa-icon [icon]="trashIcon" aria-hidden="true" /> Delete selected
+      </button>
+    </div>
+    @if (tooManyRuns()) {
+      <p class="error mt-2 text-sm" role="alert">
+        One deletion takes at most {{ maxRunsPerDeletion }} runs. Untick
+        {{ chosenRuns().size - maxRunsPerDeletion }} to continue.
+      </p>
+    }
+    @if (everyPage(); as every) {
+      <p class="mt-2 text-sm" role="status">
+        @if (every.hasMore) {
+          The newest {{ every.ids.length }} deletable runs are selected, the most one deletion
+          takes. Delete them, then select again for the rest.
+        } @else {
+          Every deletable run on every page is selected.
+        }
+      </p>
+    } @else if (allRunsChosen() && (list.hasMore || list.page > 1)) {
+      <p class="mt-2 text-sm">
+        All deletable runs on this page are selected.
+        <button
+          type="button"
+          class="text-sm"
+          (click)="selectEveryPage()"
+          [disabled]="deleting() || pendingBulkDelete() || selectingEveryPage()"
+        >
+          Select all deletable runs on every page
+        </button>
+      </p>
+    }
+    @if (selectingEveryPage()) {
+      <p class="text-sm" role="status">Selecting runs on every page…</p>
+    }
+    @if (selectionError()) {
+      <p class="error" role="alert">{{ selectionError() }}</p>
+    }
+    @if (pendingBulkDelete() && chosenRuns().size) {
+      <app-confirm-dialog
+        heading="Delete {{ chosenRuns().size }} {{
+          chosenRuns().size === 1 ? 'record' : 'records'
+        }}?"
+        [confirmLabel]="'Confirm deletion of ' + chosenRuns().size"
+        danger
+        [busy]="deleting()"
+        [confirmDisabled]="tooManyRuns()"
+        (confirmed)="confirmBulkDelete()"
+        (cancelled)="cancelDelete()"
+      >
+        <p>
+          Rename records also take their undo records and saved settings with them. Files on disk
+          are not touched, but you will no longer be able to undo these from here.
+        </p>
+        @if (deleting()) {
+          <p role="status">Deleting…</p>
+        }
+        @if (deleteError()) {
+          <p class="error" role="alert">{{ deleteError() }}</p>
+        }
+      </app-confirm-dialog>
+    }
+  }
+  <ul class="my-4 space-y-3">
+    @for (entry of entries(); track entry.run.id) {
+      <li class="surface p-5" [class]="entry.nested ? 'ml-6 sm:ml-10' : ''">
+        <div class="flex items-start gap-3">
+          @if (auth.isAdmin()) {
+            <input
+              type="checkbox"
+              class="mt-1 shrink-0"
+              [attr.aria-label]="
+                'Select ' +
+                (kindLabel(entry.run.kind) | lowercase) +
+                ' record: ' +
+                runTitle(entry.run)
+              "
+              [title]="
+                isSettledRun(entry.run)
+                  ? 'Select for deletion'
+                  : 'Only completed or recovered runs can be deleted'
+              "
+              [checked]="chosenRuns().has(entry.run.id)"
+              (change)="toggleRun(entry.run.id)"
+              [disabled]="!isSettledRun(entry.run) || deleting()"
+            />
+          }
+          <div class="min-w-0 flex-1">
+            <p class="mb-1 flex flex-wrap items-center gap-2">
+              <span
+                class="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
+                >{{ kindLabel(entry.run.kind) }}</span
+              >
+              <span
+                class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                [class]="statusClasses(entry.run.status)"
+                >{{ runStatusLabel(entry.run) }}</span
+              >
+            </p>
+            <a class="font-medium" [routerLink]="['/runs', entry.run.id]">{{
+              runTitle(entry.run)
+            }}</a>
+            <p class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
+              {{ fileCount(entry.run.files.length) }} · {{ entry.run.createdAt | date: 'medium' }}
+            </p>
+            @if (entry.run.kind === 'Rollback') {
+              <p class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
+                Undo of {{ entry.parentTitle || 'an earlier rename' }}
+              </p>
+            }
+            @if (watchFolderOrigin(entry.run.origin); as folder) {
+              <p class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
+                Started by watch folder {{ folder }}
+              </p>
+            } @else if (entry.run.createdBy; as author) {
+              <p class="mt-1 mb-0 text-xs text-slate-500 dark:text-slate-400">
+                Started by {{ author.username }}
+              </p>
+            }
+          </div>
+          <app-run-delete-button
+            [run]="entry.run"
+            [disabled]="pendingDelete() === entry.run.id"
+            (requested)="requestDelete($event)"
+          />
+        </div>
+        @if (pendingDelete() === entry.run.id) {
+          <app-run-delete-dialog
+            [run]="entry.run"
+            [deleting]="deleting()"
+            [error]="deleteError()"
+            (confirmed)="confirmDelete()"
+            (cancelled)="cancelDelete()"
+          />
+        }
+      </li>
+    }
+  </ul>
+  <div class="actions">
+    <button type="button" (click)="changePage(-1)" [disabled]="page() <= 1 || loading()">
+      Previous page
+    </button>
+    <span>Page {{ list.page }}</span>
+    <button type="button" (click)="changePage(1)" [disabled]="!list.hasMore || loading()">
+      Next page
+    </button>
+  </div>
+}

@@ -167,3 +167,8 @@ export function historyEntries(items: RunView[]): HistoryEntry[] {
   }
   return entries;
 }
+
+/** Keeps only the ids that pass `keep`, returning the same set when nothing was dropped. */
+export function retain(selection: Set<string>, keep: (id: string) => boolean): Set<string> {
+  return [...selection].every(keep) ? selection : new Set([...selection].filter(keep));
+}

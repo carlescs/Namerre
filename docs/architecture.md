@@ -353,6 +353,12 @@ routes in `src/app/app.routes.ts`. Use same-origin `/api/...` URLs.
   the component provides and renders; the component only feeds it the collection and moves focus
   when `stageEntered` fires. Test state logic in `workflow-store.spec.ts` and rendering in the
   component specs.
+- **Run history.** `run-history` is the page shell for `/runs` and `/runs/:id` (route, heading and
+  focus); it renders `run-list` (paging, single and bulk deletion, watch folders) or `run-detail`
+  (per-file outcomes, reviewed undo and recovery, operation log). `run-detail` starts over when its
+  `runId` input changes and shows the saved settings through `run-plan-snapshot`, which reads the
+  plan only when opened. Both share `run-delete-button` and `run-delete-dialog`; the parent owns
+  the delete request. `run-history.component.spec.ts` covers the page end to end.
   Completed stages in its progress list are buttons (`goToStep`) that jump back with the same
   cleanup as **Back**; forward moves only go through `next()` and its checks.
 - **Modes.** Chosen per browser through the `WorkflowMode` service (`src/app/workflow-mode`,

@@ -398,6 +398,8 @@ describe('RunHistoryComponent', () => {
   it('cancels obsolete route loads and paginates durable history without mixing pages', async () => {
     const obsolete = http.expectOne('/api/rename-runs/run-1');
     params.next(convertToParamMap({}));
+    // The list replaces the run details on the next render.
+    await fixture.whenStable();
     expect(obsolete.cancelled).toBe(true);
     http.expectOne('/api/rename-runs?page=1&pageSize=20').flush({
       items: [run],
@@ -448,6 +450,7 @@ describe('RunHistoryComponent', () => {
 
   it("tells administrators the history holds everyone's renames", async () => {
     params.next(convertToParamMap({}));
+    await fixture.whenStable();
     http.expectOne('/api/rename-runs/run-1');
     http.expectOne('/api/rename-runs?page=1&pageSize=20').flush({
       items: [],
@@ -466,6 +469,7 @@ describe('RunHistoryComponent', () => {
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('Started by watch folder Downloads');
     params.next(convertToParamMap({}));
+    await fixture.whenStable();
     const page = {
       items: [{ ...run, origin: 'watch:Downloads' }],
       page: 1,
@@ -497,6 +501,7 @@ describe('RunHistoryComponent', () => {
   it('shows users who started runs but hides administrator controls from users', async () => {
     TestBed.inject(Auth).role.set('User');
     params.next(convertToParamMap({}));
+    await fixture.whenStable();
     http.expectOne('/api/rename-runs/run-1');
     const page = {
       items: [{ ...run, createdBy: { id: 2, username: 'frank' } }],
@@ -518,6 +523,7 @@ describe('RunHistoryComponent', () => {
 
   it('reports a refused deletion from the history list and refreshes after success', async () => {
     params.next(convertToParamMap({}));
+    await fixture.whenStable();
     http.expectOne('/api/rename-runs/run-1');
     const page = { items: [run], page: 1, pageSize: 20, hasMore: false };
     http.expectOne('/api/rename-runs?page=1&pageSize=20').flush(page);
@@ -661,6 +667,7 @@ describe('RunHistoryComponent', () => {
 
   it('shows history load failures', async () => {
     params.next(convertToParamMap({}));
+    await fixture.whenStable();
     http.expectOne('/api/rename-runs/run-1');
     http
       .expectOne('/api/rename-runs?page=1&pageSize=20')
@@ -712,6 +719,7 @@ describe('RunHistoryComponent', () => {
 
   it('refreshes the history page when any run changes', async () => {
     params.next(convertToParamMap({}));
+    await fixture.whenStable();
     http.expectOne('/api/rename-runs/run-1');
     const page = { items: [], page: 1, pageSize: 20, hasMore: false };
     http.expectOne('/api/rename-runs?page=1&pageSize=20').flush(page);
@@ -792,6 +800,7 @@ describe('RunHistoryComponent', () => {
 
   it('returns to the previous page after deleting its last saved run', async () => {
     params.next(convertToParamMap({}));
+    await fixture.whenStable();
     http.expectOne('/api/rename-runs/run-1');
     http
       .expectOne('/api/rename-runs?page=1&pageSize=20')
@@ -820,6 +829,7 @@ describe('RunHistoryComponent', () => {
 
   it('deletes the selected settled runs together after an explicit confirmation', async () => {
     params.next(convertToParamMap({}));
+    await fixture.whenStable();
     http.expectOne('/api/rename-runs/run-1');
     const busy = { ...run, id: 'run-3', status: 'Running' };
     const page = {
@@ -868,6 +878,7 @@ describe('RunHistoryComponent', () => {
 
   it('keeps the selection and reports a refused bulk deletion', async () => {
     params.next(convertToParamMap({}));
+    await fixture.whenStable();
     http.expectOne('/api/rename-runs/run-1');
     http
       .expectOne('/api/rename-runs?page=1&pageSize=20')
@@ -892,6 +903,7 @@ describe('RunHistoryComponent', () => {
 
   it('drops chosen runs that stop being deletable but keeps choices across pages', async () => {
     params.next(convertToParamMap({}));
+    await fixture.whenStable();
     http.expectOne('/api/rename-runs/run-1');
     const page = { items: [run], page: 1, pageSize: 20, hasMore: true };
     http.expectOne('/api/rename-runs?page=1&pageSize=20').flush(page);
@@ -938,6 +950,7 @@ describe('RunHistoryComponent', () => {
 
   it('offers to select deletable runs on every page once the whole page is selected', async () => {
     params.next(convertToParamMap({}));
+    await fixture.whenStable();
     http.expectOne('/api/rename-runs/run-1');
     http
       .expectOne('/api/rename-runs?page=1&pageSize=20')
@@ -980,6 +993,7 @@ describe('RunHistoryComponent', () => {
 
   it('says when more deletable runs exist than one deletion takes', async () => {
     params.next(convertToParamMap({}));
+    await fixture.whenStable();
     http.expectOne('/api/rename-runs/run-1');
     http
       .expectOne('/api/rename-runs?page=1&pageSize=20')
@@ -1086,6 +1100,7 @@ describe('RunHistoryComponent', () => {
 
   it('titles list entries from their folder and nests an undo under its rename', async () => {
     params.next(convertToParamMap({}));
+    await fixture.whenStable();
     http.expectOne('/api/rename-runs/run-1');
     const rename = {
       ...run,
@@ -1164,6 +1179,7 @@ describe('RunHistoryComponent', () => {
 
   async function showListPage(page: number, items: RunView[], hasMore: boolean): Promise<void> {
     params.next(convertToParamMap({}));
+    await fixture.whenStable();
     http.expectOne('/api/rename-runs/run-1');
     http
       .expectOne(`/api/rename-runs?page=${page}&pageSize=20`)
