@@ -272,7 +272,10 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
   reserves a turn before checking the password. After 5 failures on a username (case-insensitive; unknown names
   are tracked alike), attempts are spaced by a delay doubling from 1 s up to 30 s, and one that would wait longer
   than 30 s is refused unchecked (`Throttled`, 429 `SignInThrottled`). Failures are forgotten after 15 quiet
-  minutes or a success; at most 10,000 keys are kept, the least recently failed one making room. Waiting before
+  minutes or a success; at most 10,000 keys are kept, the least recently failed one making room. These are the
+  defaults of `SignInThrottleSettings`, bound from `Namerre:Authentication:SignInThrottle`
+  (`SignInThrottleOptions.ToSettings`, registered by `AddInfrastructure`); out-of-range values
+  (`SignInThrottleSettings.IsValid`) fail startup, and `Enabled = false` turns it off. Waiting before
   the check (not before the answer) keeps a fast answer from revealing a right guess. To keep attackers from
   locking the owner out, a successful password or passkey sign-in sets `__Host-namerre-device`
   (`Api/Authentication/TrustedDevices`: data-protected user ID and random device ID, HttpOnly, 180 days); a

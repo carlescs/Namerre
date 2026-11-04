@@ -6,16 +6,17 @@ namespace Namerre.Application.UnitTests.Authentication;
 
 public sealed class SignInThrottleTests
 {
+    private static readonly SignInThrottleSettings Defaults = SignInThrottleSettings.Default;
     private static readonly string Alice = SignInThrottle.AccountKey("alice");
     private readonly FakeTimeProvider time = new(new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero));
     private readonly SignInThrottle throttle;
 
-    public SignInThrottleTests() => throttle = new SignInThrottle(time);
+    public SignInThrottleTests() => throttle = new SignInThrottle(time: time);
 
     [Fact]
     public void TheFirstFailuresAreFree()
     {
-        for (var attempt = 0; attempt < SignInThrottle.FreeFailures; attempt++)
+        for (var attempt = 0; attempt < Defaults.FreeFailures; attempt++)
         {
             Assert.Equal(TimeSpan.Zero, throttle.Reserve(Alice));
             throttle.RecordFailure(Alice);
@@ -25,7 +26,7 @@ public sealed class SignInThrottleTests
     [Fact]
     public void FurtherAttemptsAreSpacedOutByADoublingDelay()
     {
-        Fail(Alice, SignInThrottle.FreeFailures);
+        Fail(Alice, Defaults.FreeFailures);
 
         Assert.Equal(TimeSpan.Zero, throttle.Reserve(Alice));
         throttle.RecordFailure(Alice);
@@ -38,21 +39,21 @@ public sealed class SignInThrottleTests
     [Fact]
     public void AttemptsThatWouldWaitTooLongAreRefusedWithoutReservingATurn()
     {
-        Fail(Alice, SignInThrottle.FreeFailures + 10);
+        Fail(Alice, Defaults.FreeFailures + 10);
         Assert.Equal(TimeSpan.Zero, throttle.Reserve(Alice));
-        Assert.Equal(SignInThrottle.MaximumDelay, throttle.Reserve(Alice));
+        Assert.Equal(Defaults.MaximumDelay, throttle.Reserve(Alice));
 
         Assert.Null(throttle.Reserve(Alice));
         Assert.Null(throttle.Reserve(Alice));
 
-        time.Advance(SignInThrottle.MaximumDelay);
-        Assert.Equal(SignInThrottle.MaximumDelay, throttle.Reserve(Alice));
+        time.Advance(Defaults.MaximumDelay);
+        Assert.Equal(Defaults.MaximumDelay, throttle.Reserve(Alice));
     }
 
     [Fact]
     public void ACaseVariantOfTheUsernameSharesTheAccountsTurns()
     {
-        Fail(SignInThrottle.AccountKey(" ALICE "), SignInThrottle.FreeFailures + 1);
+        Fail(SignInThrottle.AccountKey(" ALICE "), Defaults.FreeFailures + 1);
         Assert.Equal(TimeSpan.Zero, throttle.Reserve(Alice));
 
         Assert.Equal(TimeSpan.FromSeconds(2), throttle.Reserve(Alice));
@@ -61,7 +62,7 @@ public sealed class SignInThrottleTests
     [Fact]
     public void AKnownDeviceIsNotSlowedDownByFailuresElsewhere()
     {
-        Fail(Alice, SignInThrottle.FreeFailures + 10);
+        Fail(Alice, Defaults.FreeFailures + 10);
         Assert.Equal(TimeSpan.Zero, throttle.Reserve(Alice));
 
         Assert.Equal(TimeSpan.Zero, throttle.Reserve(SignInThrottle.DeviceKey(7, "laptop")));
@@ -70,13 +71,13 @@ public sealed class SignInThrottleTests
     [Fact]
     public void FailuresAreForgottenAfterAQuietPeriodOrASuccess()
     {
-        Fail(Alice, SignInThrottle.FreeFailures + 2);
-        time.Advance(SignInThrottle.FailureMemory + TimeSpan.FromSeconds(1));
+        Fail(Alice, Defaults.FreeFailures + 2);
+        time.Advance(Defaults.FailureMemory + TimeSpan.FromSeconds(1));
         Assert.Equal(TimeSpan.Zero, throttle.Reserve(Alice));
         Assert.Equal(TimeSpan.Zero, throttle.Reserve(Alice));
 
         var bob = SignInThrottle.AccountKey("bob");
-        Fail(bob, SignInThrottle.FreeFailures + 2);
+        Fail(bob, Defaults.FreeFailures + 2);
         throttle.RecordSuccess(bob);
         Assert.Equal(TimeSpan.Zero, throttle.Reserve(bob));
         Assert.Equal(TimeSpan.Zero, throttle.Reserve(bob));
@@ -85,13 +86,58 @@ public sealed class SignInThrottleTests
     [Fact]
     public void TheLeastRecentlyFailedKeyMakesRoom()
     {
-        Fail(Alice, SignInThrottle.FreeFailures + 1);
+        Fail(Alice, Defaults.FreeFailures + 1);
         time.Advance(TimeSpan.FromSeconds(1));
-        for (var index = 0; index < SignInThrottle.MaximumTracked; index++)
+        for (var index = 0; index < Defaults.MaximumTracked; index++)
             throttle.RecordFailure(SignInThrottle.AccountKey("guess" + index));
 
         Assert.Equal(TimeSpan.Zero, throttle.Reserve(Alice));
         Assert.Equal(TimeSpan.Zero, throttle.Reserve(Alice));
+    }
+
+    [Fact]
+    public void TheSettingsChangeWhenAndHowMuchAttemptsAreSlowedDown()
+    {
+        var custom = new SignInThrottle(new SignInThrottleSettings
+        {
+            FreeFailures = 2,
+            FirstDelay = TimeSpan.FromSeconds(5),
+            MaximumDelay = TimeSpan.FromSeconds(10)
+        }, time);
+        custom.RecordFailure(Alice);
+        custom.RecordFailure(Alice);
+
+        Assert.Equal(TimeSpan.Zero, custom.Reserve(Alice));
+        Assert.Equal(TimeSpan.FromSeconds(5), custom.Reserve(Alice));
+        Assert.Equal(TimeSpan.FromSeconds(10), custom.Reserve(Alice));
+        Assert.Null(custom.Reserve(Alice));
+    }
+
+    [Fact]
+    public void ADisabledThrottleNeverSlowsDown()
+    {
+        var disabled = new SignInThrottle(new SignInThrottleSettings { Enabled = false }, time);
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            Assert.Equal(TimeSpan.Zero, disabled.Reserve(Alice));
+            disabled.RecordFailure(Alice);
+        }
+    }
+
+    [Fact]
+    public void SettingsOutsideTheirRangesAreInvalid()
+    {
+        Assert.True(Defaults.IsValid);
+        Assert.False((Defaults with { FreeFailures = 0 }).IsValid);
+        Assert.False((Defaults with { FreeFailures = SignInThrottleSettings.CeilingFreeFailures + 1 }).IsValid);
+        Assert.False((Defaults with { FirstDelay = TimeSpan.Zero }).IsValid);
+        Assert.False((Defaults with { FirstDelay = TimeSpan.FromSeconds(31) }).IsValid);
+        Assert.False((Defaults with
+        {
+            MaximumDelay = TimeSpan.FromSeconds(SignInThrottleSettings.CeilingDelaySeconds + 1)
+        }).IsValid);
+        Assert.False((Defaults with { FailureMemory = TimeSpan.FromSeconds(30) }).IsValid);
+        Assert.False((Defaults with { MaximumTracked = SignInThrottleSettings.MinimumTracked - 1 }).IsValid);
     }
 
     private void Fail(string key, int failures)

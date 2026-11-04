@@ -81,7 +81,7 @@ public sealed class AccountRequestTests : IDisposable
         var alice = Accounts.Create(Someone, "alice", UserRole.User, Password, null);
         var throttle = provider.GetRequiredService<SignInThrottle>();
         var key = SignInThrottle.AccountKey("alice");
-        for (var failure = 0; failure < SignInThrottle.FreeFailures + 10; failure++)
+        for (var failure = 0; failure < SignInThrottleSettings.DefaultFreeFailures + 10; failure++)
             throttle.RecordFailure(key);
         while (throttle.Reserve(key) is not null)
         {

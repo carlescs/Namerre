@@ -1,3 +1,4 @@
+using Namerre.Application.Authentication;
 using Namerre.Application.Renaming;
 
 namespace Namerre.Infrastructure.Configuration;
@@ -41,6 +42,31 @@ public sealed class AuthenticationOptions
     public string? PasswordHash { get; set; }
     public OidcOptions Oidc { get; set; } = new();
     public PasskeyOptions Passkeys { get; set; } = new();
+    public SignInThrottleOptions SignInThrottle { get; set; } = new();
+}
+
+/// <summary>
+/// The per-account slowdown of password sign-ins (<see cref="SignInThrottleSettings"/>); values outside its ranges
+/// fail startup.
+/// </summary>
+public sealed class SignInThrottleOptions
+{
+    public bool Enabled { get; set; } = true;
+    public int FreeFailures { get; set; } = SignInThrottleSettings.DefaultFreeFailures;
+    public int FirstDelaySeconds { get; set; } = SignInThrottleSettings.DefaultFirstDelaySeconds;
+    public int MaximumDelaySeconds { get; set; } = SignInThrottleSettings.DefaultMaximumDelaySeconds;
+    public int FailureMemoryMinutes { get; set; } = SignInThrottleSettings.DefaultFailureMemoryMinutes;
+    public int MaxTrackedAccounts { get; set; } = SignInThrottleSettings.DefaultMaximumTracked;
+
+    public SignInThrottleSettings ToSettings() => new()
+    {
+        Enabled = Enabled,
+        FreeFailures = FreeFailures,
+        FirstDelay = TimeSpan.FromSeconds(FirstDelaySeconds),
+        MaximumDelay = TimeSpan.FromSeconds(MaximumDelaySeconds),
+        FailureMemory = TimeSpan.FromMinutes(FailureMemoryMinutes),
+        MaximumTracked = MaxTrackedAccounts
+    };
 }
 
 /// <summary>Passkey (WebAuthn) sign-in for local users.</summary>

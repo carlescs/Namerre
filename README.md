@@ -85,6 +85,14 @@ Application settings live in one `Namerre` section in `Namerre.Api\appsettings.j
         "Enabled": true,
         "Origin": "",
         "RequiredForAdministrators": false
+      },
+      "SignInThrottle": {
+        "Enabled": true,
+        "FreeFailures": 5,
+        "FirstDelaySeconds": 1,
+        "MaximumDelaySeconds": 30,
+        "FailureMemoryMinutes": 15,
+        "MaxTrackedAccounts": 10000
       }
     },
     "Tmdb": {
@@ -518,6 +526,21 @@ minutes without a new one, after a successful sign-in, or on restart. The accoun
 browser that has signed in successfully as that user before (it keeps an encrypted, HttpOnly
 `__Host-namerre-device` cookie for 180 days) is not slowed down by failures from elsewhere. Unknown
 usernames are slowed down exactly like real ones.
+
+The numbers above are the defaults of `Namerre:Authentication:SignInThrottle`:
+
+| Setting | Default | Range | Meaning |
+| --- | --- | --- | --- |
+| `Enabled` | `true` | | `false` turns the per-account slowdown off; the per-address limits still apply. |
+| `FreeFailures` | `5` | 1–100 | Failed sign-ins on an account before attempts on it are spaced out. |
+| `FirstDelaySeconds` | `1` | 1–`MaximumDelaySeconds` | The first spacing; it doubles with each further failure. |
+| `MaximumDelaySeconds` | `30` | up to 300 | The largest spacing; an attempt that would wait longer is refused with `429`. |
+| `FailureMemoryMinutes` | `15` | 1–1440 | Failures are forgotten after this long without a new one. |
+| `MaxTrackedAccounts` | `10000` | 100–1,000,000 | Most usernames and devices remembered at once; the least recently failed one makes room. |
+
+A larger `MaximumDelaySeconds` slows guessing further (one attempt per maximum delay, per
+account), but makes people signing in from a new device wait longer while their account is under
+attack, and holds each waiting request open that long. Values outside the ranges fail startup.
 
 Password changes,
 re-confirming the password or a passkey, and starting a single sign-on link or a passkey
