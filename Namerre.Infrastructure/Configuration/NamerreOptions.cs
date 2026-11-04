@@ -52,6 +52,11 @@ public sealed class PasskeyOptions
     /// When neither is set, passkeys are offered only at <c>localhost</c>: the request's <c>Host</c> is never trusted.
     /// </summary>
     public string? Origin { get; set; }
+    /// <summary>
+    /// Stored administrators must sign in with a passkey (or single sign-on): a correct password alone is refused.
+    /// The break-glass administrator from server configuration is exempt. Requires <see cref="Enabled"/>.
+    /// </summary>
+    public bool RequiredForAdministrators { get; set; }
 }
 
 /// <summary>Optional OpenID Connect sign-in (for example Keycloak). Disabled while <see cref="Authority"/> is empty.</summary>

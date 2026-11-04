@@ -215,13 +215,18 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
 
 - Account rules live in `Application/Authentication/UserAccounts` (a singleton registered by
   `AddApplication()`, caching users in memory, mutations under one lock, compare-and-swap on each
-  user's random credential stamp): unique NOCASE usernames, `PasswordPolicy` (12 characters for new
-  passwords), at least one enabled admin, no self-demotion/disable/delete, confirmation of sensitive
+  user's random credential stamp): unique NOCASE usernames, `PasswordPolicy` (for new
+  passwords: 12 characters, 5 distinct ones, not on the bundled list of common and breached passwords ignoring case
+  and surrounding digits and symbols, not mostly the username), at least one enabled admin, no self-demotion/disable/delete, confirmation of sensitive
   own changes (`ConfirmOwnChange`: a recent sign-in or the password), and an enabled user always
   keeps a password, a passkey or a linked identity (`UserRecord.SignInMethods`). It depends only on ports: `IUserStore`, `IPasswordHasher`
   (`Infrastructure/Authentication/PasswordHasher`, Identity V3 PBKDF2-SHA512 at 210,000 iterations)
   and `IAdministratorConfiguration` (`AdministratorConfiguration` over `Namerre:Authentication`), so
   `Namerre.Application.UnitTests` covers the rules with an in-memory store and a fast test hasher.
+- `CommonPasswords` loads `Authentication/Resources/common-passwords.txt` (embedded resource): the NCSC list of
+  the 100,000 most used passwords from Have I Been Pwned (via SecLists), cut to the 20,000 most common entries of
+  at least four characters plus every entry of at least 12, lowercased. No password leaves the server: there is no
+  online breach lookup.
 - Controllers reach the rules through thin requests: own account and setup in
   `Application/Authentication` (`RequiresSetupQuery`, `GetUserQuery`, `CompleteSetupCommand`,
   `PasswordSignInCommand`, `VerifyPasswordQuery`, `ConfirmOwnChangeCommand`, `SetPasswordCommand`,
@@ -263,6 +268,19 @@ Every session belongs to a local user (`Application/Authentication`: `UserRecord
   global permit before the endpoint's, so a client rejected by its own budget would still burn shared permits.
   `AccountPolicy` (signed-in `password`, `reauthenticate`, `passkey/reauthenticate`, `passkeys/options`,
   `oidc/link`) allows 5/min per user ID with no shared ceiling, so anonymous traffic cannot block signed-in users.
+- Per-account slowdown (`Application/Authentication/SignInThrottle`, singleton, in memory): `PasswordSignInCommand`
+  reserves a turn before checking the password. After 5 failures on a username (case-insensitive; unknown names
+  are tracked alike), attempts are spaced by a delay doubling from 1 s up to 30 s, and one that would wait longer
+  than 30 s is refused unchecked (`Throttled`, 429 `SignInThrottled`). Failures are forgotten after 15 quiet
+  minutes or a success; at most 10,000 keys are kept, the least recently failed one making room. Waiting before
+  the check (not before the answer) keeps a fast answer from revealing a right guess. To keep attackers from
+  locking the owner out, a successful password or passkey sign-in sets `__Host-namerre-device`
+  (`Api/Authentication/TrustedDevices`: data-protected user ID and random device ID, HttpOnly, 180 days); a
+  sign-in presenting it for the same user uses its own throttling key.
+- `Namerre:Authentication:Passkeys:RequiredForAdministrators` (`IAdministratorConfiguration
+  .AdministratorsRequirePasskey`, read by `UserAccounts.RequiresPasskey`): a stored administrator's correct
+  password yields `PasskeyRequired` (403) instead of a session; the break-glass administrator is exempt. The
+  options validator refuses it while passkeys are disabled.
 - A configured `Namerre:Authentication` account is a never-stored break-glass `Admin` with ID 0.
 - Usernames (`Application/Authentication/UsernameSkeleton`, used by `UserAccounts.IsValidUsername`, the
   single rule for setup, creation and provisioning): new names are trimmed and normalized to NFKC, and

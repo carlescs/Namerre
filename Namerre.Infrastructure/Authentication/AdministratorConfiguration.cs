@@ -9,4 +9,5 @@ public sealed class AdministratorConfiguration(IOptions<NamerreOptions> options)
 {
     public string? Username => options.Value.Authentication.Username;
     public string? PasswordHash => options.Value.Authentication.PasswordHash;
+    public bool AdministratorsRequirePasskey => options.Value.Authentication.Passkeys.RequiredForAdministrators;
 }

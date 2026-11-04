@@ -58,16 +58,28 @@ export class Login {
     try {
       await this.auth.login(username, password);
     } catch (error: unknown) {
-      this.error.set(
-        error instanceof HttpErrorResponse && error.status === 401
-          ? 'Invalid username or password.'
-          : error instanceof HttpErrorResponse && error.status === 429
-            ? 'Too many sign-in attempts. Wait one minute and try again.'
-            : 'Unable to sign in. Check your connection and use HTTPS, then try again.',
-      );
+      this.error.set(passwordSignInError(error));
     } finally {
       this.form.controls.password.reset();
       this.busy.set(false);
     }
   }
+}
+
+/** The message for a failed password sign-in. */
+function passwordSignInError(error: unknown): string {
+  if (!(error instanceof HttpErrorResponse)) {
+    return 'Unable to sign in. Check your connection and use HTTPS, then try again.';
+  }
+  const code = (error.error as { code?: unknown } | null)?.code;
+  if (error.status === 401) return 'Invalid username or password.';
+  if (error.status === 403 && code === 'PasskeyRequired') {
+    return 'Administrators sign in with a passkey or single sign-on.';
+  }
+  if (error.status === 429) {
+    return code === 'SignInThrottled'
+      ? 'Too many failed sign-ins for this account. Wait a minute and try again.'
+      : 'Too many sign-in attempts. Wait one minute and try again.';
+  }
+  return 'Unable to sign in. Check your connection and use HTTPS, then try again.';
 }

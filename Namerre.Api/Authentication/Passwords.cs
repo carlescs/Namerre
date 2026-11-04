@@ -27,7 +27,7 @@ public static class Passwords
         Console.Error.WriteLine();
         var value = password.ToString();
         if (!PasswordPolicy.IsAcceptable(value))
-            throw new InvalidOperationException($"Enter a password of at least {PasswordPolicy.MinimumLength} characters.");
+            throw new InvalidOperationException(PasswordPolicy.WeakPasswordMessage);
         Console.WriteLine(new PasswordHasher().Hash(value));
     }
 }

@@ -32,6 +32,7 @@ public sealed class AuthControllerTests
 {
     private static readonly PasswordHasher Hasher = new();
     private static readonly string Hash = Hasher.Hash("password");
+    private readonly TrustedDevices devices = new(new EphemeralDataProtectionProvider());
     private readonly InMemoryUserStore store = new();
     private readonly InMemorySessionRegistry sessions = new();
     private readonly ManualTime time = new(new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero));
@@ -122,7 +123,7 @@ public sealed class AuthControllerTests
         var result = Assert.IsType<BadRequestObjectResult>(await Controller(account).Setup(
             new SetupRequest(account.SetupToken!, "admin", "password"), CancellationToken.None));
 
-        Assert.Equivalent(new { message = "Use a password of at least 12 characters." }, result.Value);
+        Assert.Equivalent(new { message = PasswordPolicy.WeakPasswordMessage }, result.Value);
         Assert.True(account.RequiresSetup);
     }
 
@@ -174,6 +175,45 @@ public sealed class AuthControllerTests
                 && p.FindFirst(ClaimTypes.Role)!.Value == "Admin"
                 && p.FindFirst("credential-stamp")!.Value == account.Find(0)!.Stamp),
             Arg.Is<AuthenticationProperties>(p => !p.IsPersistent));
+    }
+
+    [Fact]
+    public async Task ASuccessfulLoginRemembersTheDeviceForThatUser()
+    {
+        var controller = Controller(Configured());
+
+        Assert.IsType<NoContentResult>(await controller.Login(new LoginRequest("admin", "password"), CancellationToken.None));
+
+        var cookie = Assert.Single(controller.HttpContext.Response.Headers.SetCookie.ToArray(),
+            value => value!.StartsWith(TrustedDevices.CookieName + "=", StringComparison.Ordinal))!;
+        Assert.Contains("httponly", cookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("secure", cookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("samesite=strict", cookie, StringComparison.OrdinalIgnoreCase);
+        var value = cookie.Split(';')[0][(TrustedDevices.CookieName.Length + 1)..];
+        var next = new DefaultHttpContext();
+        next.Request.Headers.Cookie = $"{TrustedDevices.CookieName}={value}";
+        Assert.Equal(UserAccounts.ConfiguredUserId, devices.Read(next.Request)!.UserId);
+        next.Request.Headers.Cookie = $"{TrustedDevices.CookieName}=forged";
+        Assert.Null(devices.Read(next.Request));
+    }
+
+    [Fact]
+    public async Task AdministratorsRequiredToUseAPasskeyAreRefusedAfterTheRightPassword()
+    {
+        var account = new UserAccounts(new AdministratorConfiguration(Options.Create(new NamerreOptions
+        {
+            Authentication = new AuthenticationOptions { Passkeys = new PasskeyOptions { RequiredForAdministrators = true } }
+        })), store, Hasher, NullLogger<UserAccounts>.Instance, time);
+        account.Create(new UserReference(999, "someone"), "carol", UserRole.Admin, "carol's own password", null); // betterleaks:allow
+
+        var refused = Assert.IsType<ObjectResult>(await Controller(account).Login(
+            new LoginRequest("carol", "carol's own password"), CancellationToken.None)); // betterleaks:allow
+        Assert.IsType<UnauthorizedObjectResult>(await Controller(account).Login(
+            new LoginRequest("carol", "wrong"), CancellationToken.None));
+
+        Assert.Equal(StatusCodes.Status403Forbidden, refused.StatusCode);
+        Assert.Contains("PasskeyRequired", System.Text.Json.JsonSerializer.Serialize(refused.Value));
+        await authentication.DidNotReceiveWithAnyArgs().SignInAsync(default!, default, default!, default);
     }
 
     [Fact]
@@ -276,7 +316,7 @@ public sealed class AuthControllerTests
             controller.ChangePassword(
             new ChangePasswordRequest("password", "too short"), CancellationToken.None));
 
-        Assert.Equal((StatusCodes.Status400BadRequest, "Use a password of at least 12 characters."),
+        Assert.Equal((StatusCodes.Status400BadRequest, PasswordPolicy.WeakPasswordMessage),
             (error.Status, error.Message));
         Assert.NotNull(account.Authenticate("alice", "password"));
     }
@@ -515,7 +555,8 @@ public sealed class AuthControllerTests
         oidcOptions.Get(OidcLogin.Scheme).Returns(new OpenIdConnectOptions { ConfigurationManager = providerMetadata });
         return new AuthController(services.GetRequiredService<ISender>(), oidc ?? new OidcLogin(Options.Create(new NamerreOptions())), oidcOptions,
             antiforgery, NullLogger<AuthController>.Instance, new EphemeralDataProtectionProvider(), time: time,
-            passkeyLogin: new PasskeyLogin(Options.Create(new NamerreOptions()), new EphemeralDataProtectionProvider(), time))
+            passkeyLogin: new PasskeyLogin(Options.Create(new NamerreOptions()), new EphemeralDataProtectionProvider(), time),
+            trustedDevices: devices)
         {
             ControllerContext = new ControllerContext
             {

@@ -20,6 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Authentication\Resources\common-passwords.txt"
+      LogicalName="Namerre.Application.Authentication.CommonPasswords" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Namerre.Application.UnitTests" />
   </ItemGroup>
 

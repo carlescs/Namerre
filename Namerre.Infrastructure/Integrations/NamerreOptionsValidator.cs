@@ -3,7 +3,7 @@ using Namerre.Infrastructure.Configuration;
 
 namespace Namerre.Infrastructure.Integrations;
 
-/// <summary>Fails startup for inconsistent <c>Namerre:Integrations</c> settings. Messages never include secrets.</summary>
+/// <summary>Fails startup for inconsistent <c>Namerre:Integrations</c> and passkey settings. Messages never include secrets.</summary>
 public sealed class NamerreOptionsValidator : IValidateOptions<NamerreOptions>
 {
     public ValidateOptionsResult Validate(string? name, NamerreOptions options)
@@ -15,6 +15,9 @@ public sealed class NamerreOptionsValidator : IValidateOptions<NamerreOptions>
         Check("Plex", "Token", integrations.Plex.Url, integrations.Plex.Token, failures);
         if (!string.IsNullOrWhiteSpace(integrations.Webhook.Url) && !IsHttpUrl(integrations.Webhook.Url))
             failures.Add("Namerre:Integrations:Webhook:Url must be an absolute http or https URL.");
+        var passkeys = options.Authentication.Passkeys;
+        if (passkeys.RequiredForAdministrators && !passkeys.Enabled)
+            failures.Add("Namerre:Authentication:Passkeys:RequiredForAdministrators needs Namerre:Authentication:Passkeys:Enabled.");
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 

@@ -64,13 +64,61 @@ public sealed class AccountRequestTests : IDisposable
     {
         var alice = Accounts.Create(Someone, "alice", UserRole.User, Password, null);
 
-        Assert.Null(await Sender.Send(new PasswordSignInCommand("alice", "wrong password"), CancellationToken.None));
+        Assert.Equal(PasswordSignInOutcome.Invalid,
+            (await Sender.Send(new PasswordSignInCommand("alice", "wrong password"), CancellationToken.None)).Outcome);
         Assert.Null(Accounts.Find(alice.Id)!.LastSignInAt);
 
         var signedIn = await Sender.Send(new PasswordSignInCommand("alice", Password), CancellationToken.None);
 
-        Assert.Equal(alice.Id, signedIn!.Id);
+        Assert.Equal(PasswordSignInOutcome.SignedIn, signedIn.Outcome);
+        Assert.Equal(alice.Id, signedIn.User!.Id);
         Assert.Equal(time.GetUtcNow(), Accounts.Find(alice.Id)!.LastSignInAt);
+    }
+
+    [Fact]
+    public async Task AThrottledAccountIsRefusedWithoutCheckingThePasswordExceptFromAKnownDevice()
+    {
+        var alice = Accounts.Create(Someone, "alice", UserRole.User, Password, null);
+        var throttle = provider.GetRequiredService<SignInThrottle>();
+        var key = SignInThrottle.AccountKey("alice");
+        for (var failure = 0; failure < SignInThrottle.FreeFailures + 10; failure++)
+            throttle.RecordFailure(key);
+        while (throttle.Reserve(key) is not null)
+        {
+        }
+
+        Assert.Equal(PasswordSignInOutcome.Throttled,
+            (await Sender.Send(new PasswordSignInCommand("alice", Password), CancellationToken.None)).Outcome);
+        Assert.Null(Accounts.Find(alice.Id)!.LastSignInAt);
+        // A device cookie issued to someone else does not help.
+        Assert.Equal(PasswordSignInOutcome.Throttled, (await Sender.Send(
+            new PasswordSignInCommand("alice", Password, new TrustedDevice(alice.Id + 1, "other")),
+            CancellationToken.None)).Outcome);
+
+        var fromLaptop = await Sender.Send(new PasswordSignInCommand("alice", Password,
+            new TrustedDevice(alice.Id, "laptop")), CancellationToken.None);
+        Assert.Equal(PasswordSignInOutcome.SignedIn, fromLaptop.Outcome);
+    }
+
+    [Fact]
+    public async Task AdministratorsCanBeRequiredToUseAPasskey()
+    {
+        using var configured = new AccountRequestTests(new TestAdministrator("root",
+            TestPasswordHasher.Instance.Hash(Password), AdministratorsRequirePasskey: true));
+        var admin = configured.Accounts.Create(Someone, "carol", UserRole.Admin, Password, null);
+        configured.Accounts.Create(Someone, "alice", UserRole.User, Password, null);
+
+        Assert.Equal(PasswordSignInOutcome.PasskeyRequired, (await configured.Sender.Send(
+            new PasswordSignInCommand("carol", Password), CancellationToken.None)).Outcome);
+        Assert.Null(configured.Accounts.Find(admin.Id)!.LastSignInAt);
+        // A wrong password still looks like any other failure.
+        Assert.Equal(PasswordSignInOutcome.Invalid, (await configured.Sender.Send(
+            new PasswordSignInCommand("carol", "wrong password"), CancellationToken.None)).Outcome);
+        Assert.Equal(PasswordSignInOutcome.SignedIn, (await configured.Sender.Send(
+            new PasswordSignInCommand("alice", Password), CancellationToken.None)).Outcome);
+        // The break-glass administrator cannot have passkeys, so it keeps signing in with its password.
+        Assert.Equal(PasswordSignInOutcome.SignedIn, (await configured.Sender.Send(
+            new PasswordSignInCommand("root", Password), CancellationToken.None)).Outcome);
     }
 
     [Fact]

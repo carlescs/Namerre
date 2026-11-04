@@ -135,10 +135,11 @@ public sealed class AuthenticationTests
         var attempts = Enumerable.Range(0, clients).Select(async index =>
         {
             using var client = await ClientAt(factory, $"203.0.113.{index + 1}");
+            // Each client guesses at its own username, so the per-account slowdown stays out of the way.
             for (var attempt = 0; attempt < Namerre.Authentication.AuthenticationSetup.LoginLimitPerClient; attempt++)
             {
                 using var invalid = await client.PostAsJsonAsync("/api/auth/login",
-                    new { AuthWebApplicationFactory.Username, password = "incorrect" });
+                    new { username = $"someone-{index}", password = "incorrect" });
                 Assert.Equal(HttpStatusCode.Unauthorized, invalid.StatusCode);
             }
         });
@@ -195,7 +196,7 @@ public sealed class AuthenticationTests
             for (var attempt = 0; attempt < Namerre.Authentication.AuthenticationSetup.LoginLimitPerClient; attempt++)
             {
                 using var invalid = await client.PostAsJsonAsync("/api/auth/login",
-                    new { AuthWebApplicationFactory.Username, password = "incorrect" });
+                    new { username = $"someone-{index}", password = "incorrect" });
                 Assert.Contains(invalid.StatusCode,
                     new[] { HttpStatusCode.Unauthorized, HttpStatusCode.TooManyRequests });
             }

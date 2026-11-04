@@ -111,6 +111,18 @@ describe('Login', () => {
     expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain(message);
   });
 
+  it.each([
+    [429, 'SignInThrottled', 'Too many failed sign-ins for this account. Wait a minute'],
+    [403, 'PasskeyRequired', 'Administrators sign in with a passkey or single sign-on.'],
+    [403, 'Other', 'Unable to sign in.'],
+  ])('explains a %s %s refusal', async (status, code, message) => {
+    login.mockRejectedValue(new HttpErrorResponse({ status, error: { code } }));
+    const fixture = await filledForm('admin', 'secret');
+    fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit'));
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain(message);
+  });
+
   it('explains unexpected sign-in failures', async () => {
     login.mockRejectedValue(new Error('offline'));
     const fixture = await filledForm('admin', 'secret');
