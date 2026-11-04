@@ -1392,9 +1392,10 @@ The pipeline has three workflows; shared Node.js setup lives in the
   Its jobs:
   - `backend` builds the solution and runs the backend tests on Ubuntu and Windows;
   - `frontend` lints and tests the Angular app;
-  - `betterleaks` scans the full Git history with a pinned, checksum-verified
+  - `betterleaks` scans a pull request's own commits (other runs: the full history of the
+    checked-out commit) with a pinned, checksum-verified
     [Betterleaks](https://github.com/betterleaks/betterleaks) release and fails on any
-    finding (redacted in the log). Mark a false positive with a `betterleaks:allow`
+    finding (redacted in the log). Other branches are not scanned. Mark a false positive with a `betterleaks:allow`
     comment on the line, or add its fingerprint to `.betterleaksignore`;
   - `commitlint` (pull requests only) rejects any commit that does not follow
     [Conventional Commits](https://www.conventionalcommits.org).

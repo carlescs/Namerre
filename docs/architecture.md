@@ -401,8 +401,9 @@ Betterleaks, commitlint on PRs) runs on PRs to `main`/`next` and is reused by `r
 runs CI, then semantic-release (`release.config.mjs`) on pushes to `main` (stable) and `next`
 (`-pre.N`), creates the tag and GitHub release, and calls `docker.yml` for the new tag; Docker images
 are built and published only for version tags (a hand-pushed tag runs CI in `docker.yml` first).
-CI's `betterleaks` job scans the full Git history with a pinned Betterleaks release on PRs and
-pushes; the lefthook `pre-commit` hook scans staged changes when `betterleaks` is on PATH.
+CI's `betterleaks` job scans with a pinned Betterleaks release: a PR's own commits
+(`base..merge`), and the full history of the checked-out commit on other runs, never other
+branches, so a finding elsewhere cannot fail an unrelated PR; the lefthook `pre-commit` hook scans staged changes when `betterleaks` is on PATH.
 Issue and PR labels are declared in `.github/labels.json` (defaults, `security`, `pentest`,
 `breaking change`, `dependencies` and `area: …` labels); `labels.yml` creates or updates them on
 pushes to `main` that touch the file (or on demand), and never deletes labels missing from it.
