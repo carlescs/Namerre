@@ -229,44 +229,12 @@
     ></progress>
   }
   @if (rollback(); as checked) {
-    <section aria-labelledby="rollback-heading">
-      <h3 id="rollback-heading">Undo review — {{ fileCount(safeCount()) }} can be undone</h3>
-      @for (file of checked.files; track file.id) {
-        <article>
-          <p>
-            <code>{{ file.currentPath }}</code> → <code>{{ file.destinationPath }}</code>
-          </p>
-          <strong>{{ file.safe ? 'Safe to undo' : 'Blocked — left untouched' }}</strong>
-          @for (issue of file.issues; track $index) {
-            <p class="error">
-              {{ issue.message }} <span class="text-xs opacity-70">({{ issue.code }})</span>
-            </p>
-          }
-        </article>
-      }
-      <label class="flex items-center gap-2">
-        <input
-          #undoEmptyFolders
-          type="checkbox"
-          [checked]="rollbackDeleteEmptyFolders()"
-          (change)="rollbackDeleteEmptyFolders.set(undoEmptyFolders.checked)"
-          [disabled]="busy()"
-        />
-        Delete folders left empty
-      </label>
-      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        Once every file is back, folders the undo leaves empty are removed, such as folders the
-        rename created. The rename had this {{ current.deleteEmptyFolders ? 'on' : 'off' }}.
-      </p>
-      <p>
-        Only the safe files shown here will be undone. Blocked files stay untouched. If a file is
-        blocked because it depends on others, select those files too and check again. Everything is
-        checked once more just before it runs.
-      </p>
-      <button type="button" (click)="confirmRollback()" [disabled]="!safeCount() || busy()">
-        Undo {{ fileCount(safeCount()) }}
-      </button>
-    </section>
+    <app-run-undo-review
+      [review]="checked"
+      [runDeleteEmptyFolders]="current.deleteEmptyFolders ?? false"
+      [busy]="busy()"
+      (confirmed)="confirmRollback($event)"
+    />
   }
   @if (recovery(); as evidence) {
     <section aria-labelledby="evidence-heading">

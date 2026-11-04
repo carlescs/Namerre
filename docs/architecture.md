@@ -357,7 +357,8 @@ routes in `src/app/app.routes.ts`. Use same-origin `/api/...` URLs.
   focus); it renders `run-list` (paging, single and bulk deletion, watch folders) or `run-detail`
   (per-file outcomes, reviewed undo and recovery, operation log). `run-detail` starts over when its
   `runId` input changes and shows the saved settings through `run-plan-snapshot`, which reads the
-  plan only when opened. Both share `run-delete-button` and `run-delete-dialog`; the parent owns
+  plan only when opened, and a checked undo through `run-undo-review`, which owns the folder cleanup
+  choice and emits the safe files; `run-detail` sends the undo with the check's operation id. Both share `run-delete-button` and `run-delete-dialog`; the parent owns
   the delete request. `run-history.component.spec.ts` covers the page end to end.
   Completed stages in its progress list are buttons (`goToStep`) that jump back with the same
   cleanup as **Back**; forward moves only go through `next()` and its checks.

@@ -35,6 +35,10 @@ import {
   statusLabel,
 } from '../run-history/run-display';
 import { RunPlanSnapshotComponent } from '../run-plan-snapshot/run-plan-snapshot.component';
+import {
+  RunUndoReviewComponent,
+  type UndoConfirmation,
+} from '../run-undo-review/run-undo-review.component';
 
 /**
  * One run: what happened to each file, with the reviewed undo of selected files, the reviewed
@@ -48,6 +52,7 @@ import { RunPlanSnapshotComponent } from '../run-plan-snapshot/run-plan-snapshot
     RunDeleteButtonComponent,
     RunDeleteDialogComponent,
     RunPlanSnapshotComponent,
+    RunUndoReviewComponent,
   ],
   selector: 'app-run-detail',
   styleUrl: './run-detail.component.scss',
@@ -77,8 +82,6 @@ export class RunDetailComponent {
     return ids.length > 0 && ids.every((id) => selection.has(id));
   });
   protected readonly rollback = signal<SelectionPreview | null>(null);
-  /** Cleanup choice for the reviewed undo; starts from the rename's own choice. */
-  protected readonly rollbackDeleteEmptyFolders = signal(false);
   protected readonly recovery = signal<RecoveryPreview | null>(null);
   protected readonly busy = signal(false);
   protected readonly checkingRollback = signal(0);
@@ -208,7 +211,6 @@ export class RunDetailComponent {
       .subscribe({
         next: (preview) => {
           if (revision !== this.revision) return;
-          this.rollbackDeleteEmptyFolders.set(this.run()?.deleteEmptyFolders ?? false);
           this.rollback.set(preview);
           this.busy.set(false);
           this.stopCheckProgress();
@@ -217,23 +219,13 @@ export class RunDetailComponent {
       });
   }
 
-  protected safeCount(): number {
-    return this.rollback()?.files.filter((file) => file.safe).length ?? 0;
-  }
-
-  protected confirmRollback(): void {
-    if (!this.selectionRequest || !this.safeCount() || this.busy()) return;
+  /** Sends the reviewed undo for the same check (operation id) the review came from. */
+  protected confirmRollback(choice: UndoConfirmation): void {
+    if (!this.selectionRequest || !this.rollback() || !choice.fileIds.length || this.busy()) return;
     const revision = this.revision;
     this.busy.set(true);
     this.actionError.set('');
-    const request = {
-      ...this.selectionRequest,
-      fileIds:
-        this.rollback()
-          ?.files.filter((file) => file.safe)
-          .map((file) => file.id) ?? [],
-      deleteEmptyFolders: this.rollbackDeleteEmptyFolders(),
-    };
+    const request = { ...this.selectionRequest, ...choice };
     this.action = this.api
       .rollback(this.runId(), request)
       .pipe(takeUntilDestroyed(this.destroyRef))
