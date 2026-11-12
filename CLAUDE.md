@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Namerre is a self-hosted web file renamer: an ASP.NET Core (.NET 10) API that hosts an Angular 22
+Namerre is a self-hosted web file renamer: an ASP.NET Core (.NET 11) API that hosts an Angular 22
 SPA, with user-ordered rename pipelines, previews, durable journaled execution, persistent history
 (SQLite), selective rollback and recovery. `README.md` is the authoritative user/operator doc; `docs/architecture.md` describes the internals.
 
@@ -12,7 +12,7 @@ Run from the repo root (PowerShell). The first restore needs GitHub Packages cre
 CMediator via `NuGetPackageSourceCredentials_Github`
 (`Username=...;Password=<PAT with read:packages>;ValidAuthenticationTypes=Basic`); `nuget.config`
 maps CMediator packages to the `Github` source (CI uses the `CMEDIATOR_PACKAGES_TOKEN` secret).
-The frontend declares `npm@11.13.0` as its package manager; use npm with the committed lockfiles.
+The frontend declares `npm@12.2.2` as its package manager; use npm with the committed lockfiles.
 
 ```powershell
 npm ci --prefix .\Namerre.Front
@@ -126,7 +126,7 @@ Changing one side requires changing the other (details in `docs/architecture.md`
 
 - C# nullable reference types and implicit usings are enabled. Controllers use `[ApiController]`
   and verb attributes.
-- CMediator v1.1.3 (its upstream code-fix package is named `CMediato.CodeFixes`): requests are
+- CMediator v1.2.0 (its upstream code-fix package is named `CMediato.CodeFixes`): requests are
   `sealed`, handlers are `internal sealed` and stay in Application (the source generator only sees
   that compilation); registration comes from `AddApplication()` — no manual handler registration
   or assembly scanning. `MED001/002/003/005` are build errors. Pass the request

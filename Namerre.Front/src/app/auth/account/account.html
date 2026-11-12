@@ -2,8 +2,7 @@
   <p class="eyebrow">Your account</p>
   <h1>Account</h1>
   <p class="mb-6 text-slate-500 dark:text-slate-400">
-    Signed in as <strong>{{ auth.username() }}</strong
-    >{{ roleLabel() }}.
+    Signed in as <strong>{{ auth.username() }}</strong>{{ roleLabel() }}.
   </p>
   @if (auth.managedByConfiguration()) {
     <section class="surface p-6">
@@ -20,8 +19,7 @@
       @if (setsFirstPassword()) {
         <p class="text-slate-500 dark:text-slate-400">
           You sign in without a password. Add one to also sign in with your username
-          <strong>{{ auth.username() }}</strong
-          >.
+          <strong>{{ auth.username() }}</strong>.
           @if (!auth.recentSignIn()) {
             To confirm it is you, use a passkey or sign in again with single sign-on first.
           }

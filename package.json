@@ -2,9 +2,9 @@
   "name": "namerre",
   "private": true,
   "description": "Release tooling: Conventional Commits checks and semantic-release. The app frontend lives in Namerre.Front.",
-  "packageManager": "npm@11.13.0",
+  "packageManager": "npm@12.2.2",
   "engines": {
-    "node": ">=24.10.0"
+    "node": ">=24.15.0"
   },
   "scripts": {
     "prepare": "lefthook install",

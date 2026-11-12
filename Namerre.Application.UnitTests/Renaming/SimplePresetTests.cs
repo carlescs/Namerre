@@ -97,9 +97,9 @@ public sealed class SimplePresetTests
             new PipelineRequest([new("file", Source)], plugins, selections, IncludeCompanions: true), default);
     }
 
-    private static JsonArray Presets()
+    private static IEnumerable<JsonNode> Presets()
     {
         var path = Path.Combine(AppContext.BaseDirectory, "simple-presets.json");
-        return JsonNode.Parse(File.ReadAllText(path))!.AsArray();
+        return JsonNode.Parse(File.ReadAllText(path))!.AsArray().Select(preset => preset!);
     }
 }
