@@ -15,8 +15,8 @@ These steps run the complete app locally from source. For containers, see
 [Persistent storage and deployment](#persistent-storage-and-deployment), including
 the required browser-facing HTTPS and reverse-proxy configuration.
 
-1. Install the **.NET 10 SDK**, a Node.js version compatible with Angular 22, and
-   **npm 11.13.0**. Clone this repository and open a terminal at its root.
+1. Install the **.NET 11 SDK**, a Node.js version compatible with Angular 22, and
+   **npm 12.2.2**. Clone this repository and open a terminal at its root.
 2. Configure access to the CMediator GitHub Packages feed before the first build.
    Follow [Restore, build and test](#restore-build-and-test) to provide a GitHub
    token with `read:packages` through your local secret-management mechanism.
@@ -1353,7 +1353,7 @@ TMDB, users and authentication, frontend structure) are described in
 
 ## CMediator conventions and automation
 
-The backend uses [CMediator](https://github.com/carlescs/CMediator) v1.1.3:
+The backend uses [CMediator](https://github.com/carlescs/CMediator) v1.2.0:
 
 - Requests implement `CMediator.Abstractions.IRequest<TResponse>` and are sealed.
 - Handlers implement `IRequestHandler<TRequest, TResponse>` and are internal sealed
@@ -1384,7 +1384,7 @@ follow a published upstream tag, not its development branch.
 
 ## Restore, build and test
 
-Install the .NET 10 SDK and the frontend's declared Node/npm toolchain.
+Install the .NET 11 SDK and the frontend's declared Node/npm toolchain.
 `nuget.config` maps CMediator packages exclusively to the `carlescs` GitHub
 Packages feed; other packages come from nuget.org.
 

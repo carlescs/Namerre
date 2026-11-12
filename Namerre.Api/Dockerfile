@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS base
 USER $APP_UID
 WORKDIR /app
 EXPOSE 8080
@@ -13,7 +13,7 @@ RUN npm ci
 COPY Namerre.Front/ ./
 RUN npm run build
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS publish
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS publish
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY nuget.config ./
