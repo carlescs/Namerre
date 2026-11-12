@@ -6,7 +6,7 @@ WORKDIR /app
 EXPOSE 8080
 EXPOSE 8081
 
-FROM node:24-alpine AS frontend
+FROM node:26-alpine AS frontend
 WORKDIR /src/Namerre.Front
 COPY Namerre.Front/package.json Namerre.Front/package-lock.json ./
 RUN npm ci
